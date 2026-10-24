@@ -6,7 +6,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <vector>
 
 class AudioPlayer {
 public:
@@ -33,10 +32,11 @@ private:
 
     SDL_AudioDeviceID m_device = 0;
     SDL_AudioSpec m_spec{};
-    std::vector<float> m_buffer;
-    std::atomic<int64_t> m_readFrame{0};
-    std::atomic<int64_t> m_sourcePosition{0};
+    std::atomic<const vwave::Audio*> m_source{nullptr};
     std::atomic<bool> m_playing{false};
+    std::atomic<int64_t> m_sourcePosition{0};
     int64_t m_sourceStart = 0;
-    double m_sourceRatio = 1.0;
+    int64_t m_sourceEnd = 0;
+    double m_readPosition = 0.0;
+    double m_sourceStep = 1.0;
 };

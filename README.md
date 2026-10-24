@@ -31,6 +31,10 @@ editor and as an embeddable editing core for
 - **Embedding**: UI-free C++17 core plus a stable C ABI for YAWN or other hosts.
 - **Desktop editor**: SDL2/SDL2_ttf waveform, spectrogram, and wavetable views;
   playback; beat grid; markers; slice overlays; keyboard and drag editing.
+- **Parameterized controls**: draggable value sliders for gain, normalization,
+  stretch, pitch, analysis, slicing, spectral bands, filters, gates, wavetable
+  extraction, and synth rendering; algorithm/type selectors and a scrollable
+  sidebar for the full toolset.
 
 ![Spectral editor](docs/images/spectrum.png)
 
@@ -89,7 +93,9 @@ vwave_editor
 ```
 
 Drag an audio file onto the window, press `Ctrl+O`, or pass it on the command
-line. Select audio by dragging in the waveform. Use the sidebar or shortcuts:
+line. Select audio by dragging in the waveform. Sidebar values are live
+parameter sliders; scroll the sidebar for the complete toolset. Apply buttons
+commit the displayed values as undoable edits:
 
 | Key | Action |
 | --- | --- |

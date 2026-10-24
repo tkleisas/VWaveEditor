@@ -76,6 +76,38 @@ double SpectralViewport::yAtFrequency(double hz, double height) const {
     return (1.0 - position) * height;
 }
 
+
+double ParameterSlider::normalized() const {
+    if (maximum <= minimum) return 0.0;
+    const double clamped = std::clamp(value, minimum, maximum);
+    if (logarithmic) {
+        if (minimum <= 0.0) return 0.0;
+        return std::log(clamped / minimum) / std::log(maximum / minimum);
+    }
+    return (clamped - minimum) / (maximum - minimum);
+}
+
+void ParameterSlider::setNormalized(double position) {
+    if (maximum <= minimum) return;
+    const double clamped = std::clamp(position, 0.0, 1.0);
+    double mapped = 0.0;
+    if (logarithmic) {
+        if (minimum <= 0.0) return;
+        mapped = minimum * std::pow(maximum / minimum, clamped);
+    } else {
+        mapped = minimum + (maximum - minimum) * clamped;
+    }
+    setValue(mapped);
+}
+
+void ParameterSlider::setValue(double newValue) {
+    if (step > 0.0) {
+        newValue = minimum +
+                   std::round((newValue - minimum) / step) * step;
+    }
+    value = std::clamp(newValue, minimum, maximum);
+}
+
 std::vector<PeakBin> computePeaks(const Audio& audio, int channel, Range range,
                                   int width) {
     std::vector<PeakBin> peaks;

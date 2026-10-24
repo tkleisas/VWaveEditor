@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <string>
 
 namespace {
 
@@ -116,9 +117,96 @@ int64_t clampFrame(int64_t frame, int64_t frames) {
     return std::clamp<int64_t>(frame, 0, frames);
 }
 
+std::string formatRatio(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2) << value << "x";
+    return out.str();
+}
+
+std::string formatDb(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1);
+    if (value > 0.0) out << '+';
+    out << value << " dB";
+    return out.str();
+}
+
+std::string formatHz(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(value >= 1000.0 ? 2 : 0);
+    if (value >= 1000.0) out << value / 1000.0 << " kHz";
+    else out << value << " Hz";
+    return out.str();
+}
+
+std::string formatInt(double value) {
+    return std::to_string(static_cast<int>(std::lround(value)));
+}
+
+std::string formatMilliseconds(double value) {
+    return std::to_string(static_cast<int>(std::lround(value))) + " ms";
+}
+
+std::string formatSecondsControl(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2) << value << " s";
+    return out.str();
+}
+
+std::string formatSemitones(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1);
+    if (value > 0.0) out << '+';
+    out << value << " st";
+    return out.str();
+}
+
+std::string formatMorph(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2) << value;
+    return out.str();
+}
+
+std::string formatMidiNote(double value) {
+    static const char* names[] = {"C", "C#", "D", "D#", "E", "F",
+                                  "F#", "G", "G#", "A", "A#", "B"};
+    const int note = std::clamp(static_cast<int>(std::lround(value)), 0, 127);
+    std::ostringstream out;
+    out << names[note % 12] << (note / 12 - 1) << " (" << note << ')';
+    return out.str();
+}
+
+const char* const kAlgorithmNames[] = {"WSOLA", "Phase Vocoder",
+                                       "PaulStretch"};
+const int kFrameSizes[] = {256, 512, 1024, 2048, 4096, 8192};
+const char* const kSliceModeNames[] = {"Transients", "Beats", "Markers"};
+
 } // namespace
 
-App::App() = default;
+App::App() {
+    m_gainDb = {-24.0, 24.0, 0.0, false, 0.1};
+    m_normalizePeak = {-24.0, 0.0, -1.0, false, 0.1};
+    m_stretchRatio = {0.25, 8.0, 2.0, true, 0.0};
+    m_pitchSemitones = {-24.0, 24.0, 12.0, false, 1.0};
+    m_beatSensitivity = {0.0, 1.0, 0.5, false, 0.05};
+    m_sliceSensitivity = {0.0, 1.0, 0.5, false, 0.05};
+    m_minSliceMs = {5.0, 500.0, 30.0, false, 1.0};
+    m_beatsPerSlice = {1.0, 8.0, 1.0, false, 1.0};
+    m_spectralLow = {20.0, 20000.0, 200.0, true, 0.0};
+    m_spectralHigh = {20.0, 20000.0, 4000.0, true, 0.0};
+    m_spectralGain = {-60.0, 24.0, 6.0, false, 0.5};
+    m_spectralGate = {-96.0, -6.0, -40.0, false, 1.0};
+    m_spectralCutoff = {20.0, 20000.0, 1000.0, true, 0.0};
+    m_spectralBlurTime = {0.0, 8.0, 1.0, false, 1.0};
+    m_spectralBlurFrequency = {0.0, 32.0, 2.0, false, 1.0};
+    m_wavetableFrameCount = {1.0, 64.0, 8.0, false, 1.0};
+    m_synthNote = {0.0, 127.0, 60.0, false, 1.0};
+    m_synthRoot = {0.0, 127.0, 60.0, false, 1.0};
+    m_synthDuration = {0.05, 10.0, 2.0, true, 0.0};
+    m_synthMorph = {0.0, 1.0, 0.0, false, 0.01};
+    m_synthUnison = {1.0, 8.0, 1.0, false, 1.0};
+    m_synthGain = {0.0, 1.0, 0.7, false, 0.01};
+}
 
 App::~App() {
     m_player.close();
@@ -238,6 +326,7 @@ void App::updateWindowTitle() {
 void App::draw() {
     layout();
     m_buttons.clear();
+    m_sliders.clear();
     SDL_SetRenderDrawColor(m_renderer, kBackground.r, kBackground.g,
                            kBackground.b, kBackground.a);
     SDL_RenderClear(m_renderer);
@@ -288,6 +377,43 @@ void App::drawButton(const Button& button) {
     drawTextCentered(button.label, button.rect, textColor, fontSmall());
 }
 
+void App::addSlider(const std::string& label, const std::string& valueText,
+                    int x, int y, int w, vwave::ParameterSlider& slider) {
+    drawText(label, x, y, kTextDim, fontSmall());
+    const int valueWidth = textWidth(valueText, fontSmall());
+    drawText(valueText, x + w - valueWidth, y, kText, fontSmall());
+    SDL_Rect track{x, y + 17, w, 6};
+    SDL_SetRenderDrawColor(m_renderer, kContent.r, kContent.g, kContent.b, 255);
+    SDL_RenderFillRect(m_renderer, &track);
+    const double normalized = slider.normalized();
+    SDL_Rect filled{track.x, track.y, static_cast<int>(normalized * track.w),
+                    track.h};
+    SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 210);
+    SDL_RenderFillRect(m_renderer, &filled);
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
+    SDL_RenderDrawRect(m_renderer, &track);
+    const int handleX = track.x + static_cast<int>(normalized * track.w);
+    SDL_Rect handle{handleX - 3, track.y - 4, 7, track.h + 8};
+    SDL_SetRenderDrawColor(m_renderer, kText.r, kText.g, kText.b, 255);
+    SDL_RenderFillRect(m_renderer, &handle);
+    m_sliders.push_back({&slider, track, label});
+}
+
+void App::setSliderFromX(SliderRef& slider, int x) {
+    if (!slider.slider || slider.track.w <= 0) return;
+    const double position =
+        static_cast<double>(x - slider.track.x) / slider.track.w;
+    slider.slider->setNormalized(position);
+}
+
+vwave::StretchAlgorithm App::selectedStretchAlgorithm() const {
+    switch (m_stretchAlgorithm) {
+    case 1: return vwave::StretchAlgorithm::PhaseVocoder;
+    case 2: return vwave::StretchAlgorithm::PaulStretch;
+    default: return vwave::StretchAlgorithm::Wsola;
+    }
+}
+
 void App::addButton(const std::string& label, int x, int y, int w, int h,
                     std::function<void()> action, bool accent, bool active,
                     bool enabled) {
@@ -298,6 +424,7 @@ void App::addButton(const std::string& label, int x, int y, int w, int h,
     button.accent = accent;
     button.active = active;
     button.enabled = enabled;
+    button.area = m_controlArea;
     m_buttons.push_back(button);
     drawButton(button);
 }
@@ -344,6 +471,7 @@ void App::drawSection(const std::string& title, int& y) {
 }
 
 void App::drawToolbar() {
+    m_controlArea = 0;
     SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
     SDL_RenderFillRect(m_renderer, &m_toolbarRect);
     SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 255);
@@ -392,6 +520,7 @@ void App::drawToolbar() {
 }
 
 void App::drawSidebar() {
+    m_controlArea = 1;
     SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
     SDL_RenderFillRect(m_renderer, &m_sidebarRect);
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
@@ -400,7 +529,13 @@ void App::drawSidebar() {
                        m_sidebarRect.y + m_sidebarRect.h);
 
     SDL_RenderSetClipRect(m_renderer, &m_sidebarRect);
-    int y = m_sidebarRect.y + 14;
+    const int contentTop = m_sidebarRect.y + 14;
+    const int previousMaximum =
+        std::max(0, m_sidebarContentHeight - m_sidebarRect.h);
+    m_sidebarScroll =
+        std::clamp(m_sidebarScroll, 0.0, static_cast<double>(previousMaximum));
+    int y = contentTop - static_cast<int>(std::lround(m_sidebarScroll));
+
     drawSection("DOCUMENT", y);
     const std::string name = m_projectPath.empty() ? m_audioPath : m_projectPath;
     drawText(truncateText(baseName(name), fontBold(), 250), 18, y, kText,
@@ -428,9 +563,9 @@ void App::drawSidebar() {
         if (m_document.selection().active) {
             const vwave::Selection sel = m_document.selection();
             std::ostringstream out;
-            out << "Selection: " << formatSeconds(
-                       static_cast<double>(sel.start) /
-                       std::max(1, m_document.sampleRate()))
+            out << "Selection: "
+                << formatSeconds(static_cast<double>(sel.start) /
+                                 std::max(1, m_document.sampleRate()))
                 << " - "
                 << formatSeconds(static_cast<double>(sel.end) /
                                  std::max(1, m_document.sampleRate()));
@@ -476,6 +611,120 @@ void App::drawSidebar() {
         }
         if (column != 0) y += buttonHeight + 6;
     };
+    auto fullButton = [&](const std::string& label,
+                          std::function<void()> action) {
+        addButton(label, 18, y, buttonWidth * 2 + gap, buttonHeight,
+                  std::move(action), false, false, hasAudio);
+        y += buttonHeight + 6;
+    };
+
+    if (m_tab == vwave::EditorTab::Spectrum) {
+        drawSection("SPECTRAL", y);
+        std::string regionText = "Region: whole document";
+        if (m_spectralRegion.active && !m_spectralRegion.frames.empty()) {
+            std::ostringstream out;
+            out << "Region: "
+                << formatSeconds(static_cast<double>(
+                                     m_spectralRegion.frames.start) /
+                                 std::max(1, m_document.sampleRate()))
+                << " - "
+                << formatSeconds(static_cast<double>(
+                                     m_spectralRegion.frames.end) /
+                                 std::max(1, m_document.sampleRate()))
+                << "  " << formatHz(m_spectralRegion.lowHz) << " - "
+                << formatHz(m_spectralRegion.highHz);
+            regionText = out.str();
+        } else if (m_document.selection().active) {
+            regionText = "Region: current time selection";
+        }
+        drawText(truncateText(regionText, fontSmall(), 256), 18, y, kTextFaint,
+                 fontSmall());
+        y += 18;
+        addSlider("Low frequency", formatHz(m_spectralLow.value), 18, y, 256,
+                  m_spectralLow);
+        y += 30;
+        addSlider("High frequency", formatHz(m_spectralHigh.value), 18, y, 256,
+                  m_spectralHigh);
+        y += 30;
+        addSlider("Band gain", formatDb(m_spectralGain.value), 18, y, 256,
+                  m_spectralGain);
+        y += 30;
+        grid({{"Apply Gain",
+               [this] { applySpectralGain(m_spectralGain.value); }},
+              {"Erase", [this] { applySpectralGain(-120.0); }}});
+        addSlider("Gate threshold", formatDb(m_spectralGate.value), 18, y, 256,
+                  m_spectralGate);
+        y += 30;
+        grid({{"Apply Gate", [this] { applySpectralGate(); }},
+              {"Filter: " + std::string(m_filterLowpass ? "LPF" : "HPF"),
+               [this] { m_filterLowpass = !m_filterLowpass; }}});
+        addSlider("Filter cutoff", formatHz(m_spectralCutoff.value), 18, y, 256,
+                  m_spectralCutoff);
+        y += 30;
+        grid({{"Apply Filter",
+               [this] { applySpectralFilter(m_filterLowpass); }},
+              {"Apply Blur", [this] { applySpectralBlur(); }}});
+        addSlider("Blur time", formatInt(m_spectralBlurTime.value), 18, y, 256,
+                  m_spectralBlurTime);
+        y += 30;
+        addSlider("Blur frequency", formatInt(m_spectralBlurFrequency.value),
+                  18, y, 256, m_spectralBlurFrequency);
+        y += 30;
+    } else if (m_tab == vwave::EditorTab::Wavetable) {
+        drawSection("WAVETABLE", y);
+        grid({{"Size: " + std::to_string(kFrameSizes[m_frameSizeIndex]),
+               [this] {
+                   m_frameSizeIndex =
+                       (m_frameSizeIndex + 1) %
+                       static_cast<int>(sizeof(kFrameSizes) /
+                                        sizeof(kFrameSizes[0]));
+               }},
+              {"Extract", [this] { extractWavetable(); }}});
+        addSlider("Frame count", formatInt(m_wavetableFrameCount.value), 18, y,
+                  256, m_wavetableFrameCount);
+        y += 30;
+        grid({{"Save", [this] {
+                   openDialog(DialogMode::SaveWavetable, "Save wavetable",
+                              (std::filesystem::current_path() /
+                               "wavetable.vwt").string(),
+                              true);
+               }},
+              {"Normalize", [this] {
+                   if (!m_wavetable.valid()) return;
+                   m_wavetable.normalizeFrames();
+                   setStatus("Wavetable normalized");
+               }}});
+        drawSection("SYNTH", y);
+        addSlider("Note", formatMidiNote(m_synthNote.value), 18, y, 256,
+                  m_synthNote);
+        y += 30;
+        addSlider("Root", formatMidiNote(m_synthRoot.value), 18, y, 256,
+                  m_synthRoot);
+        y += 30;
+        addSlider("Duration", formatSecondsControl(m_synthDuration.value), 18,
+                  y, 256, m_synthDuration);
+        y += 30;
+        addSlider("Morph", formatMorph(m_synthMorph.value), 18, y, 256,
+                  m_synthMorph);
+        y += 30;
+        addSlider("Unison", formatInt(m_synthUnison.value), 18, y, 256,
+                  m_synthUnison);
+        y += 30;
+        addSlider("Level", formatMorph(m_synthGain.value), 18, y, 256,
+                  m_synthGain);
+        y += 30;
+        fullButton("Render Note", [this] { renderWavetableNote(); });
+        grid({{"Prev Frame", [this] {
+                   if (!m_wavetable.valid()) return;
+                   --m_wavetableView.selectedFrame;
+                   m_wavetableView.clamp(m_wavetable.frameCount());
+               }},
+              {"Next Frame", [this] {
+                   if (!m_wavetable.valid()) return;
+                   ++m_wavetableView.selectedFrame;
+                   m_wavetableView.clamp(m_wavetable.frameCount());
+               }}});
+    }
 
     drawSection("EDIT", y);
     grid({{"Undo", [this] {
@@ -496,16 +745,6 @@ void App::drawSidebar() {
                    setStatus("Redone");
                }
            }},
-          {"Normalize", [this] {
-               runEdit([this](std::string* error) {
-                   return m_document.normalize(-1.0, error);
-               }, "Normalized to -1 dBFS");
-           }},
-          {"Reverse", [this] {
-               runEdit([this](std::string* error) {
-                   return m_document.reverseSelection(error);
-               }, "Reversed");
-           }},
           {"Fade In", [this] {
                runEdit([this](std::string* error) {
                    return m_document.fadeIn(error);
@@ -515,6 +754,11 @@ void App::drawSidebar() {
                runEdit([this](std::string* error) {
                    return m_document.fadeOut(error);
                }, "Fade out applied");
+           }},
+          {"Reverse", [this] {
+               runEdit([this](std::string* error) {
+                   return m_document.reverseSelection(error);
+               }, "Reversed");
            }},
           {"Invert", [this] {
                runEdit([this](std::string* error) {
@@ -540,8 +784,8 @@ void App::drawSidebar() {
                setStatus("Selection cleared");
            }},
           {"Copy", [this] {
-               if (m_document.copySelection()) setStatus("Copied selection");
-               else setStatus("Select audio first");
+               setStatus(m_document.copySelection() ? "Copied selection"
+                                                    : "Select audio first");
            }},
           {"Cut", [this] {
                runEdit([this](std::string* error) {
@@ -554,78 +798,101 @@ void App::drawSidebar() {
                }, "Pasted");
            }}});
 
-    drawSection("PROCESS", y);
-    grid({{"Stretch x2", [this] {
+    drawSection("GAIN", y);
+    addSlider("Gain", formatDb(m_gainDb.value), 18, y, 256, m_gainDb);
+    y += 30;
+    addSlider("Normalize peak", formatDb(m_normalizePeak.value), 18, y, 256,
+              m_normalizePeak);
+    y += 30;
+    grid({{"Apply Gain",
+           [this] {
                runEdit([this](std::string* error) {
-                   return m_document.timeStretch(
-                       2.0, vwave::StretchAlgorithm::Wsola, error);
-               }, "Time stretched 2x");
+                   return m_document.gainDb(m_gainDb.value, error);
+               }, "Gain applied");
            }},
-          {"Pitch +12", [this] {
+          {"Apply Normalize",
+           [this] {
                runEdit([this](std::string* error) {
-                   return m_document.pitchShift(
-                       12.0, vwave::StretchAlgorithm::PhaseVocoder, error);
-               }, "Pitch shifted +12 semitones");
-           }},
-          {"Pitch -12", [this] {
-               runEdit([this](std::string* error) {
-                   return m_document.pitchShift(
-                       -12.0, vwave::StretchAlgorithm::PhaseVocoder, error);
-               }, "Pitch shifted -12 semitones");
-           }},
-          {"Paul x4", [this] {
-               runEdit([this](std::string* error) {
-                   return m_document.timeStretch(
-                       4.0, vwave::StretchAlgorithm::PaulStretch, error);
-               }, "PaulStretch 4x");
+                   return m_document.normalize(m_normalizePeak.value, error);
+               }, "Normalized");
            }}});
+
+    drawSection("TIME & PITCH", y);
+    addSlider("Stretch", formatRatio(m_stretchRatio.value), 18, y, 256,
+              m_stretchRatio);
+    y += 30;
+    addSlider("Pitch", formatSemitones(m_pitchSemitones.value), 18, y, 256,
+              m_pitchSemitones);
+    y += 30;
+    grid({{"Algorithm: " +
+               std::string(m_stretchAlgorithm == 0
+                               ? "WSOLA"
+                               : (m_stretchAlgorithm == 1 ? "Phase" : "Paul")),
+           [this] { m_stretchAlgorithm = (m_stretchAlgorithm + 1) % 3; }},
+          {"Apply Stretch",
+           [this] {
+               runEdit([this](std::string* error) {
+                   return m_document.timeStretch(
+                       m_stretchRatio.value, selectedStretchAlgorithm(),
+                       error);
+               }, "Time stretch applied");
+           }}});
+    fullButton("Apply Pitch", [this] {
+        runEdit([this](std::string* error) {
+            return m_document.pitchShift(
+                m_pitchSemitones.value, selectedStretchAlgorithm(), error);
+        }, "Pitch shift applied");
+    });
 
     drawSection("ANALYZE", y);
+    addSlider("Beat sensitivity", formatMorph(m_beatSensitivity.value), 18, y,
+              256, m_beatSensitivity);
+    y += 30;
     grid({{"Beats", [this] { analyzeBeats(); }},
-          {"Pitch", [this] { detectPitch(); }},
-          {"Slice", [this] { sliceTransients(); }},
-          {"Export", [this] {
-               openDialog(DialogMode::ExportSlices,
-                          "Export slices to directory",
-                          (std::filesystem::current_path() / "slices").string(),
-                          true);
-           }}});
+          {"Pitch", [this] { detectPitch(); }}});
+    addSlider("Slice sensitivity", formatMorph(m_sliceSensitivity.value), 18,
+              y, 256, m_sliceSensitivity);
+    y += 30;
+    addSlider("Minimum slice", formatMilliseconds(m_minSliceMs.value), 18, y,
+              256, m_minSliceMs);
+    y += 30;
+    addSlider("Beats / slice", formatInt(m_beatsPerSlice.value), 18, y, 256,
+              m_beatsPerSlice);
+    y += 30;
+    grid({{"Mode: " + std::string(kSliceModeNames[m_sliceMode]),
+           [this] { m_sliceMode = (m_sliceMode + 1) % 3; }},
+          {"Slice", [this] { sliceCurrent(); }}});
+    fullButton("Export Slices", [this] {
+        openDialog(DialogMode::ExportSlices, "Export slices to directory",
+                   (std::filesystem::current_path() / "slices").string(), true);
+    });
 
-    if (m_tab == vwave::EditorTab::Spectrum) {
-        drawSection("SPECTRAL", y);
-        grid({{"+6 dB", [this] { applySpectralGain(6.0); }},
-              {"-6 dB", [this] { applySpectralGain(-6.0); }},
-              {"Erase", [this] { applySpectralGain(-120.0); }},
-              {"Gate -40", [this] { applySpectralGate(); }},
-              {"Lowpass", [this] { applySpectralFilter(true); }},
-              {"Highpass", [this] { applySpectralFilter(false); }}});
-    } else if (m_tab == vwave::EditorTab::Wavetable) {
-        drawSection("WAVETABLE", y);
-        grid({{"Extract", [this] { extractWavetable(); }},
-              {"Save", [this] {
-                   openDialog(DialogMode::SaveWavetable, "Save wavetable",
-                              (std::filesystem::current_path() /
-                               "wavetable.vwt").string(),
-                              true);
-               }},
-              {"Prev", [this] {
-                   if (!m_wavetable.valid()) return;
-                   --m_wavetableView.selectedFrame;
-                   m_wavetableView.clamp(m_wavetable.frameCount());
-               }},
-              {"Next", [this] {
-                   if (!m_wavetable.valid()) return;
-                   ++m_wavetableView.selectedFrame;
-                   m_wavetableView.clamp(m_wavetable.frameCount());
-               }},
-              {"Normalize", [this] {
-                   if (!m_wavetable.valid()) return;
-                   m_wavetable.normalizeFrames();
-                   setStatus("Wavetable normalized");
-               }},
-              {"Render", [this] { renderWavetableNote(); }}});
-    }
+    m_sidebarContentHeight = y + static_cast<int>(std::lround(m_sidebarScroll)) -
+                             contentTop + 16;
+    const int maximumScroll =
+        std::max(0, m_sidebarContentHeight - m_sidebarRect.h);
+    m_sidebarScroll =
+        std::clamp(m_sidebarScroll, 0.0, static_cast<double>(maximumScroll));
     SDL_RenderSetClipRect(m_renderer, nullptr);
+
+    if (maximumScroll > 0) {
+        SDL_Rect track{m_sidebarRect.w - 8, m_sidebarRect.y + 4, 5,
+                       m_sidebarRect.h - 8};
+        SDL_SetRenderDrawColor(m_renderer, kPanelRaised.r, kPanelRaised.g,
+                               kPanelRaised.b, 230);
+        SDL_RenderFillRect(m_renderer, &track);
+        const int handleHeight = std::max(
+            24, static_cast<int>(static_cast<double>(track.h) *
+                                 m_sidebarRect.h / m_sidebarContentHeight));
+        const int handleY = track.y + static_cast<int>(
+                                          (static_cast<double>(track.h) -
+                                           handleHeight) *
+                                          (m_sidebarScroll / maximumScroll));
+        SDL_Rect handle{track.x, handleY, track.w, handleHeight};
+        SDL_SetRenderDrawColor(m_renderer, kTextFaint.r, kTextFaint.g,
+                               kTextFaint.b, 255);
+        SDL_RenderFillRect(m_renderer, &handle);
+    }
 }
 
 void App::drawFooter() {
@@ -1112,6 +1379,7 @@ void App::drawDialog() {
 }
 
 void App::setTab(vwave::EditorTab tab) {
+    if (m_tab != tab) m_sidebarScroll = 0.0;
     m_tab = tab;
     if (tab == vwave::EditorTab::Spectrum) m_spectrogramDirty = true;
 }
@@ -1199,7 +1467,8 @@ void App::analyzeBeats() {
         return;
     }
     setStatus("Analyzing beats...", 60000);
-    m_beats = vwave::analyzeBeats(m_document.audio());
+    m_beats = vwave::analyzeBeats(m_document.audio(),
+                                  m_beatSensitivity.value);
     m_hasBeats = true;
     if (m_beats.bpm > 0.0) {
         std::ostringstream out;
@@ -1231,13 +1500,35 @@ void App::detectPitch() {
     }
 }
 
-void App::sliceTransients() {
+void App::sliceCurrent() {
     if (m_document.audio().empty()) {
         setStatus("Open an audio file first");
         return;
     }
-    std::vector<vwave::Slice> slices =
-        vwave::sliceByTransients(m_document.audio(), 0.5, 0.03);
+    std::vector<vwave::Slice> slices;
+    if (m_sliceMode == 0) {
+        slices = vwave::sliceByTransients(
+            m_document.audio(), m_sliceSensitivity.value,
+            m_minSliceMs.value / 1000.0);
+    } else if (m_sliceMode == 1) {
+        const vwave::BeatAnalysis analysis = m_hasBeats
+                                                 ? m_beats
+                                                 : vwave::analyzeBeats(
+                                                       m_document.audio(),
+                                                       m_beatSensitivity.value);
+        if (analysis.bpm <= 0.0) {
+            setStatus("No tempo available for beat slicing");
+            return;
+        }
+        slices = vwave::sliceByBeats(
+            m_document.audio(), analysis.bpm,
+            static_cast<int>(std::lround(m_beatsPerSlice.value)));
+    } else {
+        std::vector<int64_t> markers;
+        for (const auto& marker : m_document.markers())
+            markers.push_back(marker.frame);
+        slices = vwave::sliceByMarkers(m_document.audio(), markers);
+    }
     if (slices.empty()) {
         setStatus("No slices found");
         return;
@@ -1245,6 +1536,13 @@ void App::sliceTransients() {
     m_document.setSlices(std::move(slices));
     setStatus("Created " + std::to_string(m_document.slices().size()) +
               " slices");
+}
+
+vwave::Range App::spectralTimeRange() const {
+    if (m_spectralRegion.active && !m_spectralRegion.frames.empty())
+        return m_spectralRegion.frames;
+    if (m_document.selection().active) return m_document.selectedRange();
+    return {0, m_document.numFrames()};
 }
 
 void App::addMarkerAtPlayhead() {
@@ -1358,8 +1656,9 @@ void App::extractWavetable() {
         return;
     }
     vwave::WavetableExtractOptions options;
-    options.frameSize = 2048;
-    options.frameCount = 8;
+    options.frameSize = kFrameSizes[m_frameSizeIndex];
+    options.frameCount =
+        static_cast<int>(std::lround(m_wavetableFrameCount.value));
     if (m_document.selection().active)
         options.range = m_document.selectedRange();
     options.name = baseName(m_audioPath);
@@ -1407,10 +1706,12 @@ void App::renderWavetableNote() {
     vwave::SynthNoteOptions options;
     options.sampleRate = 48000;
     options.channels = 2;
-    options.rootNote = 60.0;
-    options.gain = 0.7;
-    const vwave::Audio note =
-        vwave::renderWavetableNote(m_wavetable, 60.0, 2.0, options);
+    options.rootNote = m_synthRoot.value;
+    options.gain = m_synthGain.value;
+    options.morph = m_synthMorph.value;
+    options.unison = static_cast<int>(std::lround(m_synthUnison.value));
+    const vwave::Audio note = vwave::renderWavetableNote(
+        m_wavetable, m_synthNote.value, m_synthDuration.value, options);
     if (note.empty()) {
         setStatus("Synth render failed");
         return;
@@ -1429,16 +1730,16 @@ void App::renderWavetableNote() {
 
 void App::applySpectralGain(double db) {
     if (m_document.audio().empty()) return;
-    if (!m_spectralRegion.active || m_spectralRegion.frames.empty()) {
-        setStatus("Drag a time-frequency region first");
+    const vwave::Range range = spectralTimeRange();
+    if (range.empty()) {
+        setStatus("Select a time range or drag a spectral region first");
         return;
     }
     m_player.stop();
-    m_document.setSelection(m_spectralRegion.frames.start,
-                            m_spectralRegion.frames.end);
+    m_document.setSelection(range.start, range.end);
     std::string error;
-    if (!m_document.spectralGain(m_spectralRegion.lowHz,
-                                 m_spectralRegion.highHz, db, &error)) {
+    if (!m_document.spectralGain(m_spectralLow.value, m_spectralHigh.value, db,
+                                 &error)) {
         setStatus(error.empty() ? "Spectral edit failed" : error);
         return;
     }
@@ -1448,18 +1749,16 @@ void App::applySpectralGain(double db) {
 
 void App::applySpectralFilter(bool lowpass) {
     if (m_document.audio().empty()) return;
-    if (!m_spectralRegion.active || m_spectralRegion.frames.empty()) {
-        setStatus("Drag a time-frequency region first");
+    const vwave::Range range = spectralTimeRange();
+    if (range.empty()) {
+        setStatus("Select a time range or drag a spectral region first");
         return;
     }
     m_player.stop();
-    m_document.setSelection(m_spectralRegion.frames.start,
-                            m_spectralRegion.frames.end);
-    const double cutoff = lowpass ? m_spectralRegion.highHz
-                                  : m_spectralRegion.lowHz;
+    m_document.setSelection(range.start, range.end);
     std::string error;
-    if (!m_document.spectralFilter(lowpass ? "lowpass" : "highpass", cutoff,
-                                   &error)) {
+    if (!m_document.spectralFilter(lowpass ? "lowpass" : "highpass",
+                                   m_spectralCutoff.value, &error)) {
         setStatus(error.empty() ? "Spectral filter failed" : error);
         return;
     }
@@ -1469,20 +1768,41 @@ void App::applySpectralFilter(bool lowpass) {
 
 void App::applySpectralGate() {
     if (m_document.audio().empty()) return;
-    if (!m_spectralRegion.active || m_spectralRegion.frames.empty()) {
-        setStatus("Drag a time-frequency region first");
+    const vwave::Range range = spectralTimeRange();
+    if (range.empty()) {
+        setStatus("Select a time range or drag a spectral region first");
         return;
     }
     m_player.stop();
-    m_document.setSelection(m_spectralRegion.frames.start,
-                            m_spectralRegion.frames.end);
+    m_document.setSelection(range.start, range.end);
     std::string error;
-    if (!m_document.spectralGate(-40.0, &error)) {
+    if (!m_document.spectralGate(m_spectralGate.value, &error)) {
         setStatus(error.empty() ? "Spectral gate failed" : error);
         return;
     }
     markEdited();
     setStatus("Spectral gate applied");
+}
+
+void App::applySpectralBlur() {
+    if (m_document.audio().empty()) return;
+    const vwave::Range range = spectralTimeRange();
+    if (range.empty()) {
+        setStatus("Select a time range or drag a spectral region first");
+        return;
+    }
+    m_player.stop();
+    m_document.setSelection(range.start, range.end);
+    std::string error;
+    if (!m_document.spectralBlur(
+            static_cast<int>(std::lround(m_spectralBlurTime.value)),
+            static_cast<int>(std::lround(m_spectralBlurFrequency.value)),
+            &error)) {
+        setStatus(error.empty() ? "Spectral blur failed" : error);
+        return;
+    }
+    markEdited();
+    setStatus("Spectral blur applied");
 }
 
 void App::openDialog(DialogMode mode, const std::string& title,
@@ -1648,7 +1968,7 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
     } else if (key == SDLK_p) {
         detectPitch();
     } else if (key == SDLK_t) {
-        sliceTransients();
+        sliceCurrent();
     } else if (key == SDLK_m) {
         addMarkerAtPlayhead();
     } else if (key == SDLK_w) {
@@ -1695,11 +2015,29 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
         return;
     }
     if (event.button == SDL_BUTTON_LEFT) {
-        for (const auto& button : m_buttons) {
-            SDL_Point point{event.x, event.y};
-            if (button.enabled && SDL_PointInRect(&point, &button.rect)) {
-                button.action();
-                return;
+        SDL_Point point{event.x, event.y};
+        const bool inSidebar = SDL_PointInRect(&point, &m_sidebarRect) != 0;
+        const bool inToolbar = SDL_PointInRect(&point, &m_toolbarRect) != 0;
+        if (inSidebar) {
+            for (const auto& slider : m_sliders) {
+                SDL_Rect hit{slider.track.x, slider.track.y - 12,
+                             slider.track.w, slider.track.h + 20};
+                if (SDL_PointInRect(&point, &hit)) {
+                    m_activeSlider = slider;
+                    m_sliderDragging = true;
+                    setSliderFromX(m_activeSlider, event.x);
+                    return;
+                }
+            }
+        }
+        const int area = inSidebar ? 1 : (inToolbar ? 0 : -1);
+        if (area >= 0) {
+            for (const auto& button : m_buttons) {
+                if (button.enabled && button.area == area &&
+                    SDL_PointInRect(&point, &button.rect)) {
+                    button.action();
+                    return;
+                }
             }
         }
     }
@@ -1763,16 +2101,24 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
     m_panningOverview = false;
     m_drawingWavetable = false;
     m_lastWavetableSample = -1;
+    m_sliderDragging = false;
     if (m_draggingSpectrum) {
         m_draggingSpectrum = false;
         if (m_spectralRegion.frames.length() < 2 ||
             m_spectralRegion.highHz <= m_spectralRegion.lowHz) {
             m_spectralRegion.active = false;
+        } else {
+            m_spectralLow.setValue(m_spectralRegion.lowHz);
+            m_spectralHigh.setValue(m_spectralRegion.highHz);
         }
     }
 }
 
 void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
+    if (m_sliderDragging) {
+        setSliderFromX(m_activeSlider, event.x);
+        return;
+    }
     if (m_draggingSelection) {
         const int64_t frame =
             m_view.frameAt(event.x - m_waveArea.x, m_waveArea.w,
@@ -1856,11 +2202,19 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
 
 void App::handleWheel(const SDL_MouseWheelEvent& event) {
     if (m_dialogMode != DialogMode::None) return;
-    if (m_tab != vwave::EditorTab::Waveform) return;
     int mouseX = 0;
     int mouseY = 0;
     SDL_GetMouseState(&mouseX, &mouseY);
     SDL_Point wheelPoint{mouseX, mouseY};
+    if (SDL_PointInRect(&wheelPoint, &m_sidebarRect)) {
+        const int maximum =
+            std::max(0, m_sidebarContentHeight - m_sidebarRect.h);
+        m_sidebarScroll = std::clamp(
+            m_sidebarScroll - static_cast<double>(event.y) * 48.0, 0.0,
+            static_cast<double>(maximum));
+        return;
+    }
+    if (m_tab != vwave::EditorTab::Waveform) return;
     if (!SDL_PointInRect(&wheelPoint, &m_contentRect)) return;
     if (event.x != 0) {
         m_view.pan(static_cast<double>(event.x) * 30.0, m_waveArea.w,

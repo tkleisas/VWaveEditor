@@ -285,7 +285,7 @@ Deferred:
 As of the 0.1.0 development line:
 
 - Phase 0–7 are implemented and test-green.
-- Phase 8 embedding, C ABI, examples, and hardening are in progress.
+- Phase 8 embedding, C ABI, examples, hardening, Parameter controls, and CI are implemented.
 - Neural capture, real-time spectral monitoring, plugin hosting, and
   multichannel UI remain deferred.
 - The automated suite covers audio I/O, non-destructive history, FFT,

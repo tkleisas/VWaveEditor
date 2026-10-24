@@ -34,6 +34,13 @@ private:
         bool accent = false;
         bool active = false;
         bool enabled = true;
+        int area = 0;
+    };
+
+    struct SliderRef {
+        vwave::ParameterSlider* slider = nullptr;
+        SDL_Rect track{};
+        std::string label;
     };
 
     enum class DialogMode {
@@ -59,6 +66,12 @@ private:
     void addButton(const std::string& label, int x, int y, int w, int h,
                    std::function<void()> action, bool accent = false,
                    bool active = false, bool enabled = true);
+    void addSlider(const std::string& label, const std::string& valueText,
+                   int x, int y, int w, vwave::ParameterSlider& slider);
+    void setSliderFromX(SliderRef& slider, int x);
+    vwave::StretchAlgorithm selectedStretchAlgorithm() const;
+    vwave::Range spectralTimeRange() const;
+    void sliceCurrent();
     int drawText(const std::string& text, int x, int y, const Color& color,
                  TTF_Font* font);
     void drawTextCentered(const std::string& text, const SDL_Rect& rect,
@@ -91,7 +104,6 @@ private:
     void clearAnalysis();
     void analyzeBeats();
     void detectPitch();
-    void sliceTransients();
     void openDialog(DialogMode mode, const std::string& title,
                     const std::string& initialPath, bool save);
     void confirmDialog();
@@ -103,6 +115,7 @@ private:
     void applySpectralGain(double db);
     void applySpectralFilter(bool lowpass);
     void applySpectralGate();
+    void applySpectralBlur();
     void addMarkerAtPlayhead();
     void ensureSpectrogram();
     void ensureOverview();
@@ -129,6 +142,12 @@ private:
     SDL_Rect m_wavetableArea{};
     SDL_Rect m_frameStripArea{};
     std::vector<Button> m_buttons;
+    std::vector<SliderRef> m_sliders;
+    int m_controlArea = 0;
+    SliderRef m_activeSlider;
+    bool m_sliderDragging = false;
+    double m_sidebarScroll = 0.0;
+    int m_sidebarContentHeight = 0;
 
     vwave::Document m_document;
     AudioPlayer m_player;
@@ -176,4 +195,31 @@ private:
     bool m_dialogSave = false;
     SDL_Rect m_dialogConfirmRect{};
     SDL_Rect m_dialogCancelRect{};
+
+    vwave::ParameterSlider m_gainDb;
+    vwave::ParameterSlider m_normalizePeak;
+    vwave::ParameterSlider m_stretchRatio;
+    vwave::ParameterSlider m_pitchSemitones;
+    vwave::ParameterSlider m_beatSensitivity;
+    vwave::ParameterSlider m_sliceSensitivity;
+    vwave::ParameterSlider m_minSliceMs;
+    vwave::ParameterSlider m_beatsPerSlice;
+    vwave::ParameterSlider m_spectralLow;
+    vwave::ParameterSlider m_spectralHigh;
+    vwave::ParameterSlider m_spectralGain;
+    vwave::ParameterSlider m_spectralGate;
+    vwave::ParameterSlider m_spectralCutoff;
+    vwave::ParameterSlider m_spectralBlurTime;
+    vwave::ParameterSlider m_spectralBlurFrequency;
+    vwave::ParameterSlider m_wavetableFrameCount;
+    vwave::ParameterSlider m_synthNote;
+    vwave::ParameterSlider m_synthRoot;
+    vwave::ParameterSlider m_synthDuration;
+    vwave::ParameterSlider m_synthMorph;
+    vwave::ParameterSlider m_synthUnison;
+    vwave::ParameterSlider m_synthGain;
+    int m_stretchAlgorithm = 0;
+    int m_sliceMode = 0;
+    bool m_filterLowpass = true;
+    int m_frameSizeIndex = 3;
 };

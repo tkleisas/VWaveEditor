@@ -50,6 +50,19 @@ struct SpectralRegion {
     }
 };
 
+
+struct ParameterSlider {
+    double minimum = 0.0;
+    double maximum = 1.0;
+    double value = 0.0;
+    bool logarithmic = false;
+    double step = 0.0;
+
+    double normalized() const;
+    void setNormalized(double position);
+    void setValue(double newValue);
+};
+
 struct PeakBin {
     float minimum = 0.0f;
     float maximum = 0.0f;

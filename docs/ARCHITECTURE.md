@@ -172,10 +172,13 @@ permissions of the user running it.
 ### Standalone editor
 
 The SDL2 editor holds the canonical `Document` on the UI thread. It renders
-waveform peaks, a log-frequency spectrogram, and wavetable frames. Playback
-copies the current selection into an audio-device-rate stereo buffer, so later
-edits cannot invalidate the audio callback's data. All edits stop playback and
-invalidate analysis/spectrogram caches.
+waveform peaks, a log-frequency spectrogram, and wavetable frames. The sidebar
+uses draggable parameter sliders with exact value readouts and cycling
+algorithm/type selectors; the content area scrolls with the wheel for long
+tool sets. Playback streams directly from the current immutable document
+buffer with on-the-fly linear rate conversion, so pressing Play does not copy
+or resample the whole selection first. All edits stop playback and invalidate
+analysis/spectrogram caches.
 
 ## Threading
 

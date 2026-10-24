@@ -89,6 +89,64 @@ VWTEST("spectral viewport maps linear frequency") {
     CHECK_NEAR(viewport.frequencyAtY(25.0, 100.0), 750.0, 1e-9);
 }
 
+
+VWTEST("parameter slider maps linear values") {
+    ParameterSlider slider;
+    slider.minimum = -24.0;
+    slider.maximum = 24.0;
+    slider.value = 0.0;
+    CHECK_NEAR(slider.normalized(), 0.5, 1e-9);
+    slider.setNormalized(0.25);
+    CHECK_NEAR(slider.value, -12.0, 1e-9);
+    slider.setValue(100.0);
+    CHECK_NEAR(slider.value, 24.0, 1e-9);
+    slider.setValue(-100.0);
+    CHECK_NEAR(slider.value, -24.0, 1e-9);
+}
+
+VWTEST("parameter slider maps logarithmic values") {
+    ParameterSlider slider;
+    slider.minimum = 20.0;
+    slider.maximum = 20000.0;
+    slider.logarithmic = true;
+    slider.setNormalized(0.0);
+    CHECK_NEAR(slider.value, 20.0, 1e-6);
+    slider.setNormalized(1.0);
+    CHECK_NEAR(slider.value, 20000.0, 1e-6);
+    slider.setNormalized(0.5);
+    CHECK_NEAR(slider.value, std::sqrt(20.0 * 20000.0), 1e-3);
+    CHECK_NEAR(slider.normalized(), 0.5, 1e-9);
+}
+
+VWTEST("parameter slider rounds stepped values") {
+    ParameterSlider slider;
+    slider.minimum = 1.0;
+    slider.maximum = 8.0;
+    slider.step = 1.0;
+    slider.setValue(3.6);
+    CHECK_NEAR(slider.value, 4.0, 1e-9);
+    slider.setValue(7.8);
+    CHECK_NEAR(slider.value, 8.0, 1e-9);
+    slider.setValue(-10.0);
+    CHECK_NEAR(slider.value, 1.0, 1e-9);
+}
+
+VWTEST("parameter slider handles degenerate ranges") {
+    ParameterSlider slider;
+    slider.minimum = 1.0;
+    slider.maximum = 1.0;
+    slider.value = 1.0;
+    CHECK_NEAR(slider.normalized(), 0.0, 1e-9);
+    slider.setNormalized(0.5);
+    CHECK_NEAR(slider.value, 1.0, 1e-9);
+    ParameterSlider bad;
+    bad.minimum = 0.0;
+    bad.maximum = 10.0;
+    bad.logarithmic = true;
+    bad.setNormalized(0.5);
+    CHECK_NEAR(bad.value, 0.0, 1e-9);
+}
+
 VWTEST("peak computation produces min and max bins") {
     const Audio audio = ramp(1000);
     const std::vector<PeakBin> peaks =
