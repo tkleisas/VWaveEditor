@@ -88,7 +88,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-release is `v0.0.2`; untagged build trees fall back to `0.0.2`.
+release is `v0.0.3`; untagged build trees fall back to `0.0.3`.
 
 Artifacts land in `build/bin`:
 
@@ -96,6 +96,16 @@ Artifacts land in `build/bin`:
 ./build/bin/vwave_editor recording.wav
 ./build/bin/vwave --help
 ```
+
+### Prebuilt releases
+
+Tagged releases are built and tested by GitHub Actions:
+
+- Linux x86_64: `VWaveEditor-<tag>-linux-x64.tar.gz`
+- Windows x86_64: `VWaveEditor-<tag>-windows-x64.zip` with the required
+  MinGW runtime, SDL2, SDL2_ttf, and libsndfile DLLs bundled
+
+See [Releasing](docs/RELEASING.md) for the workflow details.
 
 ## Quick start
 
@@ -322,7 +332,7 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.2** includes the multi-track editing core, track-aware desktop
+Version **0.0.3** includes the multi-track editing core, track-aware desktop
 editor, recording, settings, CLI, Lua, MCP, C ABI, and the standalone editor
 described above.
 

@@ -39,14 +39,24 @@ SDL_Color kMenu{16, 18, 24, 255};
 SDL_Color kDisabled{27, 29, 36, 255};
 
 std::string defaultSettingsPath() {
-    const char* xdg = std::getenv("XDG_CONFIG_HOME");
     std::filesystem::path base;
+#ifdef _WIN32
+    if (const char* appdata = std::getenv("APPDATA")) {
+        base = appdata;
+    } else if (const char* profile = std::getenv("USERPROFILE")) {
+        base = std::filesystem::path(profile) / "AppData" / "Roaming";
+    } else {
+        base = std::filesystem::current_path();
+    }
+#else
+    const char* xdg = std::getenv("XDG_CONFIG_HOME");
     if (xdg && *xdg)
         base = xdg;
     else if (const char* home = std::getenv("HOME"))
         base = std::filesystem::path(home) / ".config";
     else
         base = std::filesystem::current_path();
+#endif
     return (base / "vwave" / "settings.json").string();
 }
 
@@ -319,34 +329,53 @@ bool App::init(const std::string& initialPath) {
     if (!m_renderer) return false;
     SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
 
-    const char* regularCandidates[] = {
+    std::vector<std::string> regularCandidates = {
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         "/usr/share/fonts/TTF/DejaVuSans.ttf"};
-    const char* boldCandidates[] = {
+    std::vector<std::string> boldCandidates = {
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"};
-    const char* regular = nullptr;
-    const char* bold = nullptr;
-    for (const char* candidate : regularCandidates) {
+#ifdef _WIN32
+    if (const char* windir = std::getenv("WINDIR")) {
+        const std::filesystem::path fonts = std::filesystem::path(windir) / "Fonts";
+        regularCandidates.push_back((fonts / "segoeui.ttf").string());
+        regularCandidates.push_back((fonts / "arial.ttf").string());
+        regularCandidates.push_back((fonts / "calibri.ttf").string());
+        regularCandidates.push_back((fonts / "tahoma.ttf").string());
+        boldCandidates.push_back((fonts / "segoeuib.ttf").string());
+        boldCandidates.push_back((fonts / "arialbd.ttf").string());
+        boldCandidates.push_back((fonts / "calibrib.ttf").string());
+        boldCandidates.push_back((fonts / "tahomabd.ttf").string());
+    }
+#endif
+    if (char* basePath = SDL_GetBasePath()) {
+        regularCandidates.push_back(
+            (std::filesystem::path(basePath) / "DejaVuSans.ttf").string());
+        boldCandidates.push_back(
+            (std::filesystem::path(basePath) / "DejaVuSans-Bold.ttf").string());
+        SDL_free(basePath);
+    }
+    std::string regular = "DejaVuSans.ttf";
+    std::string bold;
+    for (const auto& candidate : regularCandidates) {
         if (std::filesystem::exists(candidate)) {
             regular = candidate;
             break;
         }
     }
-    for (const char* candidate : boldCandidates) {
+    for (const auto& candidate : boldCandidates) {
         if (std::filesystem::exists(candidate)) {
             bold = candidate;
             break;
         }
     }
-    if (!regular) regular = "DejaVuSans.ttf";
-    if (!bold) bold = regular;
-    m_fontSmall = TTF_OpenFont(regular, 12);
-    m_font = TTF_OpenFont(regular, 14);
-    m_fontBold = TTF_OpenFont(bold, 15);
-    m_fontTitle = TTF_OpenFont(bold, 23);
+    if (bold.empty()) bold = regular;
+    m_fontSmall = TTF_OpenFont(regular.c_str(), 12);
+    m_font = TTF_OpenFont(regular.c_str(), 14);
+    m_fontBold = TTF_OpenFont(bold.c_str(), 15);
+    m_fontTitle = TTF_OpenFont(bold.c_str(), 23);
     if (!m_fontSmall) m_fontSmall = m_font;
     if (!m_fontBold) m_fontBold = m_font;
     if (!m_fontTitle) m_fontTitle = m_fontBold;

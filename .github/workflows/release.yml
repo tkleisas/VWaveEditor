@@ -1,0 +1,112 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libsndfile1-dev \
+            libsdl2-dev libsdl2-ttf-dev
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+          -DVWAVE_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build -j2
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: |
+          mkdir -p package
+          cp build/bin/vwave build/bin/vwave_editor package/
+          cp README.md LICENSE NOTICES.md package/
+          mkdir -p package/docs
+          cp -r docs/* package/docs/
+          VERSION="${GITHUB_REF_NAME:-snapshot}"
+          tar -C package -czf "VWaveEditor-${VERSION}-linux-x64.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vwave-linux-x64
+          path: VWaveEditor-*-linux-x64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            git
+            pkgconf
+            zip
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-libsndfile
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_ttf
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DVWAVE_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: |
+          mkdir -p package
+          cp build/bin/vwave.exe build/bin/vwave_editor.exe package/
+          for exe in package/*.exe; do
+            ldd "$exe" | grep -oE '/mingw64/bin/[^ ]+\.dll' | sort -u | \
+              while read -r dll; do cp "$dll" package/; done
+          done
+          cp README.md LICENSE NOTICES.md package/
+          mkdir -p package/docs
+          cp -r docs/* package/docs/
+          VERSION="${GITHUB_REF_NAME:-snapshot}"
+          (cd package && zip -9 -r "../VWaveEditor-${VERSION}-windows-x64.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vwave-windows-x64
+          path: VWaveEditor-*-windows-x64.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vwave-*
+          merge-multiple: true
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
