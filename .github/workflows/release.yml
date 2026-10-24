@@ -17,6 +17,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Prepare apt cache
+        run: sudo mkdir -p /var/cache/apt/archives && sudo chown -R "$USER" /var/cache/apt/archives
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/ci.yml', '.github/workflows/release.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -58,6 +67,7 @@ jobs:
         with:
           msystem: MINGW64
           update: false
+          cache: true
           install: >-
             git
             pkgconf

@@ -6,12 +6,18 @@
 #include "vwave/Session.h"
 
 #include <cmath>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
 using namespace vwave;
 
 namespace {
+
+std::string luaPath(const std::string& path) {
+    std::string result = std::filesystem::path(path).generic_string();
+    return result;
+}
 
 Audio testTone() {
     Audio audio(1, 4800, 48000);
@@ -102,7 +108,7 @@ VWTEST("lua can save audio") {
     Session session(Document::fromAudio(testTone()));
     ScriptEngine engine(session);
     TempDirectory directory;
-    const std::string path = (directory.path() / "out.wav").string();
+    const std::string path = luaPath((directory.path() / "out.wav").string());
     std::string error;
     const std::string script = "vwave.save('" + path + "')";
     REQUIRE(engine.runString(script, &error));
@@ -112,9 +118,9 @@ VWTEST("lua can save audio") {
 
 VWTEST("lua track commands add configure and render a mix") {
     TempDirectory directory;
-    const std::string first = (directory.path() / "first.wav").string();
-    const std::string second = (directory.path() / "second.wav").string();
-    const std::string mix = (directory.path() / "mix.wav").string();
+    const std::string first = luaPath((directory.path() / "first.wav").string());
+    const std::string second = luaPath((directory.path() / "second.wav").string());
+    const std::string mix = luaPath((directory.path() / "mix.wav").string());
     std::string error;
     REQUIRE(writeAudio(first, testTone(), {}, &error));
     REQUIRE(writeAudio(second, testTone(), {}, &error));

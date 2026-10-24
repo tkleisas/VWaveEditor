@@ -56,6 +56,10 @@ The Windows build uses MSYS2 MINGW64.
 5. The `release` workflow builds both platforms, runs the test suite, uploads
    artifacts, and creates a GitHub release with generated notes.
 
+Package caching is enabled: Linux apt archives are cached with
+`actions/cache`, and MSYS2 package downloads are cached by
+`msys2/setup-msys2`.
+
 The workflow can also be run manually with **Actions → release → Run workflow**.
 Manual runs upload the platform artifacts but do not create a GitHub release
 unless the ref is a `v*` tag.
