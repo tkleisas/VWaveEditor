@@ -279,3 +279,17 @@ Deferred:
   validated command layer, explicit error codes, and bounded batch operations.
 - Neural capture is a large separate runtime. Mitigation: keep a stable capture
   manifest/backend interface and ship linear IR capture first.
+
+## Implementation status
+
+As of the 0.1.0 development line:
+
+- Phase 0–7 are implemented and test-green.
+- Phase 8 embedding, C ABI, examples, and hardening are in progress.
+- Neural capture, real-time spectral monitoring, plugin hosting, and
+  multichannel UI remain deferred.
+- The automated suite covers audio I/O, non-destructive history, FFT,
+  resampling, WSOLA/phase-vocoder/PaulStretch, pitch shift, onsets, tempo,
+  pitch, slicing, spectral editing, wavetables, synthesis, sweep
+  deconvolution, Session, Lua, MCP, viewport math, C ABI, and a headless
+  desktop smoke test.

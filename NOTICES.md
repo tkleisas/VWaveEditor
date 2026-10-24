@@ -1,6 +1,7 @@
 # Notices
 
-VWaveEditor is MIT licensed. It uses the following third-party components.
+VWaveEditor is MIT licensed. It uses the following third-party components and
+reuses design/algorithmic work from YAWN.
 
 ## Vendored
 
@@ -13,5 +14,13 @@ VWaveEditor is MIT licensed. It uses the following third-party components.
 
 - **libsndfile** — LGPL-2.1-or-later. Linked as a system shared library.
 - **SDL2** and **SDL2_ttf** (standalone editor) — zlib license.
+
+## YAWN reuse
+
+VWaveEditor and YAWN are both MIT projects by Tasos Kleisas. The time-stretch
+and transient/onset DSP designs were adapted from YAWN's `TimeStretcher` and
+`TransientDetector`. The standalone editor adopts YAWN's dark editor visual
+language and interaction patterns, but uses an independent SDL2 frontend and
+does not link `yawn_core`.
 
 Full license texts are distributed with the respective system packages.
