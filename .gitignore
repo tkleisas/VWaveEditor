@@ -1,0 +1,10 @@
+/build*/
+/build-*/
+/.cache/
+/compile_commands.json
+*.wav
+*.flac
+*.ogg
+*.aiff
+*.vwdoc
+*.vwt
