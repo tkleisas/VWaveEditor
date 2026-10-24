@@ -40,7 +40,8 @@ A `Timeline` stores an independent non-destructive `Document` per track plus
 mute/solo/arm/gain/pan/offset state. Track edits use local frames; timeline
 selection is translated to each track automatically. Use `Timeline::saveProject`
 and `loadProject` for multi-track sessions. The C ABI currently wraps a
-single-document `Session`; use the C++ Timeline API for multi-track hosts.
+timeline-backed `Session`; direct C functions operate on the active track, while
+`vw_session_execute` exposes the track commands.
 
 ## Snapshotting a YAWN clip
 
@@ -149,10 +150,11 @@ const float* left = vw_session_channel(session, 0);
 vw_session_destroy(session);
 ```
 
-The C handle wraps a `Session`. It supports direct file/project I/O, rendered
-interleaved copies, undo/redo, selection, common edits, and JSON command
-dispatch. Errors are written into caller-provided buffers. The ABI version is
-reported through `VWDocumentInfo::abi_version`.
+The C handle wraps a timeline-backed `Session`. Direct functions operate on the
+active track; `vw_session_execute` exposes all track-aware commands. It supports
+file/project I/O, rendered interleaved copies, undo/redo, selection, common
+edits, and JSON command dispatch. Errors are written into caller-provided
+buffers. The ABI version is reported through `VWDocumentInfo::abi_version`.
 
 ## Threading contract
 

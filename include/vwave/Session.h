@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vwave/Document.h"
+#include "vwave/Timeline.h"
 
 #include <nlohmann/json.hpp>
 
@@ -14,23 +15,31 @@ public:
     Session() = default;
     explicit Session(Document document);
 
-    Document& document() { return m_document; }
-    const Document& document() const { return m_document; }
+    Document& document();
+    const Document& document() const;
+    Timeline& timeline() { return m_timeline; }
+    const Timeline& timeline() const { return m_timeline; }
 
     bool loadAudio(const std::string& path, std::string* error = nullptr);
     bool saveAudio(const std::string& path, const AudioExportOptions& options,
                    std::string* error = nullptr);
+    bool saveMixdown(const std::string& path,
+                     const AudioExportOptions& options,
+                     std::string* error = nullptr);
     bool loadProject(const std::string& path, std::string* error = nullptr);
     bool saveProject(const std::string& path, std::string* error = nullptr);
 
-    nlohmann::json info() const;
+    nlohmann::json info();
+    nlohmann::json tracksInfo() const;
+    void syncSelectionFromActive();
     nlohmann::json execute(const std::string& command,
                            const nlohmann::json& parameters = nlohmann::json::object(),
                            std::string* error = nullptr);
     static std::vector<std::string> commandNames();
 
 private:
-    Document m_document;
+    Timeline m_timeline;
+    Document m_emptyDocument;
 };
 
 } // namespace vwave

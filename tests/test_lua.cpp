@@ -1,6 +1,7 @@
 #include "test_framework.h"
 #include "test_helpers.h"
 
+#include "vwave/AudioIO.h"
 #include "vwave/Scripting.h"
 #include "vwave/Session.h"
 
@@ -106,6 +107,58 @@ VWTEST("lua can save audio") {
     const std::string script = "vwave.save('" + path + "')";
     REQUIRE(engine.runString(script, &error));
     CHECK(std::filesystem::exists(path));
+}
+
+
+VWTEST("lua track commands add configure and render a mix") {
+    TempDirectory directory;
+    const std::string first = (directory.path() / "first.wav").string();
+    const std::string second = (directory.path() / "second.wav").string();
+    const std::string mix = (directory.path() / "mix.wav").string();
+    std::string error;
+    REQUIRE(writeAudio(first, testTone(), {}, &error));
+    REQUIRE(writeAudio(second, testTone(), {}, &error));
+
+    Session session;
+    ScriptEngine engine(session);
+    const std::string script =
+        "vwave.load('" + first + "')\n" +
+        "vwave.add_track('" + second + "', 'Second', 0.25)\n" +
+        "local info = vwave.info()\n" +
+        "assert(info.track_count == 2)\n" +
+        "assert(info.tracks[2].name == 'Second')\n" +
+        "vwave.track_set(1, { gain_db = -3.0, pan = 0.2, muted = true, "
+        "armed = true })\n" +
+        "local tracks = vwave.tracks()\n" +
+        "assert(#tracks.tracks == 2)\n" +
+        "assert(tracks.tracks[2].muted == true)\n" +
+        "vwave.select_track(1)\n" +
+        "assert(vwave.info().active_track == 1)\n" +
+        "vwave.set_track_gain(1, -6.0)\n" +
+        "vwave.set_track_pan(1, -0.1)\n" +
+        "vwave.save_mixdown('" + mix + "')\n" +
+        "vwave.remove_track(0)\n" +
+        "assert(vwave.info().track_count == 1)\n";
+    REQUIRE(engine.runString(script, &error));
+    CHECK(error.empty());
+    CHECK(std::filesystem::exists(mix));
+    CHECK_EQ(session.timeline().trackCount(), 1);
+    CHECK_EQ(session.timeline().track(0).name, std::string("Second"));
+    CHECK_NEAR(session.timeline().track(0).gainDb, -6.0, 1e-9);
+    CHECK_NEAR(session.timeline().track(0).pan, -0.1, 1e-9);
+}
+
+VWTEST("lua track commands report invalid indices") {
+    Session session(Document::fromAudio(testTone()));
+    ScriptEngine engine(session);
+    std::string error;
+    REQUIRE(engine.runString(
+        "local ok, err = vwave.select_track(4)\n"
+        "assert(ok == nil and err ~= nil)\n"
+        "local ok2, err2 = vwave.remove_track(9)\n"
+        "assert(ok2 == nil and err2 ~= nil)\n",
+        &error));
+    CHECK(error.empty());
 }
 
 VWTEST("lua script files run with diagnostics") {

@@ -167,10 +167,13 @@ stable place for future neural-model metadata and runtimes.
 
 ### Session command layer
 
-All automation uses `vwave::Session::execute(command, parameters)`. Commands
-take seconds for user-facing time parameters and return JSON. The CLI, Lua, and
-MCP layers are thin adapters around this API. Errors are returned as strings;
-failed commands must not mutate the document or history.
+All automation uses `vwave::Session::execute(command, parameters)`. The session
+is timeline-backed: document commands target the active track, while track
+commands add/remove/select tracks, change routing/offsets, and render mixdowns.
+Time parameters are seconds relative to the active track for document
+operations. The CLI, Lua, and MCP layers are thin adapters around this API.
+Errors are returned as strings; failed commands must not mutate the document or
+history.
 
 ### Lua
 
@@ -243,14 +246,14 @@ The suite covers:
 - settings persistence and safe defaults;
 - ring-buffer wrap/full/discard behavior;
 - parameter-slider linear/log/stepped mapping and spectral zoom;
-- Session, Lua, MCP, UI viewport math, C ABI, and a headless editor smoke test.
+- timeline-backed Session track commands, mixdown export, Lua and MCP track
+  automation;
+- UI viewport math, C ABI, and a headless editor smoke test.
 
 ## Known limitations
 
 - The full history is replayed after undo; checkpointing is future work.
 - Track addition/removal/routing is not part of track-document undo history.
-- Automation (CLI/Lua/MCP) still targets single-document sessions; the GUI uses
-  the multi-track Timeline.
 - Spectral operations process the selected region in memory.
 - Real-time spectral monitoring is not implemented.
 - The standalone UI is stereo-focused; the core is channel-agnostic.

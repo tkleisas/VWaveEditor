@@ -12,15 +12,15 @@ vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]
 vwave synth <wavetable> <out.wav> [--note MIDI] [--duration SEC]
 vwave sweep <out.wav> [--seconds SEC] [--start-hz HZ] [--end-hz HZ]
 vwave deconvolve <recorded> <sweep> <out.wav> [--length FRAMES]
+vwave project <subcommand> <project.vwdoc> ...
 vwave lua <script.lua> [audio]
 vwave command <name> [json] [--input audio] [--output audio]
 vwave --mcp
 vwave --version
 ```
 
-> The CLI operates on a single-document `Session`. Multi-track editing and
-> project files are currently provided by the desktop `Timeline` editor. Track
-> commands for the CLI are planned.
+The CLI session is timeline-backed. Single-document commands operate on the
+active track. Track-specific commands live under `vwave project`.
 
 
 ## info
@@ -135,6 +135,26 @@ vwave deconvolve recorded.wav sweep.wav cab.wav --length 4096 --trim
 
 `--length` is the output IR frame count. `--trim` aligns the IR peak at frame
 zero.
+
+## project
+
+Multi-track project automation works on `.vwdoc` timelines:
+
+```sh
+vwave project info take.vwdoc
+vwave project tracks take.vwdoc
+vwave project add-track take.vwdoc pad.wav --name Pad --start 0.5
+vwave project add-empty-track take.vwdoc --name Recording
+vwave project remove-track take.vwdoc 1
+vwave project select-track take.vwdoc 0
+vwave project set take.vwdoc 1 --gain -6 --pan -0.2 --mute
+vwave project set take.vwdoc 1 --solo --arm --start 0.25
+vwave project mixdown take.vwdoc mix.wav
+```
+
+Track indices are zero-based. `project set` accepts `--name`, `--gain`,
+`--pan`, `--start`, `--mute`/`--unmute`, `--solo`/`--unsolo`, and
+`--arm`/`--disarm`. Changes are saved back to the project.
 
 ## lua
 

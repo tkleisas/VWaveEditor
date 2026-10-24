@@ -344,6 +344,164 @@ VWTEST("session errors do not mutate the document") {
     CHECK(session.document().audio().equals(before));
 }
 
+
+VWTEST("session track commands add select configure and remove") {
+    TempDirectory directory;
+    const std::string first =
+        writeTempWave(directory, "first.wav", tone(220.0, 0.5));
+    const std::string second =
+        writeTempWave(directory, "second.wav", tone(330.0, 0.25));
+    Session session;
+    std::string error;
+    REQUIRE(!session.execute("load_audio", {{"path", first}}, &error).is_null());
+    json info = session.info();
+    CHECK_EQ(info["track_count"], 1);
+    CHECK_EQ(info["active_track"], 0);
+    CHECK_EQ(info["tracks"].size(), size_t{1});
+    CHECK_EQ(info["tracks"][0]["name"], std::string("first"));
+
+    REQUIRE(!session.execute("add_track",
+                             {{"path", second},
+                              {"name", "second"},
+                              {"start", 0.25}},
+                             &error)
+                 .is_null());
+    info = session.info();
+    CHECK_EQ(info["track_count"], 2);
+    CHECK_EQ(info["active_track"], 1);
+    CHECK_EQ(info["tracks"][1]["name"], std::string("second"));
+    CHECK_EQ(info["tracks"][1]["start_frame"], 12000);
+    CHECK_NEAR(info["tracks"][1]["start_seconds"].get<double>(), 0.25, 1e-9);
+    CHECK_EQ(info["project_frames"], 24000);
+
+    REQUIRE(!session.execute("track_set",
+                             {{"index", 1},
+                              {"name", "Bass"},
+                              {"gain_db", -6.0},
+                              {"pan", 0.25},
+                              {"muted", true},
+                              {"solo", false},
+                              {"armed", true}},
+                             &error)
+                 .is_null());
+    const auto& track = session.timeline().track(1);
+    CHECK_EQ(track.name, std::string("Bass"));
+    CHECK_NEAR(track.gainDb, -6.0, 1e-9);
+    CHECK_NEAR(track.pan, 0.25, 1e-9);
+    CHECK(track.muted);
+    CHECK(track.armed);
+
+    REQUIRE(!session.execute("select_track", {{"index", 0}}, &error).is_null());
+    info = session.info();
+    CHECK_EQ(info["active_track"], 0);
+    REQUIRE(!session.execute("remove_track", {{"index", 0}}, &error).is_null());
+    info = session.info();
+    CHECK_EQ(info["track_count"], 1);
+    CHECK_EQ(session.timeline().track(0).name, std::string("Bass"));
+}
+
+VWTEST("session track edits target only the active track") {
+    TempDirectory directory;
+    const Audio firstAudio = tone(220.0, 0.1);
+    const Audio secondAudio = tone(660.0, 0.1);
+    const std::string first = writeTempWave(directory, "first.wav", firstAudio);
+    const std::string second =
+        writeTempWave(directory, "second.wav", secondAudio);
+    Session session;
+    std::string error;
+    REQUIRE(!session.execute("load_audio", {{"path", first}}, &error).is_null());
+    REQUIRE(!session.execute("add_track", {{"path", second}}, &error).is_null());
+    REQUIRE(!session.execute("select", {{"start", 0.0}, {"end", 0.02}},
+                             &error)
+                 .is_null());
+    REQUIRE(!session.execute("gain", {{"db", -6.0}}, &error).is_null());
+    const auto& edited = session.timeline().track(1).document.audio();
+    const auto& untouched = session.timeline().track(0).document.audio();
+    CHECK_NEAR(edited.sample(0, 500), secondAudio.sample(0, 500) * 0.501187,
+               1e-5);
+    CHECK_NEAR(untouched.sample(0, 500), firstAudio.sample(0, 500), 1e-9);
+}
+
+VWTEST("session mixdown exports all audible tracks") {
+    TempDirectory directory;
+    const std::string first =
+        writeTempWave(directory, "first.wav", tone(220.0, 0.25));
+    const std::string second =
+        writeTempWave(directory, "second.wav", tone(330.0, 0.25));
+    Session session;
+    std::string error;
+    REQUIRE(!session.execute("load_audio", {{"path", first}}, &error).is_null());
+    REQUIRE(!session.execute("add_track",
+                             {{"path", second}, {"start", 0.1}}, &error)
+                 .is_null());
+    const std::string out = (directory.path() / "mix.wav").string();
+    REQUIRE(!session.execute("save_mixdown", {{"path", out}}, &error).is_null());
+    Audio mix;
+    REQUIRE(readAudio(out, mix));
+    CHECK_EQ(mix.numChannels(), 2);
+    CHECK_EQ(mix.numFrames(), int64_t{16800});
+    CHECK(!mix.empty());
+
+    REQUIRE(!session.execute("track_set", {{"index", 1}, {"muted", true}},
+                             &error)
+                 .is_null());
+    const std::string mutedOut = (directory.path() / "muted.wav").string();
+    REQUIRE(!session.execute("save_mixdown", {{"path", mutedOut}}, &error)
+                 .is_null());
+    Audio muted;
+    REQUIRE(readAudio(mutedOut, muted));
+    CHECK(!muted.empty());
+}
+
+VWTEST("session timeline project preserves tracks and routing") {
+    TempDirectory directory;
+    const std::string first =
+        writeTempWave(directory, "first.wav", tone(220.0, 0.2));
+    const std::string second =
+        writeTempWave(directory, "second.wav", tone(330.0, 0.2));
+    Session session;
+    std::string error;
+    REQUIRE(!session.execute("load_audio", {{"path", first}}, &error).is_null());
+    REQUIRE(!session.execute("add_track",
+                             {{"path", second}, {"start", 0.1}}, &error)
+                 .is_null());
+    REQUIRE(!session.execute("track_set",
+                             {{"index", 1},
+                              {"gain_db", -3.0},
+                              {"pan", -0.2},
+                              {"muted", true}},
+                             &error)
+                 .is_null());
+    const std::string project = (directory.path() / "tracks.vwdoc").string();
+    REQUIRE(!session.execute("save_project", {{"path", project}}, &error)
+                 .is_null());
+    Session loaded;
+    REQUIRE(!loaded.execute("load_project", {{"path", project}}, &error)
+                 .is_null());
+    const json info = loaded.info();
+    CHECK_EQ(info["track_count"], 2);
+    CHECK_EQ(info["active_track"], 1);
+    CHECK_EQ(info["tracks"][1]["start_frame"], 4800);
+    CHECK_NEAR(info["tracks"][1]["gain_db"].get<double>(), -3.0, 1e-9);
+    CHECK_NEAR(info["tracks"][1]["pan"].get<double>(), -0.2, 1e-9);
+    CHECK(info["tracks"][1]["muted"].get<bool>());
+}
+
+VWTEST("session track commands reject invalid indices") {
+    Session session(Document::fromAudio(tone(220.0, 0.1)));
+    std::string error;
+    CHECK(session.execute("select_track", {{"index", 4}}, &error).is_null());
+    CHECK(!error.empty());
+    error.clear();
+    CHECK(session.execute("remove_track", {{"index", 4}}, &error).is_null());
+    CHECK(!error.empty());
+    error.clear();
+    CHECK(session.execute("track_set", {{"index", 4}, {"gain_db", -3.0}},
+                          &error)
+              .is_null());
+    CHECK(!error.empty());
+}
+
 VWTEST("session command list is stable") {
     const std::vector<std::string> commands = Session::commandNames();
     CHECK(std::find(commands.begin(), commands.end(), "load_audio") !=
@@ -351,5 +509,11 @@ VWTEST("session command list is stable") {
     CHECK(std::find(commands.begin(), commands.end(), "analyze_beats") !=
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "wavetable") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "add_track") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "track_set") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "save_mixdown") !=
           commands.end());
 }

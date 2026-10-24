@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -27,6 +28,14 @@ void printUsage() {
         "  vwave synth <wavetable> <out.wav> [--note MIDI] [--duration SEC]\n"
         "  vwave sweep <out.wav> [--seconds SEC] [--start-hz HZ] [--end-hz HZ]\n"
         "  vwave deconvolve <recorded> <sweep> <out.wav> [--length FRAMES]\n"
+        "  vwave project info <project.vwdoc>\n"
+        "  vwave project add-track <project> <audio> [--name NAME] [--start SEC]\n"
+        "  vwave project add-empty-track <project> [--name NAME] [--start SEC]\n"
+        "  vwave project remove-track <project> <index>\n"
+        "  vwave project select-track <project> <index>\n"
+        "  vwave project set <project> <index> [--gain DB] [--pan V]\n"
+        "      [--name NAME] [--start SEC] [--mute|--unmute] [--solo] [--arm]\n"
+        "  vwave project mixdown <project> <out.wav>\n"
         "  vwave lua <script.lua> [audio]\n"
         "  vwave command <name> [json] [--input audio] [--output audio]\n"
         "  vwave --mcp\n"
@@ -101,7 +110,12 @@ json executeOrFail(vwave::Session& session, const std::string& command,
 int commandInfo(const std::vector<std::string>& args) {
     if (args.size() < 3) return fail("info requires an audio file");
     vwave::Session session;
-    executeOrFail(session, "load_audio", {{"path", args[2]}});
+    const std::string extension =
+        std::filesystem::path(args[2]).extension().string();
+    if (extension == ".vwdoc")
+        executeOrFail(session, "load_project", {{"path", args[2]}});
+    else
+        executeOrFail(session, "load_audio", {{"path", args[2]}});
     printJson(session.info());
     return 0;
 }
@@ -340,6 +354,110 @@ int commandLua(const std::vector<std::string>& args) {
     return 0;
 }
 
+
+int commandProject(const std::vector<std::string>& args) {
+    if (args.size() < 4)
+        return fail("project requires a subcommand and project file");
+    const std::string& subcommand = args[2];
+    const std::string& projectPath = args[3];
+    vwave::Session session;
+    std::string error;
+    if (!session.loadProject(projectPath, &error)) return fail(error);
+
+    if (subcommand == "info") {
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "tracks") {
+        printJson(session.execute("tracks", json::object(), &error));
+        return error.empty() ? 0 : fail(error);
+    }
+    if (subcommand == "add-track") {
+        if (args.size() < 5) return fail("add-track requires an audio file");
+        json parameters = {{"path", args[4]}};
+        for (size_t i = 5; i < args.size(); ++i) {
+            if (args[i] == "--name")
+                parameters["name"] = valueAt(args, i, "--name");
+            else if (args[i] == "--start")
+                parameters["start"] = std::stod(valueAt(args, i, "--start"));
+            else
+                return fail("unknown add-track option: " + args[i]);
+        }
+        executeOrFail(session, "add_track", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "add-empty-track") {
+        json parameters = json::object();
+        for (size_t i = 4; i < args.size(); ++i) {
+            if (args[i] == "--name")
+                parameters["name"] = valueAt(args, i, "--name");
+            else if (args[i] == "--start")
+                parameters["start"] = std::stod(valueAt(args, i, "--start"));
+            else
+                return fail("unknown add-empty-track option: " + args[i]);
+        }
+        executeOrFail(session, "add_empty_track", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "remove-track") {
+        if (args.size() < 5) return fail("remove-track requires an index");
+        executeOrFail(session, "remove_track", {{"index", std::stoi(args[4])}});
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "select-track") {
+        if (args.size() < 5) return fail("select-track requires an index");
+        executeOrFail(session, "select_track", {{"index", std::stoi(args[4])}});
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "set") {
+        if (args.size() < 5) return fail("set requires a track index");
+        json parameters = {{"index", std::stoi(args[4])}};
+        for (size_t i = 5; i < args.size(); ++i) {
+            if (args[i] == "--name")
+                parameters["name"] = valueAt(args, i, "--name");
+            else if (args[i] == "--gain")
+                parameters["gain_db"] = std::stod(valueAt(args, i, "--gain"));
+            else if (args[i] == "--pan")
+                parameters["pan"] = std::stod(valueAt(args, i, "--pan"));
+            else if (args[i] == "--start")
+                parameters["start"] = std::stod(valueAt(args, i, "--start"));
+            else if (args[i] == "--mute")
+                parameters["muted"] = true;
+            else if (args[i] == "--unmute")
+                parameters["muted"] = false;
+            else if (args[i] == "--solo")
+                parameters["solo"] = true;
+            else if (args[i] == "--unsolo")
+                parameters["solo"] = false;
+            else if (args[i] == "--arm")
+                parameters["armed"] = true;
+            else if (args[i] == "--disarm")
+                parameters["armed"] = false;
+            else
+                return fail("unknown set option: " + args[i]);
+        }
+        executeOrFail(session, "track_set", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "mixdown") {
+        if (args.size() < 5) return fail("mixdown requires an output file");
+        executeOrFail(session, "save_mixdown", {{"path", args[4]}});
+        std::cout << args[4] << '\n';
+        return 0;
+    }
+    return fail("unknown project subcommand: " + subcommand);
+}
+
 int commandGeneric(const std::vector<std::string>& args) {
     if (args.size() < 3) return fail("command requires a command name");
     vwave::Session session;
@@ -402,6 +520,7 @@ int main(int argc, char** argv) {
     if (args[1] == "synth") return commandSynth(args);
     if (args[1] == "sweep") return commandSweep(args);
     if (args[1] == "deconvolve") return commandDeconvolve(args);
+    if (args[1] == "project") return commandProject(args);
     if (args[1] == "lua") return commandLua(args);
     if (args[1] == "command") return commandGeneric(args);
     std::cerr << "vwave: unknown command: " << args[1] << '\n';

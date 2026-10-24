@@ -388,6 +388,88 @@ int luaDeconvolve(lua_State* L) {
                       {{"recorded", recorded}, {"sweep", sweep}, {"out", out}});
 }
 
+
+int luaAddTrack(lua_State* L) {
+    const char* path = luaL_checkstring(L, 1);
+    nlohmann::json params = {{"path", path}};
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2))
+        params["name"] = luaL_checkstring(L, 2);
+    if (lua_gettop(L) >= 3 && lua_isnumber(L, 3))
+        params["start"] = lua_tonumber(L, 3);
+    return runCommand(L, "add_track", params);
+}
+
+int luaAddEmptyTrack(lua_State* L) {
+    nlohmann::json params = nlohmann::json::object();
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1))
+        params["name"] = luaL_checkstring(L, 1);
+    if (lua_gettop(L) >= 2 && lua_isnumber(L, 2))
+        params["start"] = lua_tonumber(L, 2);
+    return runCommand(L, "add_empty_track", params);
+}
+
+int luaSelectTrack(lua_State* L) {
+    const int index = static_cast<int>(luaL_checkinteger(L, 1));
+    return runCommand(L, "select_track", {{"index", index}});
+}
+
+int luaRemoveTrack(lua_State* L) {
+    nlohmann::json params = nlohmann::json::object();
+    if (lua_gettop(L) >= 1 && lua_isnumber(L, 1))
+        params["index"] = static_cast<int>(lua_tointeger(L, 1));
+    return runCommand(L, "remove_track", params);
+}
+
+int luaTracks(lua_State* L) {
+    return runCommand(L, "tracks", nlohmann::json::object());
+}
+
+int luaTrackSet(lua_State* L) {
+    if (lua_gettop(L) < 2) {
+        lua_pushnil(L);
+        lua_pushstring(L, "track_set requires index and parameter table");
+        return 2;
+    }
+    const int index = static_cast<int>(luaL_checkinteger(L, 1));
+    luaL_checktype(L, 2, LUA_TTABLE);
+    nlohmann::json params = luaToJson(L, 2);
+    if (!params.is_object()) {
+        lua_pushnil(L);
+        lua_pushstring(L, "track parameters must be a table");
+        return 2;
+    }
+    params["index"] = index;
+    return runCommand(L, "track_set", params);
+}
+
+int luaSetTrackGain(lua_State* L) {
+    const int index = static_cast<int>(luaL_checkinteger(L, 1));
+    const double db = luaL_checknumber(L, 2);
+    return runCommand(L, "track_set", {{"index", index}, {"gain_db", db}});
+}
+
+int luaSetTrackPan(lua_State* L) {
+    const int index = static_cast<int>(luaL_checkinteger(L, 1));
+    const double pan = luaL_checknumber(L, 2);
+    return runCommand(L, "track_set", {{"index", index}, {"pan", pan}});
+}
+
+int luaSetTrackArm(lua_State* L) {
+    const int index = static_cast<int>(luaL_checkinteger(L, 1));
+    const bool armed = lua_toboolean(L, 2) != 0;
+    return runCommand(L, "track_set", {{"index", index}, {"armed", armed}});
+}
+
+int luaSaveMixdown(lua_State* L) {
+    const char* path = luaL_checkstring(L, 1);
+    nlohmann::json params = {{"path", path}};
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2))
+        params["format"] = luaL_checkstring(L, 2);
+    if (lua_gettop(L) >= 3 && !lua_isnil(L, 3))
+        params["bit_depth"] = luaL_checkstring(L, 3);
+    return runCommand(L, "save_mixdown", params);
+}
+
 int luaSample(lua_State* L) {
     const int channel = static_cast<int>(luaL_checkinteger(L, 1));
     const int64_t frame = static_cast<int64_t>(luaL_checkinteger(L, 2));
@@ -540,6 +622,16 @@ ScriptEngine::ScriptEngine(Session& session)
     registerFunction(L, &session, "synth", luaSynth);
     registerFunction(L, &session, "sweep", luaSweep);
     registerFunction(L, &session, "deconvolve", luaDeconvolve);
+    registerFunction(L, &session, "add_track", luaAddTrack);
+    registerFunction(L, &session, "add_empty_track", luaAddEmptyTrack);
+    registerFunction(L, &session, "select_track", luaSelectTrack);
+    registerFunction(L, &session, "remove_track", luaRemoveTrack);
+    registerFunction(L, &session, "tracks", luaTracks);
+    registerFunction(L, &session, "track_set", luaTrackSet);
+    registerFunction(L, &session, "set_track_gain", luaSetTrackGain);
+    registerFunction(L, &session, "set_track_pan", luaSetTrackPan);
+    registerFunction(L, &session, "set_track_arm", luaSetTrackArm);
+    registerFunction(L, &session, "save_mixdown", luaSaveMixdown);
     registerFunction(L, &session, "sample", luaSample);
     registerFunction(L, &session, "map", luaMap);
     registerFunction(L, &session, "log", luaLog);

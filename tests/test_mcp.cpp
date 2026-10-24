@@ -127,6 +127,45 @@ VWTEST("mcp tool call edits the document") {
     CHECK_EQ(info["undo_count"], 1);
 }
 
+
+VWTEST("mcp track tools manage the session timeline") {
+    Session session(Document::fromAudio(tone()));
+    McpServer server(session);
+    auto call = [&](int id, const std::string& name, json arguments) {
+        return json::parse(server.handleMessage(
+            request(id, "tools/call", callTool(name, std::move(arguments)))
+                .dump()));
+    };
+    json response = call(11, "vwave_add_empty_track", {{"name", "Scratch"}});
+    CHECK(!response["result"]["isError"].get<bool>());
+    CHECK_EQ(session.timeline().trackCount(), 2);
+    CHECK_EQ(session.timeline().activeTrack(), 1);
+
+    response = call(12, "vwave_track_set",
+                    {{"index", 1},
+                     {"gain_db", -3.0},
+                     {"pan", 0.2},
+                     {"muted", true},
+                     {"armed", true}});
+    CHECK(!response["result"]["isError"].get<bool>());
+    CHECK_NEAR(session.timeline().track(1).gainDb, -3.0, 1e-9);
+    CHECK(session.timeline().track(1).muted);
+
+    response = call(13, "vwave_tracks", json::object());
+    CHECK(!response["result"]["isError"].get<bool>());
+    const json tracks =
+        json::parse(response["result"]["content"][0]["text"].get<std::string>());
+    CHECK_EQ(tracks["tracks"].size(), size_t{2});
+    CHECK_EQ(tracks["tracks"][1]["name"], std::string("Scratch"));
+
+    response = call(14, "vwave_select_track", {{"index", 0}});
+    CHECK(!response["result"]["isError"].get<bool>());
+    CHECK_EQ(session.timeline().activeTrack(), 0);
+    response = call(15, "vwave_remove_track", {{"index", 1}});
+    CHECK(!response["result"]["isError"].get<bool>());
+    CHECK_EQ(session.timeline().trackCount(), 1);
+}
+
 VWTEST("mcp reports bad requests and bad tools") {
     Session session(Document::fromAudio(tone()));
     McpServer server(session);
@@ -165,5 +204,11 @@ VWTEST("mcp tool names are stable") {
     CHECK(std::find(names.begin(), names.end(), "vwave_analyze_beats") !=
           names.end());
     CHECK(std::find(names.begin(), names.end(), "vwave_document_info") !=
+          names.end());
+    CHECK(std::find(names.begin(), names.end(), "vwave_add_track") !=
+          names.end());
+    CHECK(std::find(names.begin(), names.end(), "vwave_track_set") !=
+          names.end());
+    CHECK(std::find(names.begin(), names.end(), "vwave_save_mixdown") !=
           names.end());
 }

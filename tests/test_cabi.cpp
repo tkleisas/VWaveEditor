@@ -105,6 +105,31 @@ VWTEST("c abi replace and file io") {
     vw_session_destroy(session);
 }
 
+
+VWTEST("c abi json dispatch exposes track commands") {
+    std::vector<float> samples(480, 0.25f);
+    VWSession* session =
+        vw_session_create_from_interleaved(samples.data(), 1, 480, 48000);
+    REQUIRE(session != nullptr);
+    char result[4096] = {};
+    char error[512] = {};
+    REQUIRE(vw_session_execute(session, "add_empty_track",
+                               R"({"name":"Scratch"})", result,
+                               sizeof(result), error, sizeof(error)) == 0);
+    REQUIRE(vw_session_execute(session, "track_set",
+                               R"({"index":1,"gain_db":-3.0,"muted":true})",
+                               result, sizeof(result), error, sizeof(error)) ==
+            0);
+    REQUIRE(vw_session_execute(session, "tracks", "{}", result,
+                               sizeof(result), error, sizeof(error)) == 0);
+    const nlohmann::json tracks = nlohmann::json::parse(result);
+    CHECK_EQ(tracks["tracks"].size(), size_t{2});
+    CHECK_EQ(tracks["tracks"][1]["name"], std::string("Scratch"));
+    CHECK_NEAR(tracks["tracks"][1]["gain_db"].get<double>(), -3.0, 1e-9);
+    CHECK(tracks["tracks"][1]["muted"].get<bool>());
+    vw_session_destroy(session);
+}
+
 VWTEST("c abi errors are reported without crashing") {
     CHECK(vw_session_create_from_interleaved(nullptr, 1, 100, 48000) == nullptr);
     VWSession* session = vw_session_create();

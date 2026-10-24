@@ -17,9 +17,8 @@ Run:
 vwave lua edit.lua take.wav
 ```
 
-> Lua automation operates on a single-document `Session`. The desktop editor's
-> multi-track `Timeline` is a separate C++ model; track-aware Lua commands are
-> planned.
+Lua automation operates on a timeline-backed `Session`. Document commands target
+the active track; track commands add, select, control, and remove tracks.
 
 
 ## Document and history
@@ -27,7 +26,8 @@ vwave lua edit.lua take.wav
 | Function | Description |
 | --- | --- |
 | `vwave.load(path)` | Load audio as a new document |
-| `vwave.save(path, format?, bit_depth?)` | Export the rendered document |
+| `vwave.save(path, format?, bit_depth?)` | Export the active track |
+| `vwave.save_mixdown(path, format?, bit_depth?)` | Export all audible tracks |
 | `vwave.info()` | Document info table |
 | `vwave.select(start, end)` | Select seconds |
 | `vwave.select_all()` | Select everything |
@@ -84,6 +84,27 @@ vwave.apply("spectral_blur", { time_radius = 1, frequency_radius = 3 })
 
 Use `vwave.apply` for commands that do not have a dedicated helper, including
 all CLI and MCP commands.
+
+## Tracks
+
+```lua
+vwave.add_track("/samples/pad.wav", "Pad", 0.5)
+vwave.add_empty_track("Recording", 0.0)
+vwave.select_track(1)
+vwave.track_set(1, { gain_db = -6, pan = -0.2, muted = true, armed = false })
+vwave.set_track_gain(1, -3)
+vwave.set_track_pan(1, 0.1)
+vwave.set_track_arm(1, true)
+vwave.remove_track(2)
+
+local info = vwave.info()
+local tracks = vwave.tracks()
+vwave.save_mixdown("/samples/mix.wav")
+```
+
+Track indices are zero-based. `vwave.info()` includes `track_count`,
+`active_track`, `project_frames`, `project_duration`, `timeline_selection`, and
+a `tracks` array. `vwave.tracks()` returns the track list directly.
 
 ## Analysis and slicing
 

@@ -37,8 +37,10 @@ desktop editor and as an embeddable editing core for
   and persist settings under the XDG config directory.
 - **Menus and parameter controls**: File/Edit/Track/Process/View/Settings menus
   plus draggable value sliders, selectors, and a scrollable inspector.
-- **Automation**: Lua 5.4 scripting, a command-line interface, and an MCP
-  stdio server using the shared single-document command layer.
+- **Track-aware automation**: Lua 5.4 scripting, a command-line interface, and
+  an MCP stdio server using a shared timeline command layer. Scripts and agents
+  can add/remove/select tracks, set routing, edit the active track, and render
+  the mixdown.
 - **Embedding**: UI-free C++17 core plus a stable C ABI for YAWN or other hosts.
 - **Desktop editor**: SDL2/SDL2_ttf; waveform, spectrogram, and wavetable views;
   transport; beat grid; markers; slices; zoom; keyboard and drag editing.
@@ -86,7 +88,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-series starts at `v0.0.1`; untagged build trees fall back to `0.0.1`.
+release is `v0.0.2`; untagged build trees fall back to `0.0.2`.
 
 Artifacts land in `build/bin`:
 
@@ -180,6 +182,11 @@ vwave wavetable input.wav table.vwt --frame-size 2048 --frame-count 16
 vwave synth table.vwt note.wav --note 60 --duration 2
 vwave sweep sweep.wav --seconds 5 --start-hz 20 --end-hz 20000
 vwave deconvolve recorded.wav sweep.wav cabinet.wav --length 4096 --trim
+
+vwave project info session.vwdoc
+vwave project add-track session.vwdoc pad.wav --name Pad --start 0.5
+vwave project set session.vwdoc 1 --gain -6 --pan -0.2 --mute
+vwave project mixdown session.vwdoc mix.wav
 ```
 
 The generic command surface is available directly:
@@ -207,7 +214,10 @@ vwave.map(0.0, 0.25, function(sample, frame, channel)
     return sample * 0.5
 end)
 
-vwave.save("/samples/break_edit.wav")
+vwave.add_track("/samples/pad.wav", "Pad", 0.5)
+vwave.track_set(1, { gain_db = -6, pan = -0.2, muted = true })
+vwave.select_track(0)
+vwave.save_mixdown("/samples/mix.wav")
 ```
 
 Run scripts from the CLI:
@@ -239,9 +249,9 @@ Example client configuration:
 }
 ```
 
-The server exposes document information, loading/saving, analysis, editing,
-spectral tools, wavetable tools, sweep/IR capture, and a generic
-`vwave_command` tool. The document is also exposed as a resource at
+The server exposes document information, track management, loading/saving,
+analysis, editing, spectral tools, wavetable tools, sweep/IR capture, and a
+generic `vwave_command` tool. The session is also exposed as a resource at
 `vwave://document/info`.
 
 See [MCP tools](docs/MCP.md) for the tool catalog and protocol examples.
@@ -278,7 +288,7 @@ not a widget that can be parented inside YAWN's SDL3 window.
 All editing happens on the control/UI thread. Snapshot rendered audio before
 publishing it to an audio thread; neither `Timeline` nor `Document` is
 thread-safe. A C ABI is available in `include/vwave/vwave_c.h` for hosts that
-prefer an opaque single-document handle and JSON commands.
+prefer an opaque timeline-backed handle and JSON commands.
 
 See [Embedding guide](docs/EMBEDDING.md) and `examples/yawn_embed.cpp`.
 
@@ -304,22 +314,20 @@ SDL2 editor / CLI / Lua / MCP
   with live mute/solo/gain/pan and on-the-fly rate conversion.
 - Numeric DSP uses synthetic-signal tests (sines, impulses, click trains,
   chirps) rather than committed binary fixtures.
-- The GUI does not own DSP state; the same operations are available to scripts
-  and agents.
+- The GUI does not own DSP state; track-aware operations are available to
+  scripts and agents through the same Session command layer.
 
 See [Architecture](docs/ARCHITECTURE.md) for the data model, algorithms, test
 strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.1** is the first public development release. The current build
-includes the multi-track editing core, track-aware desktop editor, recording,
-settings, CLI, Lua, MCP, C ABI, and the standalone editor described above.
+Version **0.0.2** includes the multi-track editing core, track-aware desktop
+editor, recording, settings, CLI, Lua, MCP, C ABI, and the standalone editor
+described above.
 
 Deliberate remaining work:
 
-- track-aware Session/CLI/Lua/MCP commands (the GUI uses `Timeline`; automation
-  currently targets a single-document session)
 - neural amp/instrument capture training and inference (linear IR capture is
   implemented; a capture-manifest backend is in place for future models)
 - real-time preview of spectral edits
