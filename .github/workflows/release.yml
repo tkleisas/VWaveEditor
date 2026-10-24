@@ -22,7 +22,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/apt-archives/partial"
           chmod -R u+rwX "$RUNNER_TEMP/apt-archives"
       - name: Cache apt packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/apt-archives
           key: ${{ runner.os }}-apt-v1-${{ hashFiles('.github/workflows/ci.yml', '.github/workflows/release.yml') }}
@@ -51,7 +51,7 @@ jobs:
           cp -r docs/* package/docs/
           VERSION="${GITHUB_REF_NAME:-snapshot}"
           tar -C package -czf "VWaveEditor-${VERSION}-linux-x64.tar.gz" .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: vwave-linux-x64
           path: VWaveEditor-*-linux-x64.tar.gz
@@ -104,7 +104,7 @@ jobs:
           cp -r docs/* package/docs/
           VERSION="${GITHUB_REF_NAME:-snapshot}"
           (cd package && zip -9 -r "../VWaveEditor-${VERSION}-windows-x64.zip" .)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: vwave-windows-x64
           path: VWaveEditor-*-windows-x64.zip
@@ -116,7 +116,7 @@ jobs:
     needs: [linux, windows]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: vwave-*
           merge-multiple: true

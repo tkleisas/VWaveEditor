@@ -17,7 +17,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/apt-archives/partial"
           chmod -R u+rwX "$RUNNER_TEMP/apt-archives"
       - name: Cache apt packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/apt-archives
           key: ${{ runner.os }}-apt-v1-${{ hashFiles('.github/workflows/ci.yml', '.github/workflows/release.yml') }}
