@@ -108,6 +108,43 @@ void ParameterSlider::setValue(double newValue) {
     value = std::clamp(newValue, minimum, maximum);
 }
 
+void SpectralViewport::zoom(double factor, double centerHz, double minLimit,
+                            double maxLimit) {
+    if (!std::isfinite(factor) || factor <= 0.0 ||
+        !std::isfinite(centerHz) || minLimit <= 0.0 ||
+        maxLimit <= minLimit)
+        return;
+    const double lowLimit = std::max(1e-6, minLimit);
+    const double highLimit = std::max(lowLimit + 1e-6, maxLimit);
+    const double currentLow = std::max(lowLimit, minHz);
+    const double currentHigh = std::min(highLimit, maxHz);
+    if (currentHigh <= currentLow) return;
+    const double center = std::clamp(centerHz, currentLow, currentHigh);
+    const double logSpan = std::log(currentHigh / currentLow) / factor;
+    const double minimumSpan = std::log(1.05);
+    const double span = std::max(minimumSpan, logSpan);
+    double newLow = center / std::exp(span / 2.0);
+    double newHigh = center * std::exp(span / 2.0);
+    if (newLow < lowLimit) {
+        const double ratio = lowLimit / newLow;
+        newLow = lowLimit;
+        newHigh *= ratio;
+    }
+    if (newHigh > highLimit) {
+        const double ratio = highLimit / newHigh;
+        newHigh = highLimit;
+        newLow *= ratio;
+    }
+    minHz = std::clamp(newLow, lowLimit, highLimit);
+    maxHz = std::clamp(newHigh, minHz + 1e-6, highLimit);
+}
+
+void SpectralViewport::fit(double minLimit, double maxLimit) {
+    if (minLimit <= 0.0 || maxLimit <= minLimit) return;
+    minHz = minLimit;
+    maxHz = maxLimit;
+}
+
 std::vector<PeakBin> computePeaks(const Audio& audio, int channel, Range range,
                                   int width) {
     std::vector<PeakBin> peaks;

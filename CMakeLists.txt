@@ -1,10 +1,38 @@
 cmake_minimum_required(VERSION 3.20)
 
+set(VWAVE_VERSION_DEFAULT "0.0.1")
+set(VWAVE_VERSION "${VWAVE_VERSION_DEFAULT}")
+set(VWAVE_GIT_TAG "untagged")
+execute_process(
+    COMMAND git describe --tags --abbrev=0
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE VWAVE_DESCRIBED_TAG
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE VWAVE_GIT_RESULT
+)
+if(VWAVE_GIT_RESULT EQUAL 0 AND VWAVE_DESCRIBED_TAG MATCHES "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+    set(VWAVE_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+    set(VWAVE_GIT_TAG "${VWAVE_DESCRIBED_TAG}")
+endif()
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE VWAVE_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE VWAVE_COMMIT_RESULT
+)
+if(NOT VWAVE_COMMIT_RESULT EQUAL 0)
+    set(VWAVE_GIT_COMMIT "unknown")
+endif()
+
 project(VWaveEditor
-    VERSION 0.1.0
+    VERSION "${VWAVE_VERSION}"
     DESCRIPTION "Non-destructive wave editor and embeddable audio editing core"
     LANGUAGES C CXX
 )
+message(STATUS "VWaveEditor version ${PROJECT_VERSION} (tag ${VWAVE_GIT_TAG}, commit ${VWAVE_GIT_COMMIT})")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -95,6 +123,7 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/App.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/AudioPlayer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/AudioRecorder.cpp
     )
     vwave_set_warnings(vwave_editor)
     target_include_directories(vwave_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave)

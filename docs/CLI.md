@@ -18,6 +18,11 @@ vwave --mcp
 vwave --version
 ```
 
+> The CLI operates on a single-document `Session`. Multi-track editing and
+> project files are currently provided by the desktop `Timeline` editor. Track
+> commands for the CLI are planned.
+
+
 ## info
 
 ```sh

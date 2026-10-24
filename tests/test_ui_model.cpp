@@ -147,6 +147,26 @@ VWTEST("parameter slider handles degenerate ranges") {
     CHECK_NEAR(bad.value, 0.0, 1e-9);
 }
 
+VWTEST("spectral viewport zooms and fits the frequency range") {
+    SpectralViewport viewport;
+    viewport.minHz = 20.0;
+    viewport.maxHz = 20000.0;
+    viewport.zoom(2.0, std::sqrt(20.0 * 20000.0), 20.0, 24000.0);
+    CHECK(viewport.minHz > 20.0);
+    CHECK(viewport.maxHz < 20000.0);
+    CHECK_NEAR(std::sqrt(viewport.minHz * viewport.maxHz),
+               std::sqrt(20.0 * 20000.0), 1.0);
+    viewport.zoom(0.5, 1000.0, 20.0, 24000.0);
+    CHECK(viewport.minHz >= 20.0);
+    CHECK(viewport.maxHz <= 24000.0);
+    viewport.fit(20.0, 24000.0);
+    CHECK_NEAR(viewport.minHz, 20.0, 1e-9);
+    CHECK_NEAR(viewport.maxHz, 24000.0, 1e-9);
+    viewport.zoom(10.0, 10.0, 20.0, 24000.0);
+    CHECK(viewport.minHz >= 20.0);
+    CHECK(viewport.maxHz > viewport.minHz);
+}
+
 VWTEST("peak computation produces min and max bins") {
     const Audio audio = ramp(1000);
     const std::vector<PeakBin> peaks =

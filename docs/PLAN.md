@@ -282,14 +282,18 @@ Deferred:
 
 ## Implementation status
 
-As of the 0.1.0 development line:
+As of the v0.0.1 development line:
 
-- Phase 0–7 are implemented and test-green.
-- Phase 8 embedding, C ABI, examples, hardening, Parameter controls, and CI are implemented.
+- Phases 0–8 are implemented and test-green.
+- Multi-track Timeline, track controls, multi-track playback/export, recording,
+  audio-device/theme settings, menu bar, target-to-new-track processing, and
+  time/frequency zoom are implemented.
 - Neural capture, real-time spectral monitoring, plugin hosting, and
   multichannel UI remain deferred.
-- The automated suite covers audio I/O, non-destructive history, FFT,
-  resampling, WSOLA/phase-vocoder/PaulStretch, pitch shift, onsets, tempo,
-  pitch, slicing, spectral editing, wavetables, synthesis, sweep
-  deconvolution, Session, Lua, MCP, viewport math, C ABI, and a headless
-  desktop smoke test.
+- Track-aware automation commands remain deferred; CLI/Lua/MCP currently operate
+  on single-document sessions.
+- The automated suite covers audio I/O, non-destructive history, Timeline
+  tracks/mixdown/persistence, FFT, resampling, WSOLA/phase-vocoder/PaulStretch,
+  pitch shift, onsets, tempo, pitch, slicing, spectral editing, wavetables,
+  synthesis, sweep deconvolution, settings, ring buffers, Session, Lua, MCP,
+  viewport math, C ABI, and a headless desktop smoke test.

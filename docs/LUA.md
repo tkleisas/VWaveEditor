@@ -17,6 +17,11 @@ Run:
 vwave lua edit.lua take.wav
 ```
 
+> Lua automation operates on a single-document `Session`. The desktop editor's
+> multi-track `Timeline` is a separate C++ model; track-aware Lua commands are
+> planned.
+
+
 ## Document and history
 
 | Function | Description |

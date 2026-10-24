@@ -2,39 +2,46 @@
 
 [![CI](https://github.com/tkleisas/VWaveEditor/actions/workflows/ci.yml/badge.svg)](https://github.com/tkleisas/VWaveEditor/actions/workflows/ci.yml)
 
-A non-destructive wave editor, spectral workstation, wavetable lab, synthesis
-sketchpad, and impulse-response capture tool. It runs as a standalone desktop
-editor and as an embeddable editing core for
+A non-destructive multi-track wave editor, spectral workstation, wavetable lab,
+synthesis sketchpad, and impulse-response capture tool. It runs as a standalone
+desktop editor and as an embeddable editing core for
 [YAWN](https://github.com/tkleisas/yawn).
 
-![Waveform editor](docs/images/waveform.png)
+![Multi-track waveform editor](docs/images/waveform.png)
 
 ## What works today
 
-- **Non-destructive editing**: immutable source, replayed edit history, exact
-  undo/redo, clipboard, and project persistence.
+- **Multi-track editing**: layered waves with per-track mute, solo, record-arm,
+  volume, pan, start offset, selection, and remove controls. Playback mixes all
+  audible tracks, with solo and mute handled live.
+- **Non-destructive editing**: immutable track sources, replayed edit history,
+  exact undo/redo, clipboard, and timeline project persistence.
 - **Waveform operations**: cut, copy, paste, insert, delete, crop, gain,
   normalize, fade in/out, reverse, invert, silence, DC removal, resample.
 - **Time and pitch**: WSOLA and phase-vocoder time stretching, pitch shifting,
-  and PaulStretch.
+  and PaulStretch. Apply in place, preserving unselected audio around the
+  selection, or render the processed selection to a new track at the same
+  timeline position.
 - **Analysis**: spectral-flux onsets, tempo/beat-grid detection, YIN pitch
   detection, transient slicing, and slice export with a JSON manifest.
 - **Spectral editing**: STFT gain, Butterworth low/high-pass masks, spectral
-  gating, blur, and time-frequency region editing from the UI.
+  gating, blur, and time-frequency region editing. Independent time and
+  log-frequency zoom.
 - **Wavetables**: cycle extraction with pitch detection, harmonic construction,
-  per-frame drawing, morphing, `.vwt` projects, WAV export/import, and
-  offline wavetable-note rendering.
-- **Capture**: exponential sweep generation, FFT deconvolution, IR alignment,
-  normalization, and capture manifests.
+  per-frame drawing, morphing, `.vwt` projects, WAV export/import, and offline
+  wavetable-note rendering.
+- **Recording**: arm a track, record from the configured input device at the
+  playhead, and commit the take to the armed empty track or as a new take track.
+  A lock-free ring buffer keeps capture off the UI allocation path.
+- **Settings**: select audio input/output devices, choose dark/light themes,
+  and persist settings under the XDG config directory.
+- **Menus and parameter controls**: File/Edit/Track/Process/View/Settings menus
+  plus draggable value sliders, selectors, and a scrollable inspector.
 - **Automation**: Lua 5.4 scripting, a command-line interface, and an MCP
-  stdio server using the same command layer.
+  stdio server using the shared single-document command layer.
 - **Embedding**: UI-free C++17 core plus a stable C ABI for YAWN or other hosts.
-- **Desktop editor**: SDL2/SDL2_ttf waveform, spectrogram, and wavetable views;
-  playback; beat grid; markers; slice overlays; keyboard and drag editing.
-- **Parameterized controls**: draggable value sliders for gain, normalization,
-  stretch, pitch, analysis, slicing, spectral bands, filters, gates, wavetable
-  extraction, and synth rendering; algorithm/type selectors and a scrollable
-  sidebar for the full toolset.
+- **Desktop editor**: SDL2/SDL2_ttf; waveform, spectrogram, and wavetable views;
+  transport; beat grid; markers; slices; zoom; keyboard and drag editing.
 
 ![Spectral editor](docs/images/spectrum.png)
 
@@ -62,7 +69,8 @@ ctest --test-dir build --output-on-failure
 Core-only build:
 
 ```sh
-cmake -S . -B build -DVWAVE_BUILD_GUI=OFF -DVWAVE_BUILD_CLI=OFF -DVWAVE_BUILD_EXAMPLES=OFF
+cmake -S . -B build -DVWAVE_BUILD_GUI=OFF -DVWAVE_BUILD_CLI=OFF \
+    -DVWAVE_BUILD_EXAMPLES=OFF
 ```
 
 Build options:
@@ -76,6 +84,9 @@ Build options:
 | `VWAVE_BUILD_MCP` | `ON` | MCP server |
 | `VWAVE_BUILD_EXAMPLES` | `ON` | Embedding examples |
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
+
+Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
+series starts at `v0.0.1`; untagged build trees fall back to `0.0.1`.
 
 Artifacts land in `build/bin`:
 
@@ -92,27 +103,64 @@ Open the editor:
 vwave_editor
 ```
 
-Drag an audio file onto the window, press `Ctrl+O`, or pass it on the command
-line. Select audio by dragging in the waveform. Sidebar values are live
-parameter sliders; scroll the sidebar for the complete toolset. Apply buttons
-commit the displayed values as undoable edits:
+Open a new project with `Ctrl+O`, drag audio in, or use **File → Open**. Use
+**Add Track** / **File → Add Track** to layer additional waves. The track
+headers provide mute (`M`), solo (`S`), record-arm (`R`), volume, and pan.
+Drag a header or lane to make a track active.
 
-| Key | Action |
+Important controls:
+
+| Key / control | Action |
 | --- | --- |
-| `Space` | Play or stop |
+| `Space` | Play/stop the mix |
 | `1` / `2` / `3` | Waveform / spectrum / wavetable view |
-| `Wheel` | Zoom waveform |
+| Wheel | Zoom time (waveform/spectrum) |
+| `Ctrl`+wheel (spectrum) | Zoom displayed frequency range |
+| Toolbar `-` / `+` / `Fit` | Time zoom |
+| `F9` / Track → Record | Start/stop recording |
+| `Ctrl+,` / Settings menu | Audio devices and theme |
 | `B` | Detect tempo and beat grid |
 | `P` | Detect pitch |
 | `T` | Slice at transients |
-| `E` | Export slices (dialog) |
-| `W` | Extract wavetable from selection/document |
+| `E` | Export slices |
+| `W` | Extract wavetable from the active track |
 | `M` | Add marker at playhead |
 | `N` | Normalize |
 | `R` / `I` | Reverse / invert |
 | `F` / `Shift+F` | Fade in / fade out |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
-| `Ctrl+S` / `Ctrl+Shift+S` | Export audio / save project |
+| `Ctrl+S` / `Ctrl+Shift+S` | Export mixdown / save project |
+
+### Processing selections
+
+The **Target: Track / New Track** selector applies to stretch and pitch:
+
+- **Track** replaces the selected region with the processed audio, preserving
+  the unselected prefix and suffix and changing the track length when stretching.
+- **New Track** leaves the original untouched and adds the processed selection
+  as a new layered track at the selection's timeline position.
+
+**Edit → Selection to New Track** copies the raw selection to a new track for
+further processing.
+
+### Recording
+
+Select an input device in **Settings**, arm a track with `R`, position the
+playhead, then press `F9` or choose **Track → Record**. An empty armed track is
+filled in place; recording to an already-populated armed track creates a new
+take track so nothing is overwritten. The footer shows the recording duration.
+See [Recording](docs/RECORDING.md).
+
+![Recording](../docs/images/recording.png)
+
+### Settings
+
+**Settings → Settings…** selects audio input/output devices and switches between
+dark and light themes. Changes are saved immediately to
+`$XDG_CONFIG_HOME/vwave/settings.json` (or `~/.config/vwave/settings.json`).
+See [Settings](docs/SETTINGS.md).
+
+![Settings](../docs/images/settings.png)
 
 ## Command line
 
@@ -200,9 +248,8 @@ See [MCP tools](docs/MCP.md) for the tool catalog and protocol examples.
 
 ## Embedding in YAWN
 
-The UI-free library is the intended integration point. Add the project as a
-subdirectory, link `vwave::core`, and keep a `vwave::Document` in the editor
-state:
+The UI-free library is the intended integration point. Use `vwave::Timeline` for
+a multi-track session and `vwave::Document` for individual tracks:
 
 ```cmake
 set(VWAVE_BUILD_GUI OFF CACHE BOOL "" FORCE)
@@ -212,27 +259,26 @@ target_link_libraries(yawn_core PRIVATE vwave::core)
 ```
 
 ```cpp
-vwave::Audio audio(channels, frames, sampleRate);
-for (int ch = 0; ch < channels; ++ch)
-    std::copy_n(yawnBuffer.channelData(ch), frames, audio.channel(ch));
+vwave::Timeline timeline;
+std::string error;
+timeline.addAudioTrack("Lead", leadAudio, 0, &error);
+timeline.addAudioTrack("Pad", padAudio, 0, &error);
+timeline.setTrackGainDb(1, -6.0);
+timeline.setTrackMuted(0, true);
 
-vwave::Document document = vwave::Document::fromAudio(std::move(audio));
-document.setSelection(startFrame, endFrame);
-document.normalize(-1.0);
-document.reverseSelection();
-
-const vwave::Audio& rendered = document.audio();
+const vwave::Audio mix = timeline.mixdown();
 ```
 
-For rendering in YAWN's fw2 UI, use `Document`, `computePeaks`,
-`computeSpectrogram`, and `BeatAnalysis` directly. The SDL2 standalone editor
-is a reference frontend, not a widget that can be parented inside YAWN's SDL3
-window.
+The timeline owns an independent non-destructive `Document` per track and keeps
+per-track mute/solo/arm/gain/pan/offset state. For YAWN's fw2 UI, use
+`Timeline`, `Document`, `computePeaks`, `computeSpectrogram`, and
+`BeatAnalysis` directly. The SDL2 standalone editor is a reference frontend,
+not a widget that can be parented inside YAWN's SDL3 window.
 
-All editing happens on the control/UI thread. Snapshot the rendered audio
-before publishing it to an audio thread; `Document` is not thread-safe. A C ABI
-is available in `include/vwave/vwave_c.h` for hosts that prefer an opaque
-handle and JSON commands.
+All editing happens on the control/UI thread. Snapshot rendered audio before
+publishing it to an audio thread; neither `Timeline` nor `Document` is
+thread-safe. A C ABI is available in `include/vwave/vwave_c.h` for hosts that
+prefer an opaque single-document handle and JSON commands.
 
 See [Embedding guide](docs/EMBEDDING.md) and `examples/yawn_embed.cpp`.
 
@@ -244,14 +290,18 @@ SDL2 editor / CLI / Lua / MCP
         Session command API
               |
           vwave_core
-  immutable source + edit history
+  Timeline: tracks, routing, mixdown
+  Document: source + edit history
   DSP | analysis | spectral | wavetable
-  synthesis | capture | persistence
+  synthesis | capture | recording buffer
 ```
 
-- The source buffer is never modified by an edit.
-- Undo/redo replays a deterministic operation list.
-- Projects store the source, operation history, selection, markers, and slices.
+- Track sources are never modified by an edit.
+- Undo/redo replays a deterministic operation list for the active track.
+- Timeline projects store every track, its history, selection, markers, slices,
+  routing state, and the active track.
+- The GUI streams multi-track playback directly from immutable track buffers
+  with live mute/solo/gain/pan and on-the-fly rate conversion.
 - Numeric DSP uses synthetic-signal tests (sines, impulses, click trains,
   chirps) rather than committed binary fixtures.
 - The GUI does not own DSP state; the same operations are available to scripts
@@ -262,10 +312,14 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-VWaveEditor is pre-1.0. The current build includes the complete editing core,
-CLI, Lua, MCP, C ABI, and standalone editor described above. Deliberate
-remaining work:
+Version **0.0.1** is the first public development release. The current build
+includes the multi-track editing core, track-aware desktop editor, recording,
+settings, CLI, Lua, MCP, C ABI, and the standalone editor described above.
 
+Deliberate remaining work:
+
+- track-aware Session/CLI/Lua/MCP commands (the GUI uses `Timeline`; automation
+  currently targets a single-document session)
 - neural amp/instrument capture training and inference (linear IR capture is
   implemented; a capture-manifest backend is in place for future models)
 - real-time preview of spectral edits

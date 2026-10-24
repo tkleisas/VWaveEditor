@@ -2,7 +2,8 @@
 
 VWaveEditor is designed as two pieces:
 
-1. `vwave_core` — UI-free C++17 editing, DSP, analysis, and automation.
+1. `vwave_core` — UI-free C++17 timeline/document editing, DSP, analysis,
+   recording buffers, settings, and automation.
 2. `vwave_editor` — a standalone SDL2 frontend used as a reference client.
 
 YAWN should integrate the core. Do not try to parent the SDL2 editor window
@@ -20,6 +21,26 @@ target_link_libraries(yawn_core PRIVATE vwave::core)
 
 `vwave_core` links libsndfile and (by default) vendored Lua. Disable Lua with
 `-DVWAVE_BUILD_LUA=OFF` if the host wants to manage its own Lua state.
+
+## Multi-track timeline
+
+Use `vwave::Timeline` when the host needs layered tracks:
+
+```cpp
+vwave::Timeline timeline;
+timeline.addAudioTrack("Guitar", guitarAudio, 0, &error);
+timeline.addAudioTrack("Synth", synthAudio, 0, &error);
+timeline.setTrackGainDb(0, -3.0);
+timeline.setTrackPan(1, 0.2);
+timeline.setTrackMuted(1, false);
+const vwave::Audio mix = timeline.mixdown();
+```
+
+A `Timeline` stores an independent non-destructive `Document` per track plus
+mute/solo/arm/gain/pan/offset state. Track edits use local frames; timeline
+selection is translated to each track automatically. Use `Timeline::saveProject`
+and `loadProject` for multi-track sessions. The C ABI currently wraps a
+single-document `Session`; use the C++ Timeline API for multi-track hosts.
 
 ## Snapshotting a YAWN clip
 

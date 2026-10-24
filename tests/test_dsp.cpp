@@ -234,6 +234,36 @@ VWTEST("document pitch shift preserves duration") {
     CHECK(doc.audio().equals(original));
 }
 
+VWTEST("in-place stretch preserves unselected prefix and suffix") {
+    Audio original(2, 1000, 48000);
+    for (int64_t i = 0; i < 1000; ++i) {
+        const float value = i < 200 ? 0.1f
+                          : (i < 500 ? static_cast<float>(
+                                           0.3 * std::sin(2.0 * kPi * 440.0 *
+                                                          static_cast<double>(i) /
+                                                         48000.0))
+                                     : 0.2f);
+        original.sample(0, i) = value;
+        original.sample(1, i) = value;
+    }
+    Document doc = Document::fromAudio(original);
+    doc.setSelection(200, 500);
+    REQUIRE(doc.timeStretch(2.0, StretchAlgorithm::Wsola));
+    CHECK_EQ(doc.numFrames(), int64_t{1300});
+    CHECK_EQ(doc.selection().start, int64_t{200});
+    CHECK_EQ(doc.selection().end, int64_t{800});
+    for (int64_t i = 0; i < 200; ++i) {
+        CHECK_NEAR(doc.audio().sample(0, i), original.sample(0, i), 1e-9);
+        CHECK_NEAR(doc.audio().sample(1, i), original.sample(1, i), 1e-9);
+    }
+    for (int64_t i = 0; i < 500; ++i) {
+        CHECK_NEAR(doc.audio().sample(0, 800 + i),
+                   original.sample(0, 500 + i), 1e-9);
+        CHECK_NEAR(doc.audio().sample(1, 800 + i),
+                   original.sample(1, 500 + i), 1e-9);
+    }
+}
+
 VWTEST("document resample changes rate and duration") {
     const Audio original = makeSine(440.0, 0.1, 48000);
     Document doc = Document::fromAudio(original);

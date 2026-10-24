@@ -1,10 +1,13 @@
 #pragma once
 
 #include "AudioPlayer.h"
+#include "AudioRecorder.h"
 
 #include "vwave/Analysis.h"
 #include "vwave/Document.h"
+#include "vwave/Settings.h"
 #include "vwave/Spectral.h"
+#include "vwave/Timeline.h"
 #include "vwave/UiModel.h"
 #include "vwave/Wavetable.h"
 
@@ -41,11 +44,33 @@ private:
         vwave::ParameterSlider* slider = nullptr;
         SDL_Rect track{};
         std::string label;
+        int area = 1;
+        std::function<void(double)> onChanged;
+    };
+
+    struct TrackControls {
+        vwave::ParameterSlider gain;
+        vwave::ParameterSlider pan;
+    };
+
+    struct MenuItem {
+        std::string label;
+        std::string shortcut;
+        std::function<void()> action;
+        bool enabled = true;
+        bool separator = false;
+    };
+
+    struct Menu {
+        std::string title;
+        SDL_Rect titleRect{};
+        std::vector<MenuItem> items;
     };
 
     enum class DialogMode {
         None,
         Open,
+        AddTrack,
         SaveAudio,
         SaveProject,
         SaveWavetable,
@@ -54,6 +79,9 @@ private:
 
     void layout();
     void draw();
+    void drawMenuBar();
+    void drawMenuDropdown();
+    void drawSettingsDialog();
     void drawToolbar();
     void drawSidebar();
     void drawWaveform(const SDL_Rect& area);
@@ -67,11 +95,19 @@ private:
                    std::function<void()> action, bool accent = false,
                    bool active = false, bool enabled = true);
     void addSlider(const std::string& label, const std::string& valueText,
-                   int x, int y, int w, vwave::ParameterSlider& slider);
+                   int x, int y, int w, vwave::ParameterSlider& slider,
+                   std::function<void(double)> onChanged = {});
     void setSliderFromX(SliderRef& slider, int x);
     vwave::StretchAlgorithm selectedStretchAlgorithm() const;
     vwave::Range spectralTimeRange() const;
     void sliceCurrent();
+    void stretchSelection(bool toNewTrack);
+    void pitchSelection(bool toNewTrack);
+    void copySelectionToNewTrack();
+    void zoomTime(double factor);
+    void fitTime();
+    void zoomFrequency(double factor);
+    void fitFrequency();
     int drawText(const std::string& text, int x, int y, const Color& color,
                  TTF_Font* font);
     void drawTextCentered(const std::string& text, const SDL_Rect& rect,
@@ -91,6 +127,7 @@ private:
 
     bool loadFile(const std::string& path);
     bool loadAudio(const std::string& path);
+    bool addTrackFile(const std::string& path);
     bool loadProject(const std::string& path);
     void saveAudio(const std::string& path);
     void saveProject(const std::string& path);
@@ -121,9 +158,28 @@ private:
     void ensureOverview();
     void setStatus(const std::string& text, Uint32 milliseconds = 3500);
     void updateWindowTitle();
-    void drawWaveformChannel(const SDL_Rect& lane, int channel,
-                             const vwave::Audio& audio, double startFrame,
-                             double visibleFrames, bool highlight);
+    vwave::Document& activeDocument();
+    const vwave::Document& activeDocument() const;
+    bool hasTracks() const { return m_timeline.trackCount() > 0; }
+    void selectTrack(int index);
+    void removeTrack(int index);
+    void addEmptyTrack();
+    void toggleRecording();
+    void startRecording();
+    void stopRecording();
+    void updateRecording();
+    void loadSettings();
+    void saveSettings();
+    void openSettings();
+    void closeSettings();
+    void refreshAudioDevices();
+    void cycleOutputDevice(int direction);
+    void cycleInputDevice(int direction);
+    void setTheme(std::string theme);
+    void syncTrackControls();
+    void syncSelectionFromActive();
+    void updateMixer();
+    void drawTrackHeader(const SDL_Rect& header, int index);
 
     SDL_Window* m_window = nullptr;
     SDL_Renderer* m_renderer = nullptr;
@@ -132,6 +188,7 @@ private:
     TTF_Font* m_fontBold = nullptr;
     TTF_Font* m_fontTitle = nullptr;
 
+    SDL_Rect m_menubarRect{};
     SDL_Rect m_toolbarRect{};
     SDL_Rect m_sidebarRect{};
     SDL_Rect m_contentRect{};
@@ -141,16 +198,47 @@ private:
     SDL_Rect m_spectrumArea{};
     SDL_Rect m_wavetableArea{};
     SDL_Rect m_frameStripArea{};
+    SDL_Rect m_tracksArea{};
+    SDL_Rect m_trackHeaderColumn{};
     std::vector<Button> m_buttons;
     std::vector<SliderRef> m_sliders;
+    std::vector<Menu> m_menus;
+    int m_openMenu = -1;
+    SDL_Rect m_openMenuRect{};
+    std::vector<SDL_Rect> m_menuItemRects;
+    vwave::AppSettings m_settings;
+    std::string m_settingsPath;
+    bool m_settingsOpen = false;
+    std::vector<std::string> m_inputDevices;
+    std::vector<std::string> m_outputDevices;
+    int m_inputDeviceIndex = 0;
+    int m_outputDeviceIndex = 0;
+    SDL_Rect m_settingsOutputPrev{};
+    SDL_Rect m_settingsOutputNext{};
+    SDL_Rect m_settingsInputPrev{};
+    SDL_Rect m_settingsInputNext{};
+    SDL_Rect m_settingsThemePrev{};
+    SDL_Rect m_settingsThemeNext{};
+    SDL_Rect m_settingsCloseRect{};
+    std::vector<TrackControls> m_trackControls;
+    std::vector<SDL_Rect> m_trackHeaderRects;
+    std::vector<SDL_Rect> m_trackLaneRects;
     int m_controlArea = 0;
     SliderRef m_activeSlider;
     bool m_sliderDragging = false;
     double m_sidebarScroll = 0.0;
     int m_sidebarContentHeight = 0;
 
-    vwave::Document m_document;
+    vwave::Timeline m_timeline;
+    vwave::Document m_emptyDocument;
     AudioPlayer m_player;
+    AudioRecorder m_recorder;
+    bool m_recording = false;
+    int64_t m_recordStartFrame = 0;
+    int m_recordTarget = -1;
+    std::vector<float> m_recordedInterleaved;
+    int m_recordedChannels = 0;
+    int m_recordedSampleRate = 0;
     vwave::EditorTab m_tab = vwave::EditorTab::Waveform;
     vwave::WaveformViewport m_view;
     vwave::SpectralViewport m_spectralView;
@@ -178,6 +266,8 @@ private:
 
     bool m_draggingSelection = false;
     int64_t m_selectionAnchor = 0;
+    double m_trackScroll = 0.0;
+    int m_trackContentHeight = 0;
     bool m_panning = false;
     bool m_panningOverview = false;
     int m_lastMouseX = 0;
@@ -220,6 +310,7 @@ private:
     vwave::ParameterSlider m_synthGain;
     int m_stretchAlgorithm = 0;
     int m_sliceMode = 0;
+    int m_processTarget = 0;
     bool m_filterLowpass = true;
     int m_frameSizeIndex = 3;
 };

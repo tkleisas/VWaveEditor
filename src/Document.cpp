@@ -1188,64 +1188,39 @@ bool Document::saveAudio(const std::string& path,
     return writeAudio(path, audio(), options, error);
 }
 
-bool Document::saveProject(const std::string& path, std::string* error) const {
-    if (error) error->clear();
-    if (m_source.empty()) {
-        setError(error, "document has no source audio");
-        return false;
+nlohmann::json Document::toJson() const {
+    if (m_source.empty())
+        throw std::runtime_error("document has no source audio");
+    nlohmann::json root;
+    root["format"] = "vwave-project";
+    root["version"] = 1;
+    root["source"] = audioToJson(m_source);
+    root["sourcePath"] = m_sourcePath;
+    root["selection"] = selectionToJson(m_selection);
+    root["markers"] = nlohmann::json::array();
+    for (const auto& marker : m_markers)
+        root["markers"].push_back(
+            {{"frame", marker.frame}, {"name", marker.name}});
+    root["slices"] = nlohmann::json::array();
+    for (const auto& slice : m_slices)
+        root["slices"].push_back(
+            {{"start", slice.range.start},
+             {"end", slice.range.end},
+             {"name", slice.name}});
+    root["history"] = nlohmann::json::array();
+    for (const auto& entry : m_history) {
+        root["history"].push_back(
+            {{"operation", entry.operation.toJson()},
+             {"before", selectionToJson(entry.before)},
+             {"after", selectionToJson(entry.after)}});
     }
-    try {
-        nlohmann::json root;
-        root["format"] = "vwave-project";
-        root["version"] = 1;
-        root["source"] = audioToJson(m_source);
-        root["sourcePath"] = m_sourcePath;
-        root["selection"] = selectionToJson(m_selection);
-        root["markers"] = nlohmann::json::array();
-        for (const auto& marker : m_markers)
-            root["markers"].push_back(
-                {{"frame", marker.frame}, {"name", marker.name}});
-        root["slices"] = nlohmann::json::array();
-        for (const auto& slice : m_slices)
-            root["slices"].push_back(
-                {{"start", slice.range.start},
-                 {"end", slice.range.end},
-                 {"name", slice.name}});
-        root["history"] = nlohmann::json::array();
-        for (const auto& entry : m_history) {
-            root["history"].push_back(
-                {{"operation", entry.operation.toJson()},
-                 {"before", selectionToJson(entry.before)},
-                 {"after", selectionToJson(entry.after)}});
-        }
-        std::ofstream out(path, std::ios::binary);
-        if (!out) {
-            setError(error, "cannot create project file");
-            return false;
-        }
-        out << root.dump(2) << '\n';
-        if (!out.good()) {
-            setError(error, "failed while writing project file");
-            return false;
-        }
-        return true;
-    } catch (const std::exception& e) {
-        setError(error, std::string("cannot save project: ") + e.what());
-        return false;
-    }
+    return root;
 }
 
-bool Document::loadProject(const std::string& path, std::string* error) {
+bool Document::fromJson(const nlohmann::json& root, Document& out,
+                        std::string* error) {
     if (error) error->clear();
     try {
-        std::ifstream in(path, std::ios::binary);
-        if (!in) {
-            setError(error, "cannot open project file");
-            return false;
-        }
-        nlohmann::json root;
-        in >> root;
-
         if (root.value("format", std::string{}) != "vwave-project") {
             setError(error, "not a VWaveEditor project");
             return false;
@@ -1264,8 +1239,8 @@ bool Document::loadProject(const std::string& path, std::string* error) {
 
         Document loaded(std::move(source));
         loaded.m_sourcePath = root.value("sourcePath", std::string{});
-        loaded.m_selection = selectionFromJson(root.value("selection",
-                                                           nlohmann::json{}));
+        loaded.m_selection = selectionFromJson(
+            root.value("selection", nlohmann::json{}));
         loaded.m_selection =
             clampSelection(loaded.m_selection, loaded.m_source.numFrames());
 
@@ -1286,8 +1261,8 @@ bool Document::loadProject(const std::string& path, std::string* error) {
             for (const auto& slice : root["slices"]) {
                 const int64_t start = slice.value("start", int64_t{0});
                 const int64_t end = slice.value("end", int64_t{0});
-                const Range range = Range{start, end}.clamped(
-                    loaded.m_source.numFrames());
+                const Range range =
+                    Range{start, end}.clamped(loaded.m_source.numFrames());
                 if (range.empty()) continue;
                 loaded.m_slices.push_back(
                     {range, slice.value("name", std::string{})});
@@ -1322,9 +1297,52 @@ bool Document::loadProject(const std::string& path, std::string* error) {
             loaded.m_redo.clear();
         }
 
-        *this = std::move(loaded);
-        m_selection = clampSelection(m_selection, m_rendered.numFrames());
+        out = std::move(loaded);
+        out.m_selection =
+            clampSelection(out.m_selection, out.m_rendered.numFrames());
         return true;
+    } catch (const std::exception& e) {
+        setError(error, std::string("cannot load project: ") + e.what());
+        return false;
+    }
+}
+
+bool Document::saveProject(const std::string& path, std::string* error) const {
+    if (error) error->clear();
+    if (m_source.empty()) {
+        setError(error, "document has no source audio");
+        return false;
+    }
+    try {
+        const nlohmann::json root = toJson();
+        std::ofstream outFile(path, std::ios::binary);
+        if (!outFile) {
+            setError(error, "cannot create project file");
+            return false;
+        }
+        outFile << root.dump(2) << '\n';
+        if (!outFile.good()) {
+            setError(error, "failed while writing project file");
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        setError(error, std::string("cannot save project: ") + e.what());
+        return false;
+    }
+}
+
+bool Document::loadProject(const std::string& path, std::string* error) {
+    if (error) error->clear();
+    try {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            setError(error, "cannot open project file");
+            return false;
+        }
+        nlohmann::json root;
+        in >> root;
+        return fromJson(root, *this, error);
     } catch (const std::exception& e) {
         setError(error, std::string("cannot load project: ") + e.what());
         return false;

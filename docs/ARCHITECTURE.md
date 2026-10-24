@@ -8,8 +8,9 @@
 ├──────────────────────────────────────────────────────────────┤
 │ Session JSON command layer                                   │
 ├──────────────────────────────────────────────────────────────┤
+│ Timeline: tracks, routing, offsets, mixdown, recording state │
 │ Document: immutable source, operation history, undo/redo     │
-│ Audio, AudioIO, project format, C ABI                        │
+│ Audio, AudioIO, project format, settings, C ABI              │
 ├──────────────────────────────────────────────────────────────┤
 │ DSP        Analysis     Spectral     Wavetable     Capture   │
 │ FFT        Onsets        STFT         Extract      Sweep     │
@@ -34,6 +35,21 @@ channel 1: f0 f1 f2 ... fN
 
 The layout is contiguous per channel, matching common DAW buffer conventions.
 Import/export converts to interleaved data only at the libsndfile boundary.
+
+## Timeline
+
+`vwave::Timeline` is a project of layered tracks. Each track owns a
+`vwave::Document` plus a name, timeline offset, gain, pan, mute, solo, arm, and
+empty state. Timeline selection is expressed in project frames and translated
+to local track frames by subtracting each track's offset. Editing, analysis,
+spectral processing, and wavetable extraction operate on the active track.
+Playback mixes all audible tracks live. `Timeline::mixdown()` renders a stereo
+mix for export, applying mute/solo, gain, pan, offsets, and per-track sample-rate
+conversion.
+
+Time and pitch processing support two targets: in-place splicing (preserving the
+unselected prefix/suffix) or rendering the processed selection to a new track at
+its timeline position.
 
 ## Non-destructive document
 
@@ -68,10 +84,13 @@ correctness and simple project serialization.
 
 ## Persistence
 
-Projects are JSON with a versioned envelope. The source and binary operation
-payloads are base64-encoded float data, so a project is self-contained. Each
-history entry stores its operation, pre-selection, and post-selection.
-Markers, slices, source path, and the current selection are stored separately.
+Timeline projects are versioned JSON. Each non-empty track nests its
+single-document JSON, including base64 source/operation payloads, history, and
+metadata. Track routing state, offsets, active track, and timeline selection are
+stored at the timeline level. Legacy single-document projects load as one track.
+
+Application settings (audio device names and theme) are stored separately in
+`$XDG_CONFIG_HOME/vwave/settings.json` or `~/.config/vwave/settings.json`.
 
 Audio export flattens the rendered buffer through libsndfile. WAV, AIFF, FLAC,
 and Ogg Vorbis are supported; float/integer bit depths are selected through
@@ -171,22 +190,37 @@ permissions of the user running it.
 
 ### Standalone editor
 
-The SDL2 editor holds the canonical `Document` on the UI thread. It renders
-waveform peaks, a log-frequency spectrogram, and wavetable frames. The sidebar
-uses draggable parameter sliders with exact value readouts and cycling
-algorithm/type selectors; the content area scrolls with the wheel for long
-tool sets. Playback streams directly from the current immutable document
-buffer with on-the-fly linear rate conversion, so pressing Play does not copy
-or resample the whole selection first. All edits stop playback and invalidate
-analysis/spectrogram caches.
+The SDL2 editor holds the canonical `Timeline` on the UI thread. It renders
+track headers and stacked waveform lanes, a log-frequency spectrogram for the
+active track, and wavetable frames. Track headers expose mute, solo, record arm,
+volume, pan, and removal. The inspector sidebar uses draggable parameter
+sliders with exact value readouts and cycling algorithm/type selectors; the
+sidebar scrolls with the wheel for long tool sets. Menus cover file, editing,
+track, processing, view, and settings actions.
+
+Time zoom is shared by waveform and spectrum views; frequency zoom is
+independent for the spectrum. Playback streams directly from immutable track
+buffers with live routing and on-the-fly linear rate conversion, so pressing
+Play does not render or copy the project first. All edits stop playback and
+invalidate analysis/spectrogram caches.
+
+### Recording and settings
+
+Recording uses a separate SDL capture device selected in Settings. The capture
+callback writes interleaved floats into a lock-free SPSC ring buffer; the UI
+drains it into a staging buffer. On stop, the take fills an empty armed track or
+creates a new take track at the playhead. Audio input/output device choices and
+the dark/light palette are applied immediately and persisted as versioned JSON.
 
 ## Threading
 
-- The document, scripting, and MCP handling are control-thread objects.
-- The SDL audio callback only reads an immutable playback buffer and atomics
-  for position/playing state.
-- The GUI swaps the playback buffer while the SDL device is locked.
-- There are no allocations, locks, or file operations in the audio callback.
+- The timeline, documents, scripting, and MCP handling are control-thread objects.
+- The SDL playback callback reads immutable track buffers, live mix parameters,
+  and atomics for position/playing state.
+- The GUI swaps the playback track list or rebuilds live routing under the SDL
+  device lock.
+- The SDL capture callback only pushes samples into a lock-free ring buffer.
+- There are no allocations, locks, or file operations in the audio callbacks.
 
 Embedders that need to feed a DAW audio thread should snapshot the rendered
 buffer after edits and publish it through their own lock-free mechanism.
@@ -204,14 +238,24 @@ The suite covers:
 - spectrogram dimensions, STFT gain/filter/gate/range isolation;
 - wavetable extraction, interpolation, persistence, synthesis;
 - sweep/deconvolution reciprocity, normalization, capture manifests;
+- timeline track controls, offsets, selection translation, mixdown, and project
+  persistence (including empty/legacy tracks);
+- settings persistence and safe defaults;
+- ring-buffer wrap/full/discard behavior;
+- parameter-slider linear/log/stepped mapping and spectral zoom;
 - Session, Lua, MCP, UI viewport math, C ABI, and a headless editor smoke test.
 
 ## Known limitations
 
 - The full history is replayed after undo; checkpointing is future work.
+- Track addition/removal/routing is not part of track-document undo history.
+- Automation (CLI/Lua/MCP) still targets single-document sessions; the GUI uses
+  the multi-track Timeline.
 - Spectral operations process the selected region in memory.
 - Real-time spectral monitoring is not implemented.
 - The standalone UI is stereo-focused; the core is channel-agnostic.
+- Recording is one target at a time; punch-in, loop recording, and comping are
+  future work.
 - Neural capture is not implemented; linear IR capture and the manifest format
   are the current capture path.
 - Plugin hosting is not part of VWaveEditor.

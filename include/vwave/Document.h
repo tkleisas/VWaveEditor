@@ -113,6 +113,9 @@ public:
     bool loadProject(const std::string& path, std::string* error = nullptr);
     bool saveProject(const std::string& path,
                      std::string* error = nullptr) const;
+    nlohmann::json toJson() const;
+    static bool fromJson(const nlohmann::json& json, Document& out,
+                         std::string* error = nullptr);
 
     const Audio& source() const { return m_source; }
     const Audio& audio() const;

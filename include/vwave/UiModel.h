@@ -34,6 +34,8 @@ struct SpectralViewport {
 
     double frequencyAtY(double y, double height) const;
     double yAtFrequency(double hz, double height) const;
+    void zoom(double factor, double centerHz, double minLimit, double maxLimit);
+    void fit(double minLimit, double maxLimit);
 };
 
 struct SpectralRegion {

@@ -25,6 +25,10 @@ Client configuration:
 The server starts with an empty document. Use `vwave_load_audio` or the generic
 command tool to open audio, or load a project.
 
+> MCP operates on a single-document `Session`. The desktop editor's multi-track
+> `Timeline` is a separate C++ model; track-aware MCP tools are planned.
+
+
 ## Resources
 
 | URI | Content |
