@@ -2,6 +2,8 @@
 
 #include "vwave/Analysis.h"
 #include "vwave/Capture.h"
+#include "vwave/ImageSpectrogram.h"
+#include "vwave/Mastering.h"
 #include "vwave/Processing.h"
 #include "vwave/Spectral.h"
 #include "vwave/Synth.h"
@@ -470,6 +472,169 @@ nlohmann::json Session::execute(const std::string& command,
                     {"tracks", tracksInfo()},
                     {"active_track", m_timeline.activeTrack()}};
         }
+        if (command == "image_spectrogram") {
+            const std::string imagePath = requiredString(params, "path", error);
+            if (imagePath.empty()) return nullptr;
+            const std::string out = requiredString(params, "out", error);
+            if (out.empty()) return nullptr;
+            ImageData image;
+            if (!loadImageFile(imagePath, image, error)) return nullptr;
+            ImageSpectrogramOptions options;
+            options.sampleRate = optionalInt(
+                params, "sample_rate",
+                m_timeline.sampleRate() > 0 ? m_timeline.sampleRate()
+                                            : 48000);
+            options.fftSize = optionalInt(params, "fft_size", 2048);
+            options.hopSize = optionalInt(params, "hop_size", 512);
+            options.duration = optionalDouble(params, "duration", 0.0);
+            options.minHz = optionalDouble(params, "min_hz", 20.0);
+            options.maxHz = optionalDouble(params, "max_hz", 20000.0);
+            options.loops = optionalInt(params, "loops", 1);
+            options.cropLeft = optionalDouble(params, "crop_left", 0.0);
+            options.cropRight = optionalDouble(params, "crop_right", 1.0);
+            options.cropTop = optionalDouble(params, "crop_top", 0.0);
+            options.cropBottom =
+                optionalDouble(params, "crop_bottom", 1.0);
+            options.flipHorizontal =
+                optionalBool(params, "flip_horizontal", false);
+            options.flipVertical =
+                optionalBool(params, "flip_vertical", false);
+            options.invert = optionalBool(params, "invert", false);
+            options.gamma = optionalDouble(params, "gamma", 1.0);
+            options.contrast = optionalDouble(params, "contrast", 1.0);
+            options.threshold =
+                optionalDouble(params, "threshold", 0.0);
+            options.useAlpha = optionalBool(params, "use_alpha", true);
+            options.iterations = optionalInt(params, "iterations", 24);
+            options.momentum = optionalDouble(params, "momentum", 0.99);
+            options.seed = static_cast<uint32_t>(
+                optionalInt(params, "seed", 1));
+            options.channels = optionalInt(params, "channels", 1);
+            options.normalize = optionalBool(params, "normalize", true);
+            options.peak = optionalDouble(params, "peak", 0.9);
+            if (params.contains("frequency_scale")) {
+                if (!params["frequency_scale"].is_string()) {
+                    setError(error, "frequency_scale must be a string");
+                    return nullptr;
+                }
+                const std::string name =
+                    params["frequency_scale"].get<std::string>();
+                if (!imageFrequencyScaleFromName(name,
+                                                 options.frequencyScale)) {
+                    setError(error,
+                             "unknown image frequency scale: " + name);
+                    return nullptr;
+                }
+            }
+            if (params.contains("time_mapping")) {
+                if (!params["time_mapping"].is_string()) {
+                    setError(error, "time_mapping must be a string");
+                    return nullptr;
+                }
+                const std::string name =
+                    params["time_mapping"].get<std::string>();
+                if (!imageTimeMappingFromName(name, options.timeMapping)) {
+                    setError(error, "unknown image time mapping: " + name);
+                    return nullptr;
+                }
+            }
+            const std::string phaseName =
+                params.value("phase_mode", std::string{"fast_griffin_lim"});
+            if (!imagePhaseModeFromName(phaseName, options.phaseMode)) {
+                setError(error, "unknown image phase mode: " + phaseName);
+                return nullptr;
+            }
+            const ImageSpectrogramResult generated =
+                imageToSpectrogram(image, options, error);
+            if (generated.audio.empty()) return nullptr;
+            AudioExportOptions exportOptions =
+                exportOptionsFrom(params, error);
+            if (error && !error->empty()) return nullptr;
+            if (!writeAudio(out, generated.audio, exportOptions, error))
+                return nullptr;
+            if (optionalBool(params, "replace", false)) {
+                if (m_timeline.empty()) {
+                    if (!m_timeline.addAudioTrack("Image", generated.audio, 0,
+                                                  error))
+                        return nullptr;
+                } else {
+                    const int index = m_timeline.activeTrack();
+                    if (!m_timeline.setTrackAudio(
+                            index, generated.audio,
+                            m_timeline.track(index).startFrame, error))
+                        return nullptr;
+                }
+            }
+            return {{"ok", true},
+                    {"path", out},
+                    {"image_width", generated.imageWidth},
+                    {"image_height", generated.imageHeight},
+                    {"sample_rate", generated.audio.sampleRate()},
+                    {"channels", generated.audio.numChannels()},
+                    {"frames", generated.audio.numFrames()},
+                    {"duration", generated.duration},
+                    {"fft_size", generated.fftSize},
+                    {"hop_size", generated.hopSize},
+                    {"frame_count", generated.frameCount},
+                    {"bin_count", generated.binCount},
+                    {"phase_mode", imagePhaseModeName(options.phaseMode)},
+                    {"frequency_scale",
+                     imageFrequencyScaleName(options.frequencyScale)},
+                    {"time_mapping",
+                     imageTimeMappingName(options.timeMapping)}};
+        }
+
+        if (command == "mastering_analysis") {
+            MasteringOptions options;
+            if (params.contains("profile")) {
+                if (!params["profile"].is_string()) {
+                    setError(error, "profile must be a string");
+                    return nullptr;
+                }
+                const std::string name = params["profile"].get<std::string>();
+                if (!masteringProfileFromName(name, options.profile)) {
+                    setError(error, "unknown mastering profile: " + name);
+                    return nullptr;
+                }
+            }
+            options.fftSize = optionalInt(params, "fft_size", options.fftSize);
+            options.hopSize = optionalInt(params, "hop_size", options.hopSize);
+            options.bandCount =
+                optionalInt(params, "band_count", options.bandCount);
+            options.minHz = optionalDouble(params, "min_hz", options.minHz);
+            options.maxHz = optionalDouble(params, "max_hz", options.maxHz);
+            options.maxCutDb =
+                optionalDouble(params, "max_cut_db", options.maxCutDb);
+            options.maxBoostDb =
+                optionalDouble(params, "max_boost_db", options.maxBoostDb);
+            options.smoothingBands =
+                optionalInt(params, "smoothing_bands",
+                            options.smoothingBands);
+            options.includeMuted =
+                optionalBool(params, "include_muted", false);
+            options.customStrength =
+                optionalDouble(params, "custom_strength",
+                               options.customStrength);
+            options.customMaxCutDb =
+                optionalDouble(params, "custom_max_cut_db",
+                               options.customMaxCutDb);
+            options.customMaxBoostDb =
+                optionalDouble(params, "custom_max_boost_db",
+                               options.customMaxBoostDb);
+            const MasteringAnalysis analysis =
+                analyzeMastering(m_timeline, options, error);
+            if (!analysis.valid) return nullptr;
+            nlohmann::json result = masteringAnalysisToJson(analysis);
+            if (params.contains("out")) {
+                const std::string out = requiredString(params, "out", error);
+                if (out.empty()) return nullptr;
+                if (!saveMasteringAnalysis(analysis, out, error))
+                    return nullptr;
+                result["path"] = out;
+            }
+            return result;
+        }
+
         if (command == "add_track") {
             const std::string path = requiredString(params, "path", error);
             if (path.empty()) return nullptr;
@@ -1305,7 +1470,8 @@ nlohmann::json Session::execute(const std::string& command,
 
 std::vector<std::string> Session::commandNames() {
     return {
-        "info", "tracks", "list_tracks", "track_info", "add_track",
+        "info", "tracks", "list_tracks", "track_info", "mastering_analysis",
+        "image_spectrogram", "add_track",
         "add_empty_track", "remove_track", "select_track", "track_set",
         "save_mixdown", "load_audio", "save_audio", "load_project",
         "save_project", "select", "select_all", "clear_selection", "undo",

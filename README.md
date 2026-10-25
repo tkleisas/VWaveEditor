@@ -23,10 +23,20 @@ desktop editor and as an embeddable editing core for
   selection, or render the processed selection to a new track at the same
   timeline position.
 - **Analysis**: spectral-flux onsets, tempo/beat-grid detection, YIN pitch
-  detection, transient slicing, and slice export with a JSON manifest.
+  detection, transient slicing, slice export with a JSON manifest, and
+  analysis-only mastering for aligned stems: masking/overlap maps, phase
+  coherence, per-stem levels/true peak, profile-based per-band gain
+  suggestions, and JSON reports. See [Mastering analysis](docs/MASTERING.md).
 - **Spectral editing**: STFT gain, Butterworth low/high-pass masks, spectral
   gating, blur, and time-frequency region editing. Independent time and
-  log-frequency zoom.
+  log-frequency zoom. A phase-aware CPU-projected 3D waterfall adds magnitude
+  height, phase color, confidence alpha, and hover readouts. See
+  [Phase-aware 3D spectrum](docs/PHASE3D.md).
+- **Image to spectrogram**: load PNG/JPEG/BMP/TGA/GIF/PPM/PGM/HDR images, map
+  luminance/color/alpha to magnitude and phase, choose linear/log frequency and
+  direct/mirrored/looped time mapping, run Griffin–Lim/phase-locked/random/color
+  reconstruction, and render to a new track. See
+  [Image to spectrogram](docs/IMAGE_SPECTROGRAM.md).
 - **Wavetables**: cycle extraction with pitch detection, harmonic construction,
   per-frame drawing and keyframe positions, ordered and free-blend morphing,
   linear/equal-power/phase-aligned/spectral/harmonic modes, optional phase
@@ -44,11 +54,12 @@ desktop editor and as an embeddable editing core for
   plus draggable value sliders, selectors, and a scrollable inspector.
 - **Track-aware automation**: Lua 5.4 scripting, a command-line interface, and
   an MCP stdio server using a shared timeline command layer. Scripts and agents
-  can add/remove/select tracks, set routing, edit the active track, and render
-  the mixdown.
+  can add/remove/select tracks, set routing, edit the active track, run
+  mastering analysis, and render the mixdown.
 - **Embedding**: UI-free C++17 core plus a stable C ABI for YAWN or other hosts.
-- **Desktop editor**: SDL2/SDL2_ttf; waveform, spectrogram, and wavetable views;
-  transport; beat grid; markers; slices; zoom; keyboard and drag editing.
+- **Desktop editor**: SDL2/SDL2_ttf; waveform, spectrogram, wavetable, and
+  mastering views; transport; beat grid; markers; slices; zoom; keyboard and
+  drag editing.
 
 ![Spectral editor](docs/images/spectrum.png)
 
@@ -93,7 +104,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-release is `v0.0.4`; untagged build trees fall back to `0.0.4`.
+release is `v0.0.5`; untagged build trees fall back to `0.0.5`.
 
 Artifacts land in `build/bin`:
 
@@ -130,7 +141,8 @@ Important controls:
 | Key / control | Action |
 | --- | --- |
 | `Space` | Play/stop the mix |
-| `1` / `2` / `3` | Waveform / spectrum / wavetable view |
+| `1` / `2` / `3` / `4` / `5` | Waveform / spectrum / wavetable / mastering / image view |
+| Spectrum `View: 2D/3D` | Toggle the phase-aware waterfall; hover for phase readout |
 | Wheel | Zoom time (waveform/spectrum) |
 | `Ctrl`+wheel (spectrum) | Zoom displayed frequency range |
 | Toolbar `-` / `+` / `Fit` | Time zoom |
@@ -199,6 +211,8 @@ vwave wavetable-design design.json designed.vwt
 vwave synth table.vwt note.wav --note 60 --duration 2 --blend 1,0.5,0
 vwave sweep sweep.wav --seconds 5 --start-hz 20 --end-hz 20000
 vwave deconvolve recorded.wav sweep.wav cabinet.wav --length 4096 --trim
+vwave mastering session.vwdoc --profile definition --out mastering.json
+vwave image cover.png cover.wav --duration 8 --phase fast_griffin_lim
 
 vwave project info session.vwdoc
 vwave project add-track session.vwdoc pad.wav --name Pad --start 0.5
@@ -319,7 +333,7 @@ SDL2 editor / CLI / Lua / MCP
           vwave_core
   Timeline: tracks, routing, mixdown
   Document: source + edit history
-  DSP | analysis | spectral | wavetable
+  DSP | analysis | spectral | wavetable | mastering | phase 3D | image
   synthesis | capture | recording buffer
 ```
 
@@ -339,15 +353,17 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.4** includes the multi-track editing core, track-aware desktop
+Version **0.0.5** includes the multi-track editing core, track-aware desktop
 editor, recording, settings, CLI, Lua, MCP, C ABI, the wavetable designer,
-YAWN wavetable import, and the standalone editor described above.
+YAWN wavetable import, analysis-only mastering for aligned stems, the
+phase-aware 3D spectrum, image-to-spectrogram synthesis, and the standalone
+editor described above.
 
 Future directions are recorded in [docs/IDEAS.md](docs/IDEAS.md), including
-image-to-spectrogram synthesis, oscilloscope music, phase-aware 3D spectral
-visualization, and mastering analysis with cross-track dynamic spectral
-allocation. The wavetable designer and YAWN interop are implemented; the agreed
-next phase is analysis-only mastering for performance stems.
+oscilloscope music and mastering processing with cross-track dynamic spectral
+allocation. The wavetable designer, YAWN interop, analysis-only mastering,
+phase-aware 3D spectrum, and image-to-spectrogram synthesis are implemented;
+the agreed next phase is oscilloscope music.
 
 Deliberate remaining work:
 

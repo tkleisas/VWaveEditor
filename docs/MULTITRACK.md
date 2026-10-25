@@ -19,7 +19,8 @@ independent non-destructive `vwave::Document` plus playback/recording metadata.
 
 The active track is the target for editing, analysis, slicing, wavetable
 extraction, and undo/redo. Click a track header or waveform lane to make it
-active.
+active. Mastering analysis is the exception: it analyzes all audible stem
+tracks together, using their timeline offsets for alignment.
 
 ## Track controls
 

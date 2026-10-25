@@ -117,7 +117,9 @@ owns its history.
 Use core types directly from a YAWN panel:
 
 - `vwave::computePeaks(audio, channel, range, pixelWidth)` for waveform bars.
-- `vwave::computeSpectrogram(audio, fftSize, hop)` for a spectrogram texture.
+- `vwave::computeSpectrogram(audio, fftSize, hop)` for a spectrogram texture;
+  `vwave::computePhaseSpectrogram(audio, fftSize, maxFrames)` for phase,
+  instantaneous-frequency, and confidence data.
 - `vwave::analyzeBeats(audio)` for tempo/onsets/beats.
 - `vwave::detectPitch(audio, range)` for the pitch readout.
 - `vwave::WaveformViewport` and `vwave::SpectralViewport` for coordinate
@@ -126,6 +128,9 @@ Use core types directly from a YAWN panel:
   `sampleBlend(weights, phase)` for ordered/free wavetable playback;
   `morphedFrame(position)` for display.
 - `vwave::Wavetable::loadAuto(path, table)` for `.vwt` or WAV+sidecar import.
+- `vwave::analyzeMastering(timeline, options)` for analysis-only stem
+  masking/phase/gain reports.
+- `vwave::imageToSpectrogram(image, options)` for UI-free image synthesis.
 
 The standalone editor demonstrates the intended interaction model: selection
 drag, wheel zoom, beat/slice/marker overlays, time-frequency region selection,

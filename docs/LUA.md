@@ -156,6 +156,34 @@ vwave.apply("wavetable_design", {
 })
 ```
 
+## Image to spectrogram
+
+```lua
+vwave.apply("image_spectrogram", {
+    path = "/images/cover.png",
+    out = "/audio/cover.wav",
+    duration = 8.0,
+    phase_mode = "fast_griffin_lim",
+    channels = 2,
+    replace = true
+})
+```
+
+## Mastering analysis
+
+```lua
+local report = vwave.apply("mastering_analysis", {
+    profile = "definition",
+    band_count = 32,
+    out = "/reports/mastering.json"
+})
+vwave.log(report.summary)
+```
+
+Profiles: `balanced`, `definition`, `separation`, `fullness`, `loudness`,
+`custom`. The command is analysis-only and returns per-band masking, phase
+coherence, stem levels, and suggested gains.
+
 ## Capture
 
 ```lua

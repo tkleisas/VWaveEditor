@@ -8,8 +8,9 @@ and spectral artefacts can be intentional sound-design tools.
 
 ## Agreed direction (2026-10-25)
 
-- The **wavetable designer and YAWN import are implemented**. The next epic is
-  analysis-only mastering for performance stems.
+- The **wavetable designer, YAWN import, analysis-only mastering,
+  phase-aware 3D spectrum, and image-to-spectrogram synthesis are
+  implemented**. The next epic is oscilloscope music.
 - Wavetables import into YAWN through the versioned `.vwt` format and YAWN's
   Wavetable Synth Custom slot.
 - Wavetable morphing supports **both ordered keyframe morphing and free
@@ -18,10 +19,10 @@ and spectral artefacts can be intentional sound-design tools.
   cancellation, quantization, and unnormalized morphs are supported choices.
 - The **mastering workflow begins with analysis**, not automatic processing.
   The initial target is a set of stems from one performance.
-- Mastering has no single universal objective. The analyzer must offer profiles
-  for different musical goals, including loudness/fullness, definition/gaps,
-  separation, and reference matching, with explicit constraints and a
-  user-selected profile.
+- Mastering has no single universal objective. The analyzer offers profiles
+  for loudness/fullness, definition/gaps, separation, and custom control, with
+  explicit constraints and a user-selected profile. Reference matching remains
+  future work.
 
 ## 1. Wavetable designer and morph lab
 
@@ -137,6 +138,13 @@ Do not force correction. Expose:
 
 ## 2. Image → spectrogram
 
+**Implemented first phase:** image decoding, pixel-buffer core synthesis,
+luminance/alpha mapping, crop/flip, linear/log frequency and direct/mirrored/
+looped time mapping, Griffin–Lim/momentum/phase-locked-init/random/color phase,
+image UI, CLI, Lua, MCP, and render-to-track. Sequences/collages, hue→pan,
+separate band/track mapping, stored recipes, and in-app preview remain future
+work.
+
 Turn a picture into audio through inverse STFT synthesis.
 
 ### Inputs and mapping
@@ -201,6 +209,11 @@ Visualize and edit stereo audio as an XY vector path.
 
 ## 4. Pseudo-3D magnitude/phase spectrum
 
+**Implemented first phase:** the Spectrum tab has a bounded phase STFT with
+principal phase, instantaneous frequency, and confidence; a CPU waterfall shows
+magnitude height, phase hue, and confidence alpha; hovering reads the nearest
+bin. Masking overlays and in-surface selection remain future work.
+
 Extend the spectrogram beyond magnitude-only rendering.
 
 ### Data
@@ -231,6 +244,12 @@ Extend the spectrogram beyond magnitude-only rendering.
   readouts.
 
 ## 5. Mastering analysis and spectral allocation
+
+**Analysis-only phase implemented:** the analyzer reports logarithmic band
+power, masking/dominance, cross-stem phase coherence, per-stem RMS/peak/true
+peak/crest/correlation, and profile-specific gain suggestions for balanced,
+definition, separation, fullness, loudness, and custom goals. Reports export as
+JSON and are available from the Mastering tab, CLI, Lua, MCP, and Session.
 
 Analyze a performance spread across multiple tracks (for example four stem
 WAVs) and propose or apply dynamic spectral balance.
@@ -347,11 +366,11 @@ Resolved:
 
 Remaining:
 
-- Which profile metrics and weights ship first.
 - Whether later processing renders derived tracks or adds real-time track
   automation.
-- How to align stems if their offsets are not already sample-aligned.
 - How much spectral analysis should be aware of source roles/instrument labels.
+- Reference matching.
+- Standards-compliant LUFS/true-peak metering.
 
 ## 6. Cross-cutting infrastructure
 
@@ -369,14 +388,13 @@ Remaining:
 
 1. ~~Wavetable designer, YAWN import, morph modes, artefacts, UI, persistence,
    and automation.~~ Implemented.
-2. **Mastering analysis**:
-   analysis-only masking/spectral-balance assistant for one performance's stems.
-3. **Phase-aware pseudo-3D spectrum**:
-   phase/confidence data and a software-rendered 3D view, feeding later
-   mastering diagnostics.
-4. **Image → spectrogram**:
-   image import, mapping controls, phase reconstruction, preview, and generated
-   track recipes.
+2. ~~Mastering analysis: analysis-only masking/spectral-balance assistant for one
+   performance's stems.~~ Implemented.
+3. ~~Phase-aware pseudo-3D spectrum: phase/confidence data and a
+   software-rendered 3D view, feeding later mastering diagnostics.~~
+   Implemented.
+4. ~~Image → spectrogram: image import, mapping controls, phase
+   reconstruction, preview, and generated track recipes.~~ Implemented.
 5. **Oscilloscope music**:
    path/vector generator, XY editor, band-limited/raw synthesis, and preview.
 6. **Mastering processing**:
@@ -385,8 +403,8 @@ Remaining:
 
 ## Decisions needed next
 
-- The first mastering profile metrics and weights.
-- Image formats and whether image decoding lives in the core or UI layer.
+- How reference matching and standards-compliant LUFS metering should work.
+- Image sequences/collages and hue-to-pan mapping.
 - How to align stems if their offsets are not sample-aligned.
 - Whether later mastering processing produces derived tracks or automation.
 - Which third-party wavetable metadata profile to target for WAV export.

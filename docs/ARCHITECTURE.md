@@ -141,6 +141,25 @@ gating compares each bin to a per-frame threshold; blur smooths magnitudes over
 time and frequency. Time-frequency regions are converted to document ranges
 before applying edits.
 
+`computePhaseSpectrogram()` adds principal phase, phase-difference
+instantaneous frequency, and a magnitude/stability confidence to a bounded
+STFT cache. It analyzes at a phase-safe hop and strides stored display frames
+to cap memory. The Spectrum 3D view projects this cache as a CPU waterfall:
+log-frequency across X, time as depth, level as height, phase as hue, and
+confidence as alpha. Hovering reads the nearest bin's level, phase, confidence,
+and instantaneous frequency. It is analysis-only and does not alter spectral
+editing selection behavior.
+
+### Image synthesis
+
+`loadImageFile()` decodes images through the vendored `stb_image` into an RGBA
+pixel buffer. `imageToSpectrogram()` samples luminance/alpha into an STFT
+magnitude map, maps image rows to linear or logarithmic frequency and columns to
+direct/mirrored/looped time, then reconstructs audio with Griffin–Lim,
+momentum/phase-locked variants, random phase, or hue-derived phase. Hann analysis
+and synthesis windows are overlap-added and normalized. The core stays UI-free;
+image decoding is an independent core module, not SDL code.
+
 ### Wavetables
 
 Extraction selects evenly spaced frames, estimates cycle length from YIN pitch
@@ -157,6 +176,18 @@ stable phase source). Phase alignment is non-destructive for the phase-aligned
 morph mode; explicit alignment, band limiting, quantization, and phase
 randomization are separate editing operations. Raw, unnormalized tables load
 without forced correction.
+
+### Mastering analysis
+
+The mastering analyzer aligns timeline tracks by offset and runs a
+Hann-windowed STFT over the project length. Log-spaced bands report combined
+and per-stem power, cross-stem complex coherence, masking density, and
+profile-specific gain suggestions. Band power is computed per channel; phase
+coherence uses a mono downmix. Profiles control masking strength, maximum
+cut/boost, and optional gap filling. Mix metrics come from the current audible
+mixdown (including faders/pan); spectral suggestions use raw stem audio before
+track faders. The analyzer never mutates tracks. True peak is estimated with
+4× cubic interpolation; loudness is RMS dBFS rather than LUFS.
 
 ### Synthesis
 
@@ -250,7 +281,11 @@ The suite covers:
 - onset detection, tempo including accented subdivisions, pitch detection,
   slicing, slice export;
 - spectrogram dimensions, STFT gain/filter/gate/range isolation;
+- phase STFT frequency/confidence, frame caps, and silence handling;
+- image decoding and image-to-spectrogram duration, mapping, phase, alpha, and
+  invalid-input handling;
 - wavetable extraction, interpolation, persistence, synthesis;
+- mastering stem masking, profiles, phase coherence, gain limits, and reports;
 - sweep/deconvolution reciprocity, normalization, capture manifests;
 - timeline track controls, offsets, selection translation, mixdown, and project
   persistence (including empty/legacy tracks);
@@ -267,6 +302,12 @@ The suite covers:
 - Track addition/removal/routing is not part of track-document undo history.
 - Spectral operations process the selected region in memory.
 - Real-time spectral monitoring is not implemented.
+- The 3D spectrum is a CPU overview with capped frames/bins and no surface
+  selection.
+- Image-to-spectrogram stereo output duplicates mono; hue-to-pan, image
+  sequences/collages, and regeneration recipes are future work.
+- Mastering analysis is offline and analysis-only; true peak is an
+  interpolation estimate and loudness is RMS dBFS, not LUFS.
 - The standalone UI is stereo-focused; the core is channel-agnostic.
 - Recording is one target at a time; punch-in, loop recording, and comping are
   future work.

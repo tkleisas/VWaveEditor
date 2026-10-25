@@ -287,7 +287,7 @@ Deferred:
 
 ## Implementation status
 
-As of the v0.0.4 development line:
+As of the v0.0.5 development line:
 
 - Phases 0–8 are implemented and test-green.
 - Multi-track Timeline, track controls, multi-track playback/export, recording,
@@ -302,10 +302,11 @@ As of the v0.0.4 development line:
   settings, ring buffers, UI viewport math, C ABI, and a headless desktop smoke
   test.
 
-## Future feature plan (post-v0.0.4)
+## Future feature plan (post-v0.0.5)
 
 Detailed design notes and options are recorded in
-[docs/IDEAS.md](IDEAS.md). Phase 9 is implemented; phases 10+ are proposals.
+[docs/IDEAS.md](IDEAS.md). Phases 9-12 are implemented; phases 13+ are
+proposals.
 
 ### Phase 9: Wavetable designer and morph lab (implemented)
 
@@ -330,21 +331,54 @@ Original scope:
 - Tests for endpoints, boundedness, phase alignment, raw aliasing determinism,
   persistence, and VWaveEditor-to-YAWN frame/morph round-trips.
 
-### Phase 10: Phase-aware pseudo-3D spectrum
+### Phase 10: Mastering analysis (implemented)
 
-- Extend spectrogram data with phase, instantaneous frequency, and confidence.
-- Waterfall/surface views with magnitude height and phase color/readout.
-- Masking/noise-floor display and time-frequency selection linked to editing.
-- CPU projection first, with OpenGL renderer upgrade if needed.
+Implemented analysis-only mastering for aligned performance stems:
 
-### Phase 11: Image-to-spectrogram
+- Log-band STFT stem analysis with masking/overlap, dominance, phase coherence,
+  and mix/per-stem levels.
+- Profiles: balanced, definition, separation, fullness, loudness, and custom.
+- Suggested per-band cuts/boosts with maximum-gain and smoothing constraints.
+- RMS/peaks/estimated true peak, crest, and stereo correlation metrics.
+- Mastering UI tab, JSON report export, CLI, Lua, MCP, and Session command.
+- Synthetic-stem tests for overlap, profile strength, phase cancellation,
+  offsets, mute handling, limits, and report persistence.
 
-- UI image import and pixel-buffer core API.
-- Luminance/color/alpha mapping controls and time/frequency remapping.
-- Griffin–Lim/phase-locked/random/color-phase reconstruction.
-- Preview, generated-track recipe, and Lua/MCP/CLI generator commands.
+### Phase 11: Phase-aware pseudo-3D spectrum (implemented)
 
-### Phase 12: Oscilloscope music
+Implemented:
+
+- `PhaseSpectrogram` with phase, phase-difference instantaneous frequency, and
+  magnitude/phase-stability confidence.
+- Bounded phase STFT cache with automatic hop sizing for long files.
+- Spectrum `View: 2D/3D` CPU waterfall: log-frequency X, time depth, magnitude
+  height, phase hue, confidence alpha.
+- Hover readout for frequency, level, confidence, phase, and instantaneous Hz.
+- Phase data tests for tone tracking, silence confidence, frame caps, and
+  dimensions.
+
+Remaining from the original scope: masking/noise-floor overlays and
+time-frequency selection inside the 3D surface; an OpenGL renderer if needed.
+
+### Phase 12: Image-to-spectrogram (implemented)
+
+Implemented:
+
+- Vendored image decoding plus a UI-free pixel-buffer/`ImageData` API.
+- Luminance/alpha magnitude mapping, threshold/contrast/gamma/invert, crop/flip
+  options, linear/log frequency mapping, direct/mirrored/looped time mapping.
+- Griffin–Lim, momentum Griffin–Lim, phase-locked initialization, random, and
+  hue-derived color phase.
+- Image UI tab with decode/preview, parameter controls, and render-to-track.
+- CLI, Lua, MCP, and Session automation; mono/stereo output and normalization.
+- Tests for PPM decoding, frequency mapping, time maps, color phase, alpha,
+  silence, and invalid input.
+
+Remaining from the original scope: image sequences/collages, hue-to-pan or
+separate band/track mapping, generated-recipe persistence, in-app audio preview,
+and progress/cancel for very long Griffin–Lim jobs.
+
+### Phase 13: Oscilloscope music
 
 - XY scope view and time selection.
 - Parametric/polyline/path rendering to stereo audio with band-limited and raw
@@ -352,7 +386,7 @@ Original scope:
 - Arc traversal, loops, passes, smoothing, and path persistence.
 - Path recipe stored on generated tracks.
 
-### Phase 13: Mastering spectral allocation
+### Phase 14: Mastering processing
 
 - Analysis-only assistant for multi-track masking/overlap.
 - Objectives: loudness under a true-peak ceiling, separation, definition,
@@ -369,9 +403,9 @@ Original scope:
 The phase numbers below group capability workstreams; the delivery order is:
 
 1. ~~Wavetable designer and morph lab, including YAWN import.~~ Implemented.
-2. Mastering analysis for one performance's stems.
-3. Phase-aware pseudo-3D spectrum.
-4. Image-to-spectrogram.
+2. ~~Mastering analysis for one performance's stems.~~ Implemented.
+3. ~~Phase-aware pseudo-3D spectrum.~~ Implemented.
+4. ~~Image-to-spectrogram.~~ Implemented.
 5. Oscilloscope music.
 6. Mastering processing.
 
@@ -383,13 +417,14 @@ Additional constraints:
   the first release.
 - Mastering starts with analysis on stems from one performance.
 - Mastering is profile-based rather than one universal objective: loudness,
-  definition/gaps, separation, reference matching, and custom control.
+  definition/gaps, separation, fullness, and custom control.
 - Rendering/automatic processing follows the analysis phase.
 
 ### Remaining decisions
 
-- Exact first-release mastering metrics and weights.
 - Whether later mastering processing produces derived tracks or real-time track
   automation.
+- How reference matching and standards-compliant LUFS metering should be
+  integrated.
 - Whether generator recipes become shared first-class track metadata.
 - Which standard third-party wavetable metadata profile to target for WAV export.

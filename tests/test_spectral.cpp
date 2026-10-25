@@ -197,3 +197,48 @@ VWTEST("spectral gate and filter reject invalid parameters") {
     Audio edge = spectralGate(audio, -40.0, {9000, 1000});
     CHECK(edge.empty());
 }
+
+VWTEST("phase spectrogram tracks tone frequency and phase confidence") {
+    const Audio audio = makeTone(440.0, 0.5, 0.5);
+    const PhaseSpectrogram phase =
+        computePhaseSpectrogram(audio, 2048, 128);
+    REQUIRE(phase.frameCount > 4);
+    REQUIRE(phase.binCount > 32);
+    const int bin = static_cast<int>(std::llround(
+        440.0 * phase.fftSize / phase.sampleRate));
+    REQUIRE(bin > 0 && bin < phase.binCount);
+    const int frame = phase.frameCount / 2;
+    CHECK_NEAR(phase.binFrequency(bin), 445.3, 2.0);
+    CHECK_NEAR(phase.instantaneousHzAt(frame, bin), 440.0, 10.0);
+    CHECK(phase.confidenceAt(frame, bin) > 0.4f);
+    CHECK(phase.dbAt(frame, bin) > -30.0f);
+    const float value = phase.phaseAt(frame, bin);
+    CHECK(value >= -static_cast<float>(kPi));
+    CHECK(value <= static_cast<float>(kPi));
+}
+
+VWTEST("phase spectrogram confidence falls in silence") {
+    const Audio audio = makeTone(440.0, 0.5, 0.4);
+    const PhaseSpectrogram phase =
+        computePhaseSpectrogram(audio, 1024, 64);
+    REQUIRE(phase.valid());
+    const int silentBin = phase.binCount * 3 / 4;
+    const int frame = phase.frameCount / 2;
+    CHECK(phase.confidenceAt(frame, silentBin) < 0.2f);
+    CHECK(phase.dbAt(frame, silentBin) < -50.0f);
+}
+
+VWTEST("phase spectrogram caps frames and handles empty input") {
+    const Audio audio = makeTone(220.0, 0.4, 2.0);
+    const PhaseSpectrogram phase =
+        computePhaseSpectrogram(audio, 2048, 16);
+    REQUIRE(phase.valid());
+    CHECK(phase.frameCount <= 16);
+    CHECK(phase.frameCount > 0);
+    CHECK(phase.hopSize >= 256);
+    CHECK_EQ(phase.decibels.size(),
+             static_cast<size_t>(phase.frameCount * phase.binCount));
+    const PhaseSpectrogram empty =
+        computePhaseSpectrogram(Audio{}, 2048, 16);
+    CHECK(!empty.valid());
+}

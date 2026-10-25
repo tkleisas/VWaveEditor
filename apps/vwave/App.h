@@ -5,6 +5,8 @@
 
 #include "vwave/Analysis.h"
 #include "vwave/Document.h"
+#include "vwave/ImageSpectrogram.h"
+#include "vwave/Mastering.h"
 #include "vwave/Settings.h"
 #include "vwave/Spectral.h"
 #include "vwave/Timeline.h"
@@ -75,6 +77,8 @@ private:
         SaveProject,
         SaveWavetable,
         LoadWavetable,
+        SaveMasteringReport,
+        LoadImage,
         ExportSlices
     };
 
@@ -87,7 +91,10 @@ private:
     void drawSidebar();
     void drawWaveform(const SDL_Rect& area);
     void drawSpectrum(const SDL_Rect& area);
+    void drawSpectrum3D(const SDL_Rect& area);
     void drawWavetable(const SDL_Rect& area);
+    void drawMastering(const SDL_Rect& area);
+    void drawImage(const SDL_Rect& area);
     void drawFooter();
     void drawDialog();
     void drawButton(const Button& button);
@@ -151,6 +158,13 @@ private:
     void loadWavetable(const std::string& path);
     void saveWavetable(const std::string& path);
     void renderWavetableNote();
+    void analyzeMasteringStems();
+    void saveMasteringReport(const std::string& path);
+    void loadImage(const std::string& path);
+    void renderImageToTrack();
+    void cycleImagePhaseMode();
+    void cycleImageFrequencyScale();
+    void cycleImageTimeMapping();
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -164,6 +178,7 @@ private:
     void applySpectralBlur();
     void addMarkerAtPlayhead();
     void ensureSpectrogram();
+    void ensurePhaseSpectrogram();
     void ensureOverview();
     void setStatus(const std::string& text, Uint32 milliseconds = 3500);
     void updateWindowTitle();
@@ -258,9 +273,30 @@ private:
     bool m_hasPitch = false;
     vwave::Wavetable m_wavetable;
     vwave::WavetableViewport m_wavetableView;
+    vwave::MasteringAnalysis m_mastering;
+    vwave::ImageData m_image;
+    std::string m_imagePath;
+    SDL_Texture* m_imageTexture = nullptr;
+    int m_imageFrequencyScale = 1;
+    int m_imageTimeMapping = 0;
+    int m_imagePhaseMode = 1;
+    int m_imageFftIndex = 3;
+    bool m_imageInvert = false;
+    bool m_imageUseAlpha = true;
+    bool m_imageStereo = false;
+    bool m_imageNormalize = true;
+    bool m_imageFlipHorizontal = false;
+    bool m_imageFlipVertical = false;
+    int m_masteringProfile = 0;
+    bool m_masteringIncludeMuted = false;
     std::vector<double> m_frameWeights;
     bool m_freeBlend = false;
     vwave::Spectrogram m_spectrogram;
+    vwave::PhaseSpectrogram m_phaseSpectrogram;
+    bool m_phaseSpectrogramDirty = true;
+    bool m_spectrum3D = false;
+    int m_spectrum3DHoverX = -1;
+    int m_spectrum3DHoverY = -1;
     SDL_Texture* m_spectrogramTexture = nullptr;
     int m_spectrogramTextureWidth = 0;
     int m_spectrogramTextureHeight = 0;
@@ -319,6 +355,18 @@ private:
     vwave::ParameterSlider m_synthMorph;
     vwave::ParameterSlider m_synthUnison;
     vwave::ParameterSlider m_synthGain;
+    vwave::ParameterSlider m_imageDuration;
+    vwave::ParameterSlider m_imageMinHz;
+    vwave::ParameterSlider m_imageMaxHz;
+    vwave::ParameterSlider m_imageGamma;
+    vwave::ParameterSlider m_imageContrast;
+    vwave::ParameterSlider m_imageThreshold;
+    vwave::ParameterSlider m_imageLoops;
+    vwave::ParameterSlider m_imageIterations;
+    vwave::ParameterSlider m_masteringBands;
+    vwave::ParameterSlider m_masteringMaxCut;
+    vwave::ParameterSlider m_masteringMaxBoost;
+    vwave::ParameterSlider m_masteringSmoothing;
     vwave::ParameterSlider m_framePositionControl;
     vwave::ParameterSlider m_frameWeightControl;
     vwave::ParameterSlider m_tableRootControl;

@@ -23,6 +23,8 @@ void printUsage() {
         "  vwave info <audio>\n"
         "  vwave process <audio> <out> [options]\n"
         "  vwave analyze <audio> [--beats] [--pitch]\n"
+        "  vwave mastering <project.vwdoc> [--profile NAME] [--out report.json]\n"
+        "  vwave image <image> <out.wav> [--duration SEC] [--phase MODE]\n"
         "  vwave slices <audio> <directory> [--mode transients|beats|markers]\n"
         "  vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]\n"
         "      [--morph linear|equal_power|phase_aligned|spectral|harmonic]\n"
@@ -242,6 +244,105 @@ int commandAnalyze(const std::vector<std::string>& args) {
     if (beats) result["beats"] = executeOrFail(session, "analyze_beats");
     if (pitch) result["pitch"] = executeOrFail(session, "detect_pitch");
     printJson(result);
+    return 0;
+}
+
+int commandMastering(const std::vector<std::string>& args) {
+    if (args.size() < 3) return fail("mastering requires a project file");
+    vwave::Session session;
+    executeOrFail(session, "load_project", {{"path", args[2]}});
+    json parameters = {{"profile", "balanced"}};
+    for (size_t i = 3; i < args.size(); ++i) {
+        if (args[i] == "--profile") {
+            parameters["profile"] = valueAt(args, i, "--profile");
+        } else if (args[i] == "--out") {
+            parameters["out"] = valueAt(args, i, "--out");
+        } else if (args[i] == "--band-count") {
+            parameters["band_count"] =
+                std::stoi(valueAt(args, i, "--band-count"));
+        } else if (args[i] == "--fft-size") {
+            parameters["fft_size"] =
+                std::stoi(valueAt(args, i, "--fft-size"));
+        } else if (args[i] == "--hop") {
+            parameters["hop_size"] = std::stoi(valueAt(args, i, "--hop"));
+        } else if (args[i] == "--max-cut") {
+            parameters["max_cut_db"] =
+                std::stod(valueAt(args, i, "--max-cut"));
+        } else if (args[i] == "--max-boost") {
+            parameters["max_boost_db"] =
+                std::stod(valueAt(args, i, "--max-boost"));
+        } else if (args[i] == "--smoothing") {
+            parameters["smoothing_bands"] =
+                std::stoi(valueAt(args, i, "--smoothing"));
+        } else if (args[i] == "--include-muted") {
+            parameters["include_muted"] = true;
+        } else {
+            return fail("unknown mastering option: " + args[i]);
+        }
+    }
+    printJson(executeOrFail(session, "mastering_analysis", parameters));
+    return 0;
+}
+
+int commandImage(const std::vector<std::string>& args) {
+    if (args.size() < 4) return fail("image requires an image and output");
+    vwave::Session session;
+    json parameters = {{"path", args[2]}, {"out", args[3]}};
+    for (size_t i = 4; i < args.size(); ++i) {
+        if (args[i] == "--duration") {
+            parameters["duration"] =
+                std::stod(valueAt(args, i, "--duration"));
+        } else if (args[i] == "--fft-size") {
+            parameters["fft_size"] =
+                std::stoi(valueAt(args, i, "--fft-size"));
+        } else if (args[i] == "--hop") {
+            parameters["hop_size"] = std::stoi(valueAt(args, i, "--hop"));
+        } else if (args[i] == "--sample-rate") {
+            parameters["sample_rate"] =
+                std::stoi(valueAt(args, i, "--sample-rate"));
+        } else if (args[i] == "--min-hz") {
+            parameters["min_hz"] = std::stod(valueAt(args, i, "--min-hz"));
+        } else if (args[i] == "--max-hz") {
+            parameters["max_hz"] = std::stod(valueAt(args, i, "--max-hz"));
+        } else if (args[i] == "--freq-scale") {
+            parameters["frequency_scale"] =
+                valueAt(args, i, "--freq-scale");
+        } else if (args[i] == "--time-map") {
+            parameters["time_mapping"] =
+                valueAt(args, i, "--time-map");
+        } else if (args[i] == "--loops") {
+            parameters["loops"] = std::stoi(valueAt(args, i, "--loops"));
+        } else if (args[i] == "--gamma") {
+            parameters["gamma"] = std::stod(valueAt(args, i, "--gamma"));
+        } else if (args[i] == "--contrast") {
+            parameters["contrast"] =
+                std::stod(valueAt(args, i, "--contrast"));
+        } else if (args[i] == "--threshold") {
+            parameters["threshold"] =
+                std::stod(valueAt(args, i, "--threshold"));
+        } else if (args[i] == "--invert") {
+            parameters["invert"] = true;
+        } else if (args[i] == "--no-alpha") {
+            parameters["use_alpha"] = false;
+        } else if (args[i] == "--phase") {
+            parameters["phase_mode"] = valueAt(args, i, "--phase");
+        } else if (args[i] == "--iterations") {
+            parameters["iterations"] =
+                std::stoi(valueAt(args, i, "--iterations"));
+        } else if (args[i] == "--seed") {
+            parameters["seed"] = std::stoi(valueAt(args, i, "--seed"));
+        } else if (args[i] == "--channels") {
+            parameters["channels"] =
+                std::stoi(valueAt(args, i, "--channels"));
+        } else if (args[i] == "--no-normalize") {
+            parameters["normalize"] = false;
+        } else if (args[i] == "--peak") {
+            parameters["peak"] = std::stod(valueAt(args, i, "--peak"));
+        } else {
+            return fail("unknown image option: " + args[i]);
+        }
+    }
+    printJson(executeOrFail(session, "image_spectrogram", parameters));
     return 0;
 }
 
@@ -587,6 +688,8 @@ int main(int argc, char** argv) {
     if (args[1] == "process") return commandProcess(args);
     if (args[1] == "analyze") return commandAnalyze(args);
     if (args[1] == "slices") return commandSlices(args);
+    if (args[1] == "mastering") return commandMastering(args);
+    if (args[1] == "image") return commandImage(args);
     if (args[1] == "wavetable") return commandWavetable(args);
     if (args[1] == "wavetable-design") return commandWavetableDesign(args);
     if (args[1] == "synth") return commandSynth(args);

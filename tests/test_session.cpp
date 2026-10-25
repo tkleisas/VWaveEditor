@@ -513,6 +513,10 @@ VWTEST("session command list is stable") {
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "wavetable_design") !=
           commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "mastering_analysis") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "image_spectrogram") !=
+          commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "add_track") !=
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "track_set") !=
@@ -578,6 +582,96 @@ VWTEST("session wavetable design builds morphing and quality metadata") {
         {{"path", (directory.path() / "bad.vwt").string()},
          {"frames", json::array({json{{"harmonics", {0.0, 1.0}}}})},
          {"morph_mode", "not-a-mode"}},
+        &error);
+    CHECK(invalid.is_null());
+    CHECK(!error.empty());
+}
+
+VWTEST("session mastering analysis reports stem conflicts") {
+    Session session;
+    std::string error;
+    REQUIRE(session.timeline().addAudioTrack(
+        "bass", tone(100.0, 0.3, 48000, 1), 0, &error));
+    REQUIRE(session.timeline().addAudioTrack(
+        "lead", tone(1000.0, 0.3, 48000, 1), 0, &error));
+    TempDirectory directory;
+    const std::string reportPath =
+        (directory.path() / "mastering.json").string();
+    const json result = session.execute(
+        "mastering_analysis",
+        {{"profile", "definition"},
+         {"band_count", 12},
+         {"fft_size", 1024},
+         {"hop_size", 512},
+         {"out", reportPath}},
+        &error);
+    REQUIRE(!result.is_null());
+    CHECK_EQ(result["profile"].get<std::string>(), "definition");
+    CHECK_EQ(result["stems"].size(), size_t{2});
+    CHECK_EQ(result["bands"].size(), size_t{12});
+    CHECK(result.contains("mix"));
+    CHECK(std::filesystem::exists(reportPath));
+
+    const json invalid = session.execute(
+        "mastering_analysis", {{"profile", "unknown"}}, &error);
+    CHECK(invalid.is_null());
+    CHECK(!error.empty());
+}
+
+VWTEST("session image spectrogram renders a track") {
+    TempDirectory directory;
+    const std::string imagePath =
+        (directory.path() / "band.ppm").string();
+    {
+        std::ofstream out(imagePath, std::ios::binary);
+        REQUIRE(static_cast<bool>(out));
+        const int width = 16;
+        const int height = 16;
+        out << "P6\n" << width << ' ' << height << "\n255\n";
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const unsigned char value =
+                    (y >= 6 && y <= 9) ? 255 : 0;
+                const unsigned char pixel[3] = {value, value, value};
+                out.write(reinterpret_cast<const char*>(pixel), 3);
+            }
+        }
+    }
+    Session session;
+    std::string error;
+    const std::string outPath =
+        (directory.path() / "image.wav").string();
+    const json result = session.execute(
+        "image_spectrogram",
+        {{"path", imagePath},
+         {"out", outPath},
+         {"duration", 0.1},
+         {"sample_rate", 8000},
+         {"fft_size", 256},
+         {"hop_size", 64},
+         {"min_hz", 100.0},
+         {"max_hz", 3000.0},
+         {"phase_mode", "random"},
+         {"channels", 2},
+         {"replace", true}},
+        &error);
+    REQUIRE(!result.is_null());
+    CHECK_EQ(result["image_width"], 16);
+    CHECK_EQ(result["image_height"], 16);
+    CHECK_EQ(result["sample_rate"], 8000);
+    CHECK_EQ(result["channels"], 2);
+    CHECK_EQ(result["frames"], 800);
+    CHECK(std::filesystem::exists(outPath));
+    CHECK_EQ(session.timeline().trackCount(), 1);
+    Audio audio;
+    REQUIRE(readAudio(outPath, audio));
+    CHECK_EQ(audio.numChannels(), 2);
+    CHECK_EQ(audio.numFrames(), int64_t{800});
+
+    const json invalid = session.execute(
+        "image_spectrogram",
+        {{"path", imagePath}, {"out", outPath},
+         {"phase_mode", "not-a-mode"}},
         &error);
     CHECK(invalid.is_null());
     CHECK(!error.empty());

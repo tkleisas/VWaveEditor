@@ -7,6 +7,7 @@
 #include "vwave/Version.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -33,6 +34,20 @@ SDL_Color kOrange{238, 168, 76, 255};
 SDL_Color kRed{224, 92, 92, 255};
 SDL_Color kBlue{86, 145, 230, 255};
 SDL_Color kCanvas{16, 18, 24, 255};
+
+bool isImagePath(const std::string& path) {
+    std::string extension =
+        std::filesystem::path(path).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char c) {
+                       return static_cast<char>(std::tolower(c));
+                   });
+    return extension == ".png" || extension == ".jpg" ||
+           extension == ".jpeg" || extension == ".bmp" ||
+           extension == ".tga" || extension == ".gif" ||
+           extension == ".ppm" || extension == ".pgm" ||
+           extension == ".hdr";
+}
 SDL_Color kLane{15, 17, 23, 255};
 SDL_Color kLaneActive{20, 25, 30, 255};
 SDL_Color kMenu{16, 18, 24, 255};
@@ -259,6 +274,31 @@ std::string formatMidiNote(double value) {
     return out.str();
 }
 
+SDL_Color phaseColor(float phase, Uint8 alpha = 255) {
+    const double twoPi = 2.0 * 3.14159265358979323846;
+    double hue = (static_cast<double>(phase) + 3.14159265358979323846) /
+                 twoPi;
+    hue -= std::floor(hue);
+    const double saturation = 0.78;
+    const double value = 0.98;
+    const double c = value * saturation;
+    const double h = hue * 6.0;
+    const double x = c * (1.0 - std::abs(std::fmod(h, 2.0) - 1.0));
+    double r = 0.0;
+    double g = 0.0;
+    double b = 0.0;
+    if (h < 1.0) { r = c; g = x; }
+    else if (h < 2.0) { r = x; g = c; }
+    else if (h < 3.0) { g = c; b = x; }
+    else if (h < 4.0) { g = x; b = c; }
+    else if (h < 5.0) { r = x; b = c; }
+    else { r = c; b = x; }
+    const double m = value - c;
+    return {static_cast<Uint8>((r + m) * 255.0),
+            static_cast<Uint8>((g + m) * 255.0),
+            static_cast<Uint8>((b + m) * 255.0), alpha};
+}
+
 const char* const kAlgorithmNames[] = {"WSOLA", "Phase Vocoder",
                                        "PaulStretch"};
 const int kFrameSizes[] = {256, 512, 1024, 2048, 4096, 8192};
@@ -268,6 +308,12 @@ const char* const kMorphModeNames[] = {"Linear", "Equal Power",
                                        "Harmonic"};
 const char* const kInterpolationNames[] = {"Nearest", "Linear", "Cubic"};
 const int kWavetableOversampling[] = {1, 2, 4, 8};
+const char* const kMasteringProfileNames[] = {
+    "Balanced", "Definition", "Separation", "Fullness", "Loudness", "Custom"};
+const char* const kImagePhaseNames[] = {"Griffin-Lim", "Fast GL",
+                                        "Phase Locked", "Random", "Color"};
+const char* const kImageTimeNames[] = {"Direct", "Mirrored", "Looped"};
+const char* const kImageFrequencyNames[] = {"Linear", "Log"};
 
 } // namespace
 
@@ -294,6 +340,18 @@ App::App() {
     m_synthMorph = {0.0, 1.0, 0.0, false, 0.01};
     m_synthUnison = {1.0, 8.0, 1.0, false, 1.0};
     m_synthGain = {0.0, 1.0, 0.7, false, 0.01};
+    m_imageDuration = {0.1, 60.0, 4.0, true, 0.1};
+    m_imageMinHz = {20.0, 20000.0, 50.0, true, 1.0};
+    m_imageMaxHz = {100.0, 20000.0, 12000.0, true, 1.0};
+    m_imageGamma = {0.2, 4.0, 1.0, false, 0.01};
+    m_imageContrast = {0.2, 4.0, 1.0, false, 0.01};
+    m_imageThreshold = {0.0, 0.95, 0.0, false, 0.01};
+    m_imageLoops = {1.0, 8.0, 1.0, false, 1.0};
+    m_imageIterations = {0.0, 64.0, 24.0, false, 1.0};
+    m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
+    m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
+    m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};
+    m_masteringSmoothing = {0.0, 4.0, 1.0, false, 1.0};
     m_framePositionControl = {0.0, 1.0, 0.0, false, 0.001};
     m_frameWeightControl = {0.0, 2.0, 1.0, false, 0.01};
     m_tableRootControl = {0.0, 127.0, 60.0, false, 1.0};
@@ -306,6 +364,7 @@ App::~App() {
     m_recorder.stop();
     m_player.close();
     if (m_spectrogramTexture) SDL_DestroyTexture(m_spectrogramTexture);
+    if (m_imageTexture) SDL_DestroyTexture(m_imageTexture);
     TTF_Font* fonts[] = {m_fontSmall, m_font, m_fontBold, m_fontTitle};
     for (int i = 0; i < 4; ++i) {
         if (!fonts[i]) continue;
@@ -402,7 +461,7 @@ bool App::init(const std::string& initialPath) {
     }
     m_view.fit(1);
     updateWindowTitle();
-    setStatus("Drop an audio file or press Ctrl+O", 6000);
+    setStatus("Drop audio/image or press Ctrl+O", 6000);
     if (!initialPath.empty()) loadFile(initialPath);
     return true;
 }
@@ -575,8 +634,9 @@ void App::draw() {
                            kContent.a);
     SDL_RenderFillRect(m_renderer, &content);
 
-    if (m_timeline.empty()) {
-        drawText("Open audio or create your first track", content.x + 40,
+    if (m_timeline.empty() && m_tab != vwave::EditorTab::Image &&
+        m_tab != vwave::EditorTab::Mastering) {
+        drawText("Open audio/image or create your first track", content.x + 40,
                  content.y + 60, kTextDim, fontTitle());
         drawText("Ctrl+O or drag and drop WAV, AIFF, FLAC, OGG",
                  content.x + 40, content.y + 96, kTextFaint, fontNormal());
@@ -586,8 +646,12 @@ void App::draw() {
         drawWaveform(content);
     } else if (m_tab == vwave::EditorTab::Spectrum) {
         drawSpectrum(content);
-    } else {
+    } else if (m_tab == vwave::EditorTab::Wavetable) {
         drawWavetable(content);
+    } else if (m_tab == vwave::EditorTab::Mastering) {
+        drawMastering(content);
+    } else {
+        drawImage(content);
     }
 
     drawFooter();
@@ -659,6 +723,7 @@ const vwave::Document& App::activeDocument() const {
 }
 
 void App::syncTrackControls() {
+    m_mastering = {};
     const size_t count = static_cast<size_t>(m_timeline.trackCount());
     m_trackControls.resize(count);
     for (size_t i = 0; i < count; ++i) {
@@ -873,6 +938,7 @@ void App::syncSelectionFromActive() {
 }
 
 void App::updateMixer() {
+    m_mastering = {};
     if (m_player.isPlaying()) m_player.updateMix(m_timeline);
 }
 
@@ -964,7 +1030,7 @@ void App::drawMenuBar() {
     file.items = {
         action("Open...",
                [this] {
-                   openDialog(DialogMode::Open, "Open audio or project", "",
+                   openDialog(DialogMode::Open, "Open audio, project, or image", "",
                               false);
                }, true, "Ctrl+O"),
         action("Add Track...",
@@ -1132,7 +1198,21 @@ void App::drawMenuBar() {
         action("Apply Stretch",
                [this] { stretchSelection(m_processTarget == 1); }, audio),
         action("Apply Pitch",
-               [this] { pitchSelection(m_processTarget == 1); }, audio)};
+               [this] { pitchSelection(m_processTarget == 1); }, audio),
+        separator(),
+        action("Analyze Stems",
+               [this] {
+                   setTab(vwave::EditorTab::Mastering);
+                   analyzeMasteringStems();
+               }, tracks, "4"),
+        action("Export Mastering Report...",
+               [this] {
+                   openDialog(DialogMode::SaveMasteringReport,
+                              "Export mastering report",
+                              (std::filesystem::current_path() /
+                               "mastering.json").string(),
+                              true);
+               }, m_mastering.valid)};
     Menu view;
     view.title = "View";
     view.items = {
@@ -1142,6 +1222,10 @@ void App::drawMenuBar() {
                true, "2"),
         action("Wavetable", [this] { setTab(vwave::EditorTab::Wavetable); },
                true, "3"),
+        action("Mastering", [this] { setTab(vwave::EditorTab::Mastering); },
+               true, "4"),
+        action("Image", [this] { setTab(vwave::EditorTab::Image); }, true,
+               "5"),
         separator(),
         action("Zoom In", [this] { zoomTime(1.25); }, tracks, "+"),
         action("Zoom Out", [this] { zoomTime(0.8); }, tracks, "-"),
@@ -1261,10 +1345,16 @@ void App::drawToolbar() {
     addButton("Wavetable", 354, tabY, 96, 29,
               [this] { setTab(vwave::EditorTab::Wavetable); }, false,
               m_tab == vwave::EditorTab::Wavetable);
+    addButton("Mastering", 454, tabY, 96, 29,
+              [this] { setTab(vwave::EditorTab::Mastering); }, false,
+              m_tab == vwave::EditorTab::Mastering);
+    addButton("Image", 554, tabY, 76, 29,
+              [this] { setTab(vwave::EditorTab::Image); }, false,
+              m_tab == vwave::EditorTab::Image);
 
-    int x = 468;
+    int x = 640;
     addButton("Open", x, tabY, 60, 29,
-              [this] { openDialog(DialogMode::Open, "Open audio or project",
+              [this] { openDialog(DialogMode::Open, "Open audio, project, or image",
                                   "", false); });
     x += 66;
     addButton("Add Track", x, tabY, 76, 29,
@@ -1426,9 +1516,19 @@ void App::drawSidebar() {
         drawText(truncateText(regionText, fontSmall(), 256), 18, y, kTextFaint,
                  fontSmall());
         y += 18;
+        grid({{std::string("View: ") + (m_spectrum3D ? "3D" : "2D"),
+               [this] {
+                   m_spectrum3D = !m_spectrum3D;
+                   if (m_spectrum3D) ensurePhaseSpectrogram();
+               }},
+              {"Fit Frequency", [this] { fitFrequency(); }}});
         grid({{"Freq -", [this] { zoomFrequency(0.5); }},
               {"Freq +", [this] { zoomFrequency(2.0); }}});
-        fullButton("Fit Frequency", [this] { fitFrequency(); });
+        if (m_spectrum3D) {
+            drawText("Phase color; alpha = confidence; 3D view is analysis-only.",
+                     18, y, kTextFaint, fontSmall());
+            y += 18;
+        }
         addSlider("Low frequency", formatHz(m_spectralLow.value), 18, y, 256,
                   m_spectralLow);
         y += 30;
@@ -1633,6 +1733,168 @@ void App::drawSidebar() {
                    m_wavetableView.clamp(m_wavetable.frameCount());
                    syncWavetableDesignControls();
                }}});
+    } else if (m_tab == vwave::EditorTab::Mastering) {
+        drawSection("MASTERING", y);
+        addButton(std::string("Profile: ") +
+                      kMasteringProfileNames[m_masteringProfile],
+                  18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
+                      m_masteringProfile =
+                          (m_masteringProfile + 1) %
+                          static_cast<int>(sizeof(kMasteringProfileNames) /
+                                           sizeof(kMasteringProfileNames[0]));
+                      m_mastering = {};
+                      setStatus("Mastering profile: " +
+                                std::string(kMasteringProfileNames[
+                                    m_masteringProfile]));
+                  });
+        y += buttonHeight + 6;
+        addButton("Analyze Stems", 18, y, buttonWidth * 2 + gap, 26,
+                  [this] { analyzeMasteringStems(); }, true, false,
+                  !m_timeline.empty());
+        y += 32;
+        addSlider("Bands", formatInt(m_masteringBands.value), 18, y, 256,
+                  m_masteringBands, [this](double) { m_mastering = {}; });
+        y += 30;
+        addSlider("Max cut", formatDb(-m_masteringMaxCut.value), 18, y, 256,
+                  m_masteringMaxCut, [this](double) { m_mastering = {}; });
+        y += 30;
+        addSlider("Max boost", formatDb(m_masteringMaxBoost.value), 18, y,
+                  256, m_masteringMaxBoost,
+                  [this](double) { m_mastering = {}; });
+        y += 30;
+        addSlider("Smoothing", formatInt(m_masteringSmoothing.value), 18, y,
+                  256, m_masteringSmoothing,
+                  [this](double) { m_mastering = {}; });
+        y += 30;
+        addButton(std::string("Include Muted: ") +
+                      (m_masteringIncludeMuted ? "On" : "Off"),
+                  18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
+                      m_masteringIncludeMuted = !m_masteringIncludeMuted;
+                      m_mastering = {};
+                  });
+        y += buttonHeight + 6;
+        addButton("Export Report", 18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] {
+                      openDialog(DialogMode::SaveMasteringReport,
+                                 "Export mastering report",
+                                 (std::filesystem::current_path() /
+                                  "mastering.json").string(),
+                                 true);
+                  }, false, false, m_mastering.valid);
+        y += buttonHeight + 6;
+        if (m_mastering.valid) {
+            std::ostringstream summary;
+            summary << m_mastering.stems.size() << " stems  "
+                    << m_mastering.bandCount << " bands";
+            drawText(summary.str(), 18, y, kTextDim, fontSmall());
+            y += 18;
+            std::ostringstream mix;
+            mix << "Mix RMS " << formatDb(m_mastering.mixRmsDb)
+                << "  TP " << formatDb(m_mastering.mixTruePeakDb);
+            drawText(mix.str(), 18, y, kTextDim, fontSmall());
+            y += 18;
+            std::ostringstream phase;
+            phase << "Phase " << std::fixed << std::setprecision(2)
+                  << m_mastering.phaseCoherence;
+            drawText(phase.str(), 18, y, kTextFaint, fontSmall());
+            y += 18;
+        }
+    } else if (m_tab == vwave::EditorTab::Image) {
+        const bool hasImage = m_image.valid();
+        auto imageGrid = [&](std::initializer_list<std::pair<
+                                 std::string, std::function<void()>>> items) {
+            int column = 0;
+            for (const auto& item : items) {
+                const int bx = 18 + column * (buttonWidth + gap);
+                addButton(item.first, bx, y, buttonWidth, buttonHeight,
+                          item.second, false, false, hasImage);
+                ++column;
+                if (column == 2) {
+                    column = 0;
+                    y += buttonHeight + 6;
+                }
+            }
+            if (column != 0) y += buttonHeight + 6;
+        };
+        drawSection("IMAGE SPECTROGRAM", y);
+        addButton("Load Image", 18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] {
+                      openDialog(DialogMode::LoadImage, "Load image",
+                                 (std::filesystem::current_path() /
+                                  "image.png").string(),
+                                 false);
+                  });
+        y += buttonHeight + 6;
+        addButton("Render to Track", 18, y, buttonWidth * 2 + gap, 26,
+                  [this] { renderImageToTrack(); }, true, false, hasImage);
+        y += 32;
+        if (hasImage) {
+            std::ostringstream info;
+            info << m_image.width << " x " << m_image.height << "   "
+                 << truncateText(baseName(m_imagePath), fontSmall(), 180);
+            drawText(info.str(), 18, y, kTextDim, fontSmall());
+            y += 18;
+        }
+        addSlider("Duration", formatSecondsControl(m_imageDuration.value), 18,
+                  y, 256, m_imageDuration);
+        y += 30;
+        addSlider("Min frequency", formatHz(m_imageMinHz.value), 18, y, 256,
+                  m_imageMinHz);
+        y += 30;
+        addSlider("Max frequency", formatHz(m_imageMaxHz.value), 18, y, 256,
+                  m_imageMaxHz);
+        y += 30;
+        imageGrid({{std::string("Freq: ") +
+                        kImageFrequencyNames[m_imageFrequencyScale],
+                    [this] {
+                        cycleImageFrequencyScale();
+                    }},
+                   {std::string("Time: ") +
+                        kImageTimeNames[m_imageTimeMapping],
+                    [this] { cycleImageTimeMapping(); }}});
+        imageGrid({{std::string("Phase: ") +
+                        kImagePhaseNames[m_imagePhaseMode],
+                    [this] { cycleImagePhaseMode(); }},
+                   {"FFT: " + std::to_string(kFrameSizes[m_imageFftIndex]),
+                    [this] {
+                        m_imageFftIndex =
+                            (m_imageFftIndex + 1) %
+                            static_cast<int>(sizeof(kFrameSizes) /
+                                             sizeof(kFrameSizes[0]));
+                    }}});
+        imageGrid({{std::string("Channels: ") +
+                        (m_imageStereo ? "Stereo" : "Mono"),
+                    [this] { m_imageStereo = !m_imageStereo; }},
+                   {std::string("Invert: ") +
+                        (m_imageInvert ? "On" : "Off"),
+                    [this] { m_imageInvert = !m_imageInvert; }}});
+        imageGrid({{std::string("Alpha: ") +
+                        (m_imageUseAlpha ? "On" : "Off"),
+                    [this] { m_imageUseAlpha = !m_imageUseAlpha; }},
+                   {std::string("Normalize: ") +
+                        (m_imageNormalize ? "On" : "Off"),
+                    [this] { m_imageNormalize = !m_imageNormalize; }}});
+        imageGrid({{std::string("Flip H: ") +
+                        (m_imageFlipHorizontal ? "On" : "Off"),
+                    [this] { m_imageFlipHorizontal = !m_imageFlipHorizontal; }},
+                   {std::string("Flip V: ") +
+                        (m_imageFlipVertical ? "On" : "Off"),
+                    [this] { m_imageFlipVertical = !m_imageFlipVertical; }}});
+        addSlider("Loops", formatInt(m_imageLoops.value), 18, y, 256,
+                  m_imageLoops);
+        y += 30;
+        addSlider("Gamma", formatMorph(m_imageGamma.value), 18, y, 256,
+                  m_imageGamma);
+        y += 30;
+        addSlider("Contrast", formatMorph(m_imageContrast.value), 18, y, 256,
+                  m_imageContrast);
+        y += 30;
+        addSlider("Threshold", formatMorph(m_imageThreshold.value), 18, y, 256,
+                  m_imageThreshold);
+        y += 30;
+        addSlider("GL iterations", formatInt(m_imageIterations.value), 18, y,
+                  256, m_imageIterations);
+        y += 30;
     }
 
     drawSection("EDIT", y);
@@ -2287,7 +2549,23 @@ void App::ensureSpectrogram() {
     m_spectrogramTextureHeight = height;
 }
 
+void App::ensurePhaseSpectrogram() {
+    if (!m_phaseSpectrogramDirty && m_phaseSpectrogram.valid()) return;
+    m_phaseSpectrogramDirty = false;
+    const vwave::Audio& audio = activeDocument().audio();
+    if (audio.empty()) {
+        m_phaseSpectrogram = {};
+        return;
+    }
+    m_phaseSpectrogram =
+        vwave::computePhaseSpectrogram(audio, 2048, 1536);
+}
+
 void App::drawSpectrum(const SDL_Rect& area) {
+    if (m_spectrum3D) {
+        drawSpectrum3D(area);
+        return;
+    }
     ensureSpectrogram();
     m_spectrumArea = {area.x + 10, area.y + 38, area.w - 20, area.h - 74};
     SDL_Rect rect = m_spectrumArea;
@@ -2414,6 +2692,322 @@ void App::drawSpectrum(const SDL_Rect& area) {
              rect.x + 4, rect.y + rect.h + 8, kTextFaint, fontSmall());
 }
 
+void App::drawSpectrum3D(const SDL_Rect& area) {
+    ensurePhaseSpectrogram();
+    const int left = area.x + 20;
+    const int right = area.x + area.w - 20;
+    drawText("Phase-aware 3D spectrum", left, area.y + 8, kAccent,
+             fontBold());
+    if (!hasTracks() || activeDocument().audio().empty()) {
+        drawText("No active track", left, area.y + 54, kTextDim, fontNormal());
+        return;
+    }
+    if (!m_phaseSpectrogram.valid()) {
+        drawText("No phase data", left, area.y + 54, kTextDim, fontNormal());
+        return;
+    }
+    const int plotTop = area.y + 38;
+    const int plotBottom = area.y + area.h - 54;
+    const double plotW = static_cast<double>(right - left);
+    const double plotH = static_cast<double>(plotBottom - plotTop);
+    const double baseX = left + plotW * 0.03;
+    const double baseY = plotTop + plotH * 0.48;
+    const double depthX = plotW * 0.15;
+    const double depthY = plotH * 0.18;
+    const double freqW = plotW * 0.78;
+    const double ampH = plotH * 0.40;
+    m_spectrumArea = {left, plotTop, static_cast<int>(plotW),
+                      static_cast<int>(plotH)};
+    SDL_Rect frame{left, plotTop, static_cast<int>(plotW),
+                   static_cast<int>(plotH)};
+    SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b, 255);
+    SDL_RenderFillRect(m_renderer, &frame);
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
+    SDL_RenderDrawRect(m_renderer, &frame);
+
+    const double maxLimit = std::min(
+        20000.0, std::max(1000.0, m_timeline.sampleRate() / 2.0));
+    const double minHz = std::clamp(m_spectralView.minHz, 10.0, maxLimit);
+    const double maxHz =
+        std::clamp(m_spectralView.maxHz, minHz + 1.0, maxLimit);
+    const double logRatio = std::log(maxHz / minHz);
+    const double floorDb = std::max(
+        -120.0, m_phaseSpectrogram.maxDb - 72.0);
+    const double spanDb = std::max(1.0, m_phaseSpectrogram.maxDb - floorDb);
+
+    const int timeSlices = std::clamp(
+        m_phaseSpectrogram.frameCount, 1, 96);
+    const int columns = std::clamp(
+        static_cast<int>(plotW / 3.0), 80, 260);
+    struct SurfacePoint {
+        int x = 0;
+        int y = 0;
+        SDL_Color color{};
+    };
+    std::vector<SurfacePoint> previousRow;
+    std::vector<SurfacePoint> currentRow;
+    std::vector<SDL_Vertex> mesh;
+    for (int slice = 0; slice < timeSlices; ++slice) {
+        const double depth = timeSlices > 1
+                                 ? static_cast<double>(slice) /
+                                       static_cast<double>(timeSlices - 1)
+                                 : 0.0;
+        const int sourceFrame = timeSlices > 1
+                                    ? static_cast<int>(std::llround(
+                                          depth *
+                                          static_cast<double>(
+                                              m_phaseSpectrogram.frameCount -
+                                              1)))
+                                    : 0;
+        const double bx = baseX + depth * depthX;
+        const double by = baseY + depth * depthY;
+        currentRow.resize(static_cast<size_t>(columns));
+        for (int column = 0; column < columns; ++column) {
+            const double f = columns > 1
+                                 ? static_cast<double>(column) /
+                                       static_cast<double>(columns - 1)
+                                 : 0.0;
+            const double frequency = minHz * std::exp(logRatio * f);
+            const int bin = std::clamp(
+                static_cast<int>(std::llround(
+                    frequency * m_phaseSpectrogram.fftSize /
+                    std::max(1, m_phaseSpectrogram.sampleRate))),
+                0, m_phaseSpectrogram.binCount - 1);
+            const float db = m_phaseSpectrogram.dbAt(sourceFrame, bin);
+            const float confidence =
+                m_phaseSpectrogram.confidenceAt(sourceFrame, bin);
+            const float phase =
+                m_phaseSpectrogram.phaseAt(sourceFrame, bin);
+            const double normalized =
+                std::clamp((static_cast<double>(db) - floorDb) / spanDb,
+                           0.0, 1.0);
+            const double energyScale = std::pow(normalized, 0.65);
+            const Uint8 alpha = static_cast<Uint8>(std::clamp(
+                (25.0 + 150.0 * confidence) *
+                    (0.08 + 0.92 * energyScale) *
+                    (0.45 + 0.55 * depth),
+                0.0, 235.0));
+            SDL_Color color = phaseColor(phase, alpha);
+            const double brightness = 0.35 + 0.65 * energyScale;
+            color.r = static_cast<Uint8>(color.r * brightness);
+            color.g = static_cast<Uint8>(color.g * brightness);
+            color.b = static_cast<Uint8>(color.b * brightness);
+            currentRow[static_cast<size_t>(column)] = {
+                static_cast<int>(std::llround(bx + f * freqW)),
+                static_cast<int>(std::llround(by - normalized * ampH)),
+                color};
+        }
+        if (!previousRow.empty()) {
+            mesh.clear();
+            mesh.reserve(static_cast<size_t>(columns - 1) * 6);
+            const Uint8 fillAlpha = static_cast<Uint8>(
+                std::clamp(14.0 + 30.0 * depth, 0.0, 60.0));
+            const SDL_Color fill{kPanelRaised.r, kPanelRaised.g,
+                                 kPanelRaised.b, fillAlpha};
+            for (int column = 0; column + 1 < columns; ++column) {
+                const auto& a = previousRow[static_cast<size_t>(column)];
+                const auto& b = previousRow[static_cast<size_t>(column + 1)];
+                const auto& c = currentRow[static_cast<size_t>(column)];
+                const auto& d = currentRow[static_cast<size_t>(column + 1)];
+                mesh.push_back({SDL_FPoint{static_cast<float>(a.x),
+                                           static_cast<float>(a.y)},
+                                fill, SDL_FPoint{0.0f, 0.0f}});
+                mesh.push_back({SDL_FPoint{static_cast<float>(b.x),
+                                           static_cast<float>(b.y)},
+                                fill, SDL_FPoint{0.0f, 0.0f}});
+                mesh.push_back({SDL_FPoint{static_cast<float>(c.x),
+                                           static_cast<float>(c.y)},
+                                fill, SDL_FPoint{0.0f, 0.0f}});
+                mesh.push_back({SDL_FPoint{static_cast<float>(b.x),
+                                           static_cast<float>(b.y)},
+                                fill, SDL_FPoint{0.0f, 0.0f}});
+                mesh.push_back({SDL_FPoint{static_cast<float>(d.x),
+                                           static_cast<float>(d.y)},
+                                fill, SDL_FPoint{0.0f, 0.0f}});
+                mesh.push_back({SDL_FPoint{static_cast<float>(c.x),
+                                           static_cast<float>(c.y)},
+                                fill, SDL_FPoint{0.0f, 0.0f}});
+            }
+            if (!mesh.empty())
+                SDL_RenderGeometry(m_renderer, nullptr, mesh.data(),
+                                   static_cast<int>(mesh.size()), nullptr, 0);
+        }
+        for (int column = 0; column + 1 < columns; ++column) {
+            const auto& a = currentRow[static_cast<size_t>(column)];
+            const auto& b = currentRow[static_cast<size_t>(column + 1)];
+            if (b.color.a < 20) continue;
+            SDL_SetRenderDrawColor(m_renderer, b.color.r, b.color.g,
+                                   b.color.b, b.color.a);
+            SDL_RenderDrawLine(m_renderer, a.x, a.y, b.x, b.y);
+        }
+        previousRow = currentRow;
+    }
+
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 160);
+    SDL_RenderDrawLine(m_renderer, static_cast<int>(baseX),
+                       static_cast<int>(baseY),
+                       static_cast<int>(baseX + freqW),
+                       static_cast<int>(baseY));
+    SDL_RenderDrawLine(m_renderer, static_cast<int>(baseX),
+                       static_cast<int>(baseY),
+                       static_cast<int>(baseX + depthX),
+                       static_cast<int>(baseY + depthY));
+    SDL_RenderDrawLine(m_renderer, static_cast<int>(baseX),
+                       static_cast<int>(baseY),
+                       static_cast<int>(baseX),
+                       static_cast<int>(baseY - ampH));
+    SDL_RenderDrawLine(m_renderer, static_cast<int>(baseX + depthX),
+                       static_cast<int>(baseY + depthY),
+                       static_cast<int>(baseX + depthX + freqW),
+                       static_cast<int>(baseY + depthY));
+
+    if (m_spectrum3DHoverX >= 0 && m_spectrum3DHoverY >= 0) {
+        int bestDistance = 24;
+        int bestFrame = -1;
+        int bestBin = -1;
+        int bestX = 0;
+        int bestY = 0;
+        for (int slice = 0; slice < timeSlices; ++slice) {
+            const double depth = timeSlices > 1
+                                     ? static_cast<double>(slice) /
+                                           static_cast<double>(timeSlices - 1)
+                                     : 0.0;
+            const int sourceFrame = timeSlices > 1
+                                        ? static_cast<int>(std::llround(
+                                              depth *
+                                              static_cast<double>(
+                                                  m_phaseSpectrogram.frameCount -
+                                                  1)))
+                                        : 0;
+            const double bx = baseX + depth * depthX;
+            const double by = baseY + depth * depthY;
+            for (int column = 0; column < columns; ++column) {
+                const double f = columns > 1
+                                     ? static_cast<double>(column) /
+                                           static_cast<double>(columns - 1)
+                                     : 0.0;
+                const double frequency = minHz * std::exp(logRatio * f);
+                const int bin = std::clamp(
+                    static_cast<int>(std::llround(
+                        frequency * m_phaseSpectrogram.fftSize /
+                        std::max(1, m_phaseSpectrogram.sampleRate))),
+                    0, m_phaseSpectrogram.binCount - 1);
+                const float db = m_phaseSpectrogram.dbAt(sourceFrame, bin);
+                const double normalized =
+                    std::clamp((static_cast<double>(db) - floorDb) / spanDb,
+                               0.0, 1.0);
+                const int x = static_cast<int>(
+                    std::llround(bx + f * freqW));
+                const int y = static_cast<int>(std::llround(
+                    by - normalized * ampH));
+                const int dx = x - m_spectrum3DHoverX;
+                const int dy = y - m_spectrum3DHoverY;
+                const int distance = dx * dx + dy * dy;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestFrame = sourceFrame;
+                    bestBin = bin;
+                    bestX = x;
+                    bestY = y;
+                }
+            }
+        }
+        if (bestFrame >= 0 && bestBin >= 0) {
+            SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                   kAccent.b, 255);
+            SDL_RenderDrawLine(m_renderer, bestX - 5, bestY, bestX + 5,
+                               bestY);
+            SDL_RenderDrawLine(m_renderer, bestX, bestY - 5, bestX, bestY + 5);
+            const float phase = m_phaseSpectrogram.phaseAt(bestFrame, bestBin);
+            const float confidence =
+                m_phaseSpectrogram.confidenceAt(bestFrame, bestBin);
+            const float db = m_phaseSpectrogram.dbAt(bestFrame, bestBin);
+            const double frequency = m_phaseSpectrogram.binFrequency(bestBin);
+            const double instantaneous =
+                m_phaseSpectrogram.instantaneousHzAt(bestFrame, bestBin);
+            const int boxW = 248;
+            const int boxH = 64;
+            int boxX = std::clamp(m_spectrum3DHoverX + 12,
+                                  area.x + 4, area.x + area.w - boxW - 4);
+            int boxY = std::clamp(m_spectrum3DHoverY + 12,
+                                  area.y + 4, area.y + area.h - boxH - 4);
+            SDL_Rect box{boxX, boxY, boxW, boxH};
+            SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b,
+                                   240);
+            SDL_RenderFillRect(m_renderer, &box);
+            SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g,
+                                   kBorder.b, 255);
+            SDL_RenderDrawRect(m_renderer, &box);
+            std::ostringstream line1;
+            line1 << formatHz(frequency) << "   " << formatDb(db)
+                  << "   conf " << std::fixed << std::setprecision(2)
+                  << confidence;
+            std::ostringstream line2;
+            line2 << "phase " << std::fixed << std::setprecision(2)
+                  << phase << " rad   inst " << formatHz(instantaneous);
+            drawText(line1.str(), boxX + 6, boxY + 5, kText, fontSmall());
+            drawText(line2.str(), boxX + 6, boxY + 22, kTextDim, fontSmall());
+            drawText("phase color; alpha = confidence", boxX + 6,
+                     boxY + 39, kTextFaint, fontSmall());
+        }
+    }
+
+    const int labelY = static_cast<int>(baseY + depthY + 7);
+    const int maxLabelX =
+        static_cast<int>(baseX + depthX + freqW);
+    const std::string maxLabel = formatHz(maxHz);
+    const int maxLabelWidth = textWidth(maxLabel, fontSmall());
+    drawText(formatHz(minHz), static_cast<int>(baseX + depthX), labelY,
+             kTextFaint, fontSmall());
+    int lastLabelRight = static_cast<int>(baseX + depthX) +
+                         textWidth(formatHz(minHz), fontSmall());
+    for (double label : {100.0, 1000.0, 10000.0}) {
+        if (label <= minHz || label >= maxHz) continue;
+        const double f = std::log(label / minHz) / logRatio;
+        const int x = static_cast<int>(std::llround(
+            baseX + depthX + f * freqW));
+        const std::string text = formatHz(label);
+        const int width = textWidth(text, fontSmall());
+        if (x < lastLabelRight + 8 ||
+            x + width > maxLabelX - maxLabelWidth - 8)
+            continue;
+        drawText(text, x, labelY, kTextFaint, fontSmall());
+        lastLabelRight = x + width;
+    }
+    drawText(maxLabel, maxLabelX - maxLabelWidth, labelY, kTextFaint,
+             fontSmall());
+    drawText("0 dB", left + 2, static_cast<int>(baseY - ampH) - 6,
+             kTextFaint, fontSmall());
+    drawText("-72 dB", left + 2, static_cast<int>(baseY) - 6, kTextFaint,
+             fontSmall());
+    drawText("time", static_cast<int>(baseX + depthX * 0.45),
+             static_cast<int>(baseY + depthY * 0.55), kTextFaint, fontSmall());
+
+    const int legendX = right - 250;
+    const int legendY = area.y + 10;
+    drawText("phase", legendX, legendY, kTextFaint, fontSmall());
+    const int segments = 48;
+    for (int i = 0; i < segments; ++i) {
+        const float phase = -static_cast<float>(3.14159265358979323846) +
+                            2.0f * static_cast<float>(3.14159265358979323846) *
+                                static_cast<float>(i) /
+                                static_cast<float>(segments - 1);
+        const SDL_Color color = phaseColor(phase);
+        SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, 255);
+        SDL_Rect segment{legendX + 36 + i * 3, legendY + 1, 3, 10};
+        SDL_RenderFillRect(m_renderer, &segment);
+    }
+    drawText("-pi", legendX + 30, legendY + 14, kTextFaint, fontSmall());
+    drawText("+pi", legendX + 36 + segments * 3 - 20, legendY + 14,
+             kTextFaint, fontSmall());
+    std::ostringstream info;
+    info << m_phaseSpectrogram.frameCount << " frames  |  FFT "
+         << m_phaseSpectrogram.fftSize << "  |  "
+         << m_timeline.track(m_timeline.activeTrack()).name
+         << "  |  alpha = confidence";
+    drawText(info.str(), left, area.y + 24, kTextFaint, fontSmall());
+}
+
 void App::drawWavetable(const SDL_Rect& area) {
     m_wavetableArea = {area.x + 10, area.y + 30, area.w - 20,
                        static_cast<int>(area.h * 0.66)};
@@ -2508,6 +3102,335 @@ void App::drawWavetable(const SDL_Rect& area) {
             SDL_RenderDrawPoint(m_renderer, x + sub, y);
         }
     }
+}
+
+void App::analyzeMasteringStems() {
+    if (m_timeline.empty()) {
+        setStatus("Load stems or add tracks first");
+        return;
+    }
+    vwave::MasteringOptions options;
+    options.profile = static_cast<vwave::MasteringProfile>(
+        std::clamp(m_masteringProfile, 0,
+                   static_cast<int>(sizeof(kMasteringProfileNames) /
+                                    sizeof(kMasteringProfileNames[0])) -
+                       1));
+    options.bandCount =
+        static_cast<int>(std::lround(m_masteringBands.value));
+    options.maxCutDb = m_masteringMaxCut.value;
+    options.maxBoostDb = m_masteringMaxBoost.value;
+    options.smoothingBands =
+        static_cast<int>(std::lround(m_masteringSmoothing.value));
+    options.includeMuted = m_masteringIncludeMuted;
+    std::string error;
+    m_mastering =
+        vwave::analyzeMastering(m_timeline, options, &error);
+    if (!m_mastering.valid) {
+        setStatus(error.empty() ? "Mastering analysis failed" : error, 6000);
+        return;
+    }
+    setStatus("Analyzed " + std::to_string(m_mastering.stems.size()) +
+              " stems across " + std::to_string(m_mastering.bandCount) +
+              " bands");
+}
+
+void App::saveMasteringReport(const std::string& path) {
+    if (!m_mastering.valid) {
+        setStatus("Analyze stems first");
+        return;
+    }
+    std::string error;
+    if (!vwave::saveMasteringAnalysis(m_mastering, path, &error)) {
+        setStatus(error.empty() ? "Mastering report save failed" : error,
+                  6000);
+        return;
+    }
+    setStatus("Saved mastering report " + baseName(path));
+}
+
+void App::drawMastering(const SDL_Rect& area) {
+    if (!m_mastering.valid) {
+        drawText("No mastering analysis", area.x + 40, area.y + 54,
+                 kTextDim, fontTitle());
+        drawText("Add aligned stems as tracks, then press Analyze Stems.",
+                 area.x + 40, area.y + 90, kTextFaint, fontNormal());
+        drawText("Profiles offer different spectral-allocation goals.",
+                 area.x + 40, area.y + 112, kTextFaint, fontSmall());
+        return;
+    }
+    const int left = area.x + 18;
+    const int right = area.x + area.w - 18;
+    std::ostringstream summary;
+    summary << m_mastering.stems.size() << " stems  |  "
+            << kMasteringProfileNames[m_masteringProfile] << "  |  "
+            << "Mix RMS " << formatDb(m_mastering.mixRmsDb) << "  |  "
+            << "True peak " << formatDb(m_mastering.mixTruePeakDb) << "  |  "
+            << "Phase " << std::fixed << std::setprecision(2)
+            << m_mastering.phaseCoherence;
+    drawText(summary.str(), left, area.y + 10, kTextDim, fontSmall());
+    drawText("red = suggested cut    green = suggested boost    top = mix band level",
+             right - 520, area.y + 10, kTextFaint, fontSmall());
+
+    const int bandCount = std::max(1, m_mastering.bandCount);
+    const int spectrumX = left;
+    const int spectrumY = area.y + 36;
+    const int spectrumW = right - left;
+    const int spectrumH = std::max(90, static_cast<int>(area.h * 0.36));
+    SDL_Rect spectrum{spectrumX, spectrumY, spectrumW, spectrumH};
+    SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b, 255);
+    SDL_RenderFillRect(m_renderer, &spectrum);
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
+    SDL_RenderDrawRect(m_renderer, &spectrum);
+    const double cellWidth =
+        static_cast<double>(spectrumW) / static_cast<double>(bandCount);
+    for (int band = 0; band < bandCount; ++band) {
+        const auto& info = m_mastering.bands[static_cast<size_t>(band)];
+        const double normalized =
+            std::clamp((info.mixPowerDb + 72.0) / 72.0, 0.0, 1.0);
+        const int barHeight = static_cast<int>(
+            normalized * static_cast<double>(spectrumH - 12));
+        const int x = spectrumX +
+                      static_cast<int>(std::floor(band * cellWidth));
+        const int nextX = spectrumX + static_cast<int>(
+                                           std::floor((band + 1) * cellWidth));
+        const int width = std::max(1, nextX - x - 1);
+        SDL_Rect bar{x, spectrumY + spectrumH - 6 - barHeight, width,
+                     barHeight};
+        SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b,
+                               170);
+        SDL_RenderFillRect(m_renderer, &bar);
+        const double masking =
+            std::clamp(info.maskingDb / 12.0, 0.0, 1.0);
+        SDL_Rect maskBar{x, spectrumY, width,
+                         std::max(1, static_cast<int>(masking * 8.0))};
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               160);
+        SDL_RenderFillRect(m_renderer, &maskBar);
+    }
+    for (int band = 0; band < bandCount; ++band) {
+        const auto& info = m_mastering.bands[static_cast<size_t>(band)];
+        const int x = spectrumX +
+                      static_cast<int>(std::floor(band * cellWidth));
+        const int nextX = spectrumX + static_cast<int>(
+                                           std::floor((band + 1) * cellWidth));
+        const int width = std::max(1, nextX - x - 1);
+        const double coherence = std::clamp(info.phaseCoherence, 0.0, 1.0);
+        const int red = static_cast<int>(220.0 * (1.0 - coherence));
+        const int green = static_cast<int>(180.0 * coherence + 40.0);
+        SDL_SetRenderDrawColor(m_renderer, red, green, 80, 220);
+        SDL_RenderDrawLine(m_renderer, x, spectrumY + spectrumH - 4,
+                           x + width, spectrumY + spectrumH - 4);
+    }
+    for (double hz : {100.0, 1000.0, 10000.0}) {
+        for (int band = 0; band < bandCount; ++band) {
+            const auto& info = m_mastering.bands[static_cast<size_t>(band)];
+            if (hz >= info.lowHz && hz < info.highHz) {
+                const int x = spectrumX + static_cast<int>(
+                                               (band + 0.5) * cellWidth);
+                drawText(formatHz(hz), x - 14, spectrumY + spectrumH + 6,
+                         kTextFaint, fontSmall());
+                break;
+            }
+        }
+    }
+
+    const int rowAreaY = spectrumY + spectrumH + 30;
+    const int rowAreaH = area.y + area.h - rowAreaY - 12;
+    const int labelWidth = 156;
+    const int rowCount = std::max(1, static_cast<int>(m_mastering.stems.size()));
+    const int rowHeight =
+        std::max(20, std::min(38, rowAreaH / rowCount));
+    const int cellX = left + labelWidth;
+    const int cellAreaW = right - cellX;
+    const double gainCellWidth =
+        static_cast<double>(cellAreaW) / static_cast<double>(bandCount);
+    for (int stemIndex = 0; stemIndex < rowCount; ++stemIndex) {
+        const auto& stem = m_mastering.stems[static_cast<size_t>(stemIndex)];
+        const int y = rowAreaY + stemIndex * rowHeight;
+        const SDL_Color color = stem.muted ? kTextFaint : kText;
+        drawText(truncateText(stem.name, fontSmall(), labelWidth - 12),
+                 left, y + 3, color, fontSmall());
+        std::ostringstream levels;
+        levels << "RMS " << formatDb(stem.rmsDb) << "  TP "
+               << formatDb(stem.truePeakDb);
+        drawText(levels.str(), left, y + 17, kTextFaint, fontSmall());
+        for (int band = 0; band < bandCount; ++band) {
+            const auto& info = stem.bands[static_cast<size_t>(band)];
+            const int x = cellX + static_cast<int>(
+                                        std::floor(band * gainCellWidth));
+            const int nextX = cellX + static_cast<int>(
+                                           std::floor((band + 1) *
+                                                      gainCellWidth));
+            SDL_Rect cell{x, y, std::max(1, nextX - x - 1),
+                          std::max(10, rowHeight - 4)};
+            SDL_Color fill{kPanelRaised.r, kPanelRaised.g, kPanelRaised.b,
+                           255};
+            if (info.suggestedGainDb < -0.05) {
+                const double amount =
+                    std::clamp(-info.suggestedGainDb /
+                                   std::max(0.001, m_masteringMaxCut.value),
+                               0.0, 1.0);
+                fill = {static_cast<Uint8>(130 + 100 * amount),
+                        static_cast<Uint8>(60 * (1.0 - amount)),
+                        static_cast<Uint8>(60 * (1.0 - amount)), 255};
+            } else if (info.suggestedGainDb > 0.05) {
+                const double amount =
+                    std::clamp(info.suggestedGainDb /
+                                   std::max(0.001, m_masteringMaxBoost.value),
+                               0.0, 1.0);
+                fill = {static_cast<Uint8>(50 * (1.0 - amount)),
+                        static_cast<Uint8>(110 + 90 * amount),
+                        static_cast<Uint8>(60 * (1.0 - amount)), 255};
+            }
+            SDL_SetRenderDrawColor(m_renderer, fill.r, fill.g, fill.b, 255);
+            SDL_RenderFillRect(m_renderer, &cell);
+            if (info.dominant) {
+                SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                       kAccent.b, 180);
+                SDL_RenderDrawRect(m_renderer, &cell);
+            }
+        }
+    }
+    drawText("Rows are stems; columns are logarithmic frequency bands.",
+             left, area.y + area.h - 10, kTextFaint, fontSmall());
+}
+
+void App::cycleImagePhaseMode() {
+    m_imagePhaseMode = (m_imagePhaseMode + 1) % 5;
+}
+
+void App::cycleImageFrequencyScale() {
+    m_imageFrequencyScale = (m_imageFrequencyScale + 1) % 2;
+}
+
+void App::cycleImageTimeMapping() {
+    m_imageTimeMapping = (m_imageTimeMapping + 1) % 3;
+}
+
+void App::loadImage(const std::string& path) {
+    vwave::ImageData image;
+    std::string error;
+    if (!vwave::loadImageFile(path, image, &error)) {
+        setStatus(error.empty() ? "Image load failed" : error, 6000);
+        return;
+    }
+    if (m_imageTexture) {
+        SDL_DestroyTexture(m_imageTexture);
+        m_imageTexture = nullptr;
+    }
+    m_image = std::move(image);
+    m_imagePath = path;
+    m_imageTexture = SDL_CreateTexture(
+        m_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
+        m_image.width, m_image.height);
+    if (m_imageTexture) {
+        SDL_UpdateTexture(m_imageTexture, nullptr, m_image.pixels.data(),
+                          m_image.width * 4);
+        SDL_SetTextureBlendMode(m_imageTexture, SDL_BLENDMODE_BLEND);
+    }
+    setTab(vwave::EditorTab::Image);
+    setStatus("Loaded image " + baseName(path));
+}
+
+void App::renderImageToTrack() {
+    if (!m_image.valid()) {
+        setStatus("Load an image first");
+        return;
+    }
+    vwave::ImageSpectrogramOptions options;
+    options.sampleRate =
+        m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;
+    options.fftSize = kFrameSizes[m_imageFftIndex];
+    options.hopSize = std::max(64, options.fftSize / 4);
+    options.duration = m_imageDuration.value;
+    options.minHz = m_imageMinHz.value;
+    options.maxHz = m_imageMaxHz.value;
+    options.frequencyScale = static_cast<vwave::ImageFrequencyScale>(
+        m_imageFrequencyScale);
+    options.timeMapping = static_cast<vwave::ImageTimeMapping>(
+        m_imageTimeMapping);
+    options.loops = static_cast<int>(std::lround(m_imageLoops.value));
+    options.flipHorizontal = m_imageFlipHorizontal;
+    options.flipVertical = m_imageFlipVertical;
+    options.invert = m_imageInvert;
+    options.gamma = m_imageGamma.value;
+    options.contrast = m_imageContrast.value;
+    options.threshold = m_imageThreshold.value;
+    options.useAlpha = m_imageUseAlpha;
+    options.phaseMode = static_cast<vwave::ImagePhaseMode>(m_imagePhaseMode);
+    options.iterations =
+        static_cast<int>(std::lround(m_imageIterations.value));
+    options.channels = m_imageStereo ? 2 : 1;
+    options.normalize = m_imageNormalize;
+    options.peak = 0.9;
+    std::string error;
+    const vwave::ImageSpectrogramResult generated =
+        vwave::imageToSpectrogram(m_image, options, &error);
+    if (generated.audio.empty()) {
+        setStatus(error.empty() ? "Image render failed" : error, 6000);
+        return;
+    }
+    m_player.stop();
+    std::string name = std::filesystem::path(m_imagePath).stem().string();
+    if (name.empty()) name = "Image";
+    const int64_t start =
+        clampFrame(m_playhead, m_timeline.lengthFrames());
+    if (!m_timeline.addAudioTrack(name, generated.audio, start, &error)) {
+        setStatus("Cannot add image track: " + error);
+        return;
+    }
+    m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
+    syncTrackControls();
+    m_view.fit(m_timeline.lengthFrames());
+    m_playhead = start;
+    clearAnalysis();
+    setTab(vwave::EditorTab::Waveform);
+    updateWindowTitle();
+    setStatus("Rendered image to track (" +
+              formatSeconds(generated.duration) + ")");
+}
+
+void App::drawImage(const SDL_Rect& area) {
+    if (!m_image.valid()) {
+        drawText("No image loaded", area.x + 40, area.y + 54, kTextDim,
+                 fontTitle());
+        drawText("Load a PNG, JPEG, BMP, TGA, GIF, PPM, PGM, or HDR image.",
+                 area.x + 40, area.y + 90, kTextFaint, fontNormal());
+        drawText("Bright pixels become spectral magnitude; the image maps to time and frequency.",
+                 area.x + 40, area.y + 112, kTextFaint, fontSmall());
+        return;
+    }
+    drawText("Image to spectrogram", area.x + 20, area.y + 10, kAccent,
+             fontBold());
+    std::ostringstream info;
+    info << m_image.width << " x " << m_image.height << "   "
+         << kImageFrequencyNames[m_imageFrequencyScale] << " frequency   "
+         << kImageTimeNames[m_imageTimeMapping] << " time   "
+         << kImagePhaseNames[m_imagePhaseMode];
+    drawText(info.str(), area.x + 20, area.y + 28, kTextFaint, fontSmall());
+
+    const int availableW = area.w - 40;
+    const int availableH = area.h - 72;
+    const double scale = std::min(
+        static_cast<double>(availableW) / std::max(1, m_image.width),
+        static_cast<double>(availableH) / std::max(1, m_image.height));
+    const int drawW = std::max(1, static_cast<int>(m_image.width * scale));
+    const int drawH = std::max(1, static_cast<int>(m_image.height * scale));
+    SDL_Rect target{area.x + (area.w - drawW) / 2,
+                    area.y + 46 + (availableH - drawH) / 2, drawW, drawH};
+    SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b, 255);
+    SDL_RenderFillRect(m_renderer, &target);
+    if (m_imageTexture) {
+        SDL_RenderCopy(m_renderer, m_imageTexture, nullptr, &target);
+    }
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
+    SDL_RenderDrawRect(m_renderer, &target);
+    drawText("time ->", target.x, target.y + target.h + 4, kTextFaint,
+             fontSmall());
+    drawText("^ high frequency", target.x, target.y - 14, kTextFaint,
+             fontSmall());
+    drawText("Brightness = magnitude; color can drive phase; alpha gates.",
+             area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
 }
 
 void App::drawSettingsDialog() {
@@ -2614,6 +3537,8 @@ void App::drawDialog() {
 void App::setTab(vwave::EditorTab tab) {
     if (m_tab != tab) m_sidebarScroll = 0.0;
     m_tab = tab;
+    m_spectrum3DHoverX = -1;
+    m_spectrum3DHoverY = -1;
     if (tab == vwave::EditorTab::Spectrum) m_spectrogramDirty = true;
 }
 
@@ -2673,6 +3598,8 @@ void App::runEdit(const std::function<bool(std::string*)>& edit,
 }
 
 void App::markEdited() {
+    m_mastering = {};
+    m_phaseSpectrogramDirty = true;
     syncSelectionFromActive();
     m_view.clamp(m_timeline.lengthFrames());
     m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
@@ -2687,6 +3614,8 @@ void App::markEdited() {
 }
 
 void App::clearAnalysis() {
+    m_mastering = {};
+    m_phaseSpectrogramDirty = true;
     m_hasBeats = false;
     m_hasPitch = false;
     m_beats = {};
@@ -2913,6 +3842,10 @@ bool App::loadFile(const std::string& path) {
     const std::string extension =
         std::filesystem::path(path).extension().string();
     if (extension == ".vwdoc") return loadProject(path);
+    if (isImagePath(path)) {
+        loadImage(path);
+        return m_image.valid();
+    }
     return loadAudio(path);
 }
 
@@ -3405,6 +4338,12 @@ void App::confirmDialog() {
     case DialogMode::LoadWavetable:
         loadWavetable(path);
         break;
+    case DialogMode::SaveMasteringReport:
+        saveMasteringReport(path);
+        break;
+    case DialogMode::LoadImage:
+        loadImage(path);
+        break;
     case DialogMode::ExportSlices:
         exportSlices(path);
         break;
@@ -3430,6 +4369,7 @@ void App::handleEvent(const SDL_Event& event) {
         const std::string extension =
             std::filesystem::path(path).extension().string();
         if (extension == ".vwdoc") loadProject(path);
+        else if (isImagePath(path)) loadImage(path);
         else if (m_timeline.empty()) loadAudio(path);
         else addTrackFile(path);
         break;
@@ -3491,7 +4431,7 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
     if (ctrl && key == SDLK_COMMA) {
         openSettings();
     } else if (ctrl && key == SDLK_o) {
-        openDialog(DialogMode::Open, "Open audio or project", "", false);
+        openDialog(DialogMode::Open, "Open audio, project, or image", "", false);
     } else if (ctrl && shift && key == SDLK_s) {
         openDialog(DialogMode::SaveProject, "Save project", m_projectPath,
                    true);
@@ -3551,6 +4491,10 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         setTab(vwave::EditorTab::Spectrum);
     } else if (key == SDLK_3) {
         setTab(vwave::EditorTab::Wavetable);
+    } else if (key == SDLK_4) {
+        setTab(vwave::EditorTab::Mastering);
+    } else if (key == SDLK_5) {
+        setTab(vwave::EditorTab::Image);
     } else if (key == SDLK_b) {
         analyzeBeats();
     } else if (key == SDLK_p) {
@@ -3719,6 +4663,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
             m_draggingSelection = true;
         }
     } else if (m_tab == vwave::EditorTab::Spectrum) {
+        if (m_spectrum3D) return;
         SDL_Point point{event.x, event.y};
         if (SDL_PointInRect(&point, &m_spectrumArea)) {
             m_draggingSpectrum = true;
@@ -3766,6 +4711,16 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
     if (m_sliderDragging) {
         setSliderFromX(m_activeSlider, event.x);
         return;
+    }
+    if (m_tab == vwave::EditorTab::Spectrum && m_spectrum3D) {
+        SDL_Point point{event.x, event.y};
+        if (SDL_PointInRect(&point, &m_spectrumArea)) {
+            m_spectrum3DHoverX = event.x;
+            m_spectrum3DHoverY = event.y;
+        } else {
+            m_spectrum3DHoverX = -1;
+            m_spectrum3DHoverY = -1;
+        }
     }
     if (m_draggingSelection) {
         const int64_t frame =
@@ -3873,7 +4828,11 @@ void App::handleWheel(const SDL_MouseWheelEvent& event) {
         return;
     }
     if (!SDL_PointInRect(&wheelPoint, &m_contentRect)) return;
+    if (m_tab == vwave::EditorTab::Mastering ||
+        m_tab == vwave::EditorTab::Image)
+        return;
     if (m_tab == vwave::EditorTab::Spectrum) {
+        if (m_spectrum3D) return;
         if (!SDL_PointInRect(&wheelPoint, &m_spectrumArea)) return;
         if ((SDL_GetModState() & KMOD_CTRL) != 0) {
             const double center = m_spectralView.frequencyAtY(

@@ -9,6 +9,8 @@ reuses design/algorithmic work from YAWN.
   Sources in `third_party/lua54`.
 - **nlohmann/json** — Copyright (C) 2013-2023 Niels Lohmann. MIT license.
   Header in `third_party/nlohmann/json.hpp`.
+- **stb_image** — public domain / MIT (dual licensed). Header in
+  `third_party/stb_image.h`. Used for image decoding.
 
 ## Linked
 

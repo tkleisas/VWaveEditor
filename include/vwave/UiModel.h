@@ -10,7 +10,9 @@ namespace vwave {
 enum class EditorTab {
     Waveform,
     Spectrum,
-    Wavetable
+    Wavetable,
+    Mastering,
+    Image
 };
 
 struct WaveformViewport {

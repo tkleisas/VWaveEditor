@@ -7,6 +7,8 @@ seconds unless a frame count is explicitly named.
 vwave info <audio>
 vwave process <audio> <out> [options]
 vwave analyze <audio> [--beats] [--pitch]
+vwave mastering <project.vwdoc> [--profile NAME] [--out report.json]
+vwave image <image> <out.wav> [options]
 vwave slices <audio> <directory> [--mode transients|beats|markers]
 vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]
 vwave wavetable-design <spec.json> <out.vwt>
@@ -107,6 +109,38 @@ vwave slices break.wav slices/ --mode beats
 ```
 
 Writes one WAV per slice and a `*_manifest.json` in the output directory.
+
+## image
+
+```sh
+vwave image cover.png cover.wav --duration 8 --phase fast_griffin_lim
+vwave image art.jpg art.wav --duration 12 --min-hz 40 --max-hz 16000 \
+    --freq-scale logarithmic --time-map mirrored --channels 2
+```
+
+Renders an image into audio through inverse STFT. Brightness becomes magnitude;
+hue can drive phase; alpha gates. Supported decoding includes PNG, JPEG, BMP,
+TGA, GIF, PPM/PGM, and HDR. See [Image to spectrogram](IMAGE_SPECTROGRAM.md).
+
+Options: `--duration`, `--fft-size`, `--hop`, `--sample-rate`, `--min-hz`,
+`--max-hz`, `--freq-scale`, `--time-map`, `--loops`, `--gamma`, `--contrast`,
+`--threshold`, `--invert`, `--no-alpha`, `--phase`, `--iterations`, `--seed`,
+`--channels`, `--no-normalize`, `--peak`.
+
+## mastering
+
+```sh
+vwave mastering session.vwdoc --profile definition --out mastering.json
+vwave mastering session.vwdoc --profile separation --band-count 48     --max-cut 18 --smoothing 2 --include-muted
+```
+
+Analyzes aligned timeline stems without changing audio. Profiles are
+`balanced`, `definition`, `separation`, `fullness`, `loudness`, and `custom`.
+The report includes per-band masking, phase coherence, per-stem levels, and
+suggested gain curves. See [Mastering analysis](MASTERING.md).
+
+Options: `--profile`, `--out`, `--band-count`, `--fft-size`, `--hop`,
+`--max-cut`, `--max-boost`, `--smoothing`, `--include-muted`.
 
 ## wavetable
 

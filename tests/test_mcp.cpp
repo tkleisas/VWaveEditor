@@ -217,4 +217,8 @@ VWTEST("mcp tool names are stable") {
           names.end());
     CHECK(std::find(names.begin(), names.end(), "vwave_synth_note") !=
           names.end());
+    CHECK(std::find(names.begin(), names.end(), "vwave_mastering_analysis") !=
+          names.end());
+    CHECK(std::find(names.begin(), names.end(), "vwave_image_spectrogram") !=
+          names.end());
 }
