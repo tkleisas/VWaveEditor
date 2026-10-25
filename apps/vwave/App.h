@@ -74,6 +74,7 @@ private:
         SaveAudio,
         SaveProject,
         SaveWavetable,
+        LoadWavetable,
         ExportSlices
     };
 
@@ -147,8 +148,16 @@ private:
     void cancelDialog();
     void exportSlices(const std::string& directory);
     void extractWavetable();
+    void loadWavetable(const std::string& path);
     void saveWavetable(const std::string& path);
     void renderWavetableNote();
+    void syncWavetableDesignControls();
+    void addWavetableFrame(bool duplicate);
+    void addHarmonicWavetableFrame();
+    void deleteWavetableFrame();
+    void cycleWavetableMorphMode();
+    void cycleWavetableInterpolation();
+    void cycleWavetableOversampling();
     void applySpectralGain(double db);
     void applySpectralFilter(bool lowpass);
     void applySpectralGate();
@@ -249,6 +258,8 @@ private:
     bool m_hasPitch = false;
     vwave::Wavetable m_wavetable;
     vwave::WavetableViewport m_wavetableView;
+    std::vector<double> m_frameWeights;
+    bool m_freeBlend = false;
     vwave::Spectrogram m_spectrogram;
     SDL_Texture* m_spectrogramTexture = nullptr;
     int m_spectrogramTextureWidth = 0;
@@ -308,6 +319,12 @@ private:
     vwave::ParameterSlider m_synthMorph;
     vwave::ParameterSlider m_synthUnison;
     vwave::ParameterSlider m_synthGain;
+    vwave::ParameterSlider m_framePositionControl;
+    vwave::ParameterSlider m_frameWeightControl;
+    vwave::ParameterSlider m_tableRootControl;
+    vwave::ParameterSlider m_harmonicCount;
+    vwave::ParameterSlider m_harmonicLimit;
+    vwave::ParameterSlider m_quantizeBits;
     int m_stretchAlgorithm = 0;
     int m_sliceMode = 0;
     int m_processTarget = 0;

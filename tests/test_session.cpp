@@ -4,6 +4,7 @@
 #include "vwave/AudioIO.h"
 #include "vwave/Processing.h"
 #include "vwave/Session.h"
+#include "vwave/Wavetable.h"
 
 #include <nlohmann/json.hpp>
 
@@ -510,10 +511,74 @@ VWTEST("session command list is stable") {
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "wavetable") !=
           commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "wavetable_design") !=
+          commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "add_track") !=
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "track_set") !=
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "save_mixdown") !=
           commands.end());
+}
+
+VWTEST("session wavetable design builds morphing and quality metadata") {
+    TempDirectory directory;
+    Session session;
+    std::string error;
+    const std::string tablePath =
+        (directory.path() / "design.vwt").string();
+    const json result = session.execute(
+        "wavetable_design",
+        {{"path", tablePath},
+         {"name", "designed"},
+         {"frame_size", 256},
+         {"sample_rate", 44100},
+         {"root_note", 57.0},
+         {"morph_mode", "equal_power"},
+         {"interpolation", "cubic"},
+         {"oversampling", 4},
+         {"frames",
+          json::array({json{{"harmonics", {0.0, 1.0}}, {"position", 0.0}},
+                       json{{"harmonics", {0.0, 0.0, 0.5}},
+                            {"position", 0.5}},
+                       json{{"harmonics", {0.0, 0.25, 1.0}},
+                            {"position", 1.0}}})}},
+        &error);
+    REQUIRE(!result.is_null());
+    CHECK_EQ(result["frame_count"], 3);
+    CHECK_EQ(result["root_note"].get<double>(), 57.0);
+    CHECK_EQ(result["morph_mode"].get<std::string>(), "equal_power");
+    CHECK_EQ(result["interpolation"].get<std::string>(), "cubic");
+    CHECK_EQ(result["oversampling"], 4);
+    CHECK(std::filesystem::exists(tablePath));
+
+    Wavetable table;
+    REQUIRE(Wavetable::load(tablePath, table, &error));
+    CHECK(table.morphMode() == WavetableMorphMode::EqualPower);
+    CHECK(table.interpolation() == WavetableInterpolation::Cubic);
+    CHECK_EQ(table.frameCount(), 3);
+    CHECK_NEAR(table.framePosition(1), 0.5, 1e-12);
+
+    const std::string notePath =
+        (directory.path() / "designed.wav").string();
+    const json note = session.execute(
+        "synth_note",
+        {{"wavetable", tablePath},
+         {"midi_note", 57.0},
+         {"duration", 0.05},
+         {"use_table_root", true},
+         {"blend_weights", {1.0, 0.0, 0.0}},
+         {"out", notePath}},
+        &error);
+    REQUIRE(!note.is_null());
+    CHECK(std::filesystem::exists(notePath));
+
+    const json invalid = session.execute(
+        "wavetable_design",
+        {{"path", (directory.path() / "bad.vwt").string()},
+         {"frames", json::array({json{{"harmonics", {0.0, 1.0}}}})},
+         {"morph_mode", "not-a-mode"}},
+        &error);
+    CHECK(invalid.is_null());
+    CHECK(!error.empty());
 }

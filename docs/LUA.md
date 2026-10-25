@@ -140,6 +140,22 @@ vwave.synth("/samples/pad.vwt", 60, 2.0, "/samples/note.wav")
 Wavetable paths ending in `.wav` are exported as concatenated frames plus a
 sidecar; other extensions use the self-contained `.vwt` format.
 
+The generic `vwave.apply` bridge exposes every Session command, including the
+wavetable designer:
+
+```lua
+vwave.apply("wavetable_design", {
+    path = "/samples/designed.vwt",
+    frame_size = 2048,
+    root_note = 60,
+    morph_mode = "harmonic",
+    frames = {
+        { harmonics = { 0, 1.0 }, position = 0.0 },
+        { harmonics = { 0, 0.5, 1.0 }, position = 1.0 }
+    }
+})
+```
+
 ## Capture
 
 ```lua

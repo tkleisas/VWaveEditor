@@ -265,7 +265,12 @@ Deferred:
 - collaborative editing;
 - multichannel beyond stereo in the first UI iteration (core is
   channel-agnostic);
-- mobile frontends.
+- mobile frontends;
+- image-to-spectrogram synthesis;
+- oscilloscope-music path generation;
+- phase-aware pseudo-3D spectral display;
+- multi-wave wavetable morph designer;
+- mastering analysis and cross-track dynamic spectral allocation.
 
 ## Risks
 
@@ -282,7 +287,7 @@ Deferred:
 
 ## Implementation status
 
-As of the v0.0.3 development line:
+As of the v0.0.4 development line:
 
 - Phases 0–8 are implemented and test-green.
 - Multi-track Timeline, track controls, multi-track playback/export, recording,
@@ -296,3 +301,95 @@ As of the v0.0.3 development line:
   pitch, slicing, spectral editing, wavetables, synthesis, sweep deconvolution,
   settings, ring buffers, UI viewport math, C ABI, and a headless desktop smoke
   test.
+
+## Future feature plan (post-v0.0.4)
+
+Detailed design notes and options are recorded in
+[docs/IDEAS.md](IDEAS.md). Phase 9 is implemented; phases 10+ are proposals.
+
+### Phase 9: Wavetable designer and morph lab (implemented)
+
+Implemented: ordered keyframes and free blending; linear, equal-power,
+phase-aligned, spectral, and harmonic morph modes; nearest/linear/cubic phase
+interpolation; optional phase alignment, band limiting, quantization, phase
+randomization, and 1x-8x synth oversampling; `.vwt` v2 persistence with raw
+data preserved; WAV + sidecar metadata; designer controls, Lua/MCP/CLI command
+surfaces; and YAWN Custom-table import via its own **Load .vwt...** button,
+including project/preset persistence.
+
+Original scope:
+
+- Ordered and free-blend multi-keyframe tables.
+- Linear, equal-power, phase-aligned, spectral, and harmonic morph modes.
+- Explicit quality/artefact controls: phase alignment, normalization, DC,
+  aliasing/band-limiting, resampling quality, quantization, phase randomization.
+- Designer UI with import/draw/harmonics, keyframe strip, morph automation,
+  A/B preview, and v2 `.vwt` persistence.
+- A shared, tested wavetable interchange path for YAWN; modify YAWN as needed to
+  load custom VWaveEditor wavetables while preserving raw/non-normalized data.
+- Tests for endpoints, boundedness, phase alignment, raw aliasing determinism,
+  persistence, and VWaveEditor-to-YAWN frame/morph round-trips.
+
+### Phase 10: Phase-aware pseudo-3D spectrum
+
+- Extend spectrogram data with phase, instantaneous frequency, and confidence.
+- Waterfall/surface views with magnitude height and phase color/readout.
+- Masking/noise-floor display and time-frequency selection linked to editing.
+- CPU projection first, with OpenGL renderer upgrade if needed.
+
+### Phase 11: Image-to-spectrogram
+
+- UI image import and pixel-buffer core API.
+- Luminance/color/alpha mapping controls and time/frequency remapping.
+- Griffin–Lim/phase-locked/random/color-phase reconstruction.
+- Preview, generated-track recipe, and Lua/MCP/CLI generator commands.
+
+### Phase 12: Oscilloscope music
+
+- XY scope view and time selection.
+- Parametric/polyline/path rendering to stereo audio with band-limited and raw
+  modes.
+- Arc traversal, loops, passes, smoothing, and path persistence.
+- Path recipe stored on generated tracks.
+
+### Phase 13: Mastering spectral allocation
+
+- Analysis-only assistant for multi-track masking/overlap.
+- Objectives: loudness under a true-peak ceiling, separation, definition,
+  complementary EQ, masking reduction, reference matching.
+- Constraints: per-track/band gain limits, true peak, phase/mono compatibility,
+  smoothing rates, transient preservation.
+- Start with preview and derived-track renders; add real-time track automation
+  after per-track DSP state and undo integration.
+- Tests on synthetic stems for masking reduction, constraints, determinism, and
+  clicks.
+
+### Agreed priorities
+
+The phase numbers below group capability workstreams; the delivery order is:
+
+1. ~~Wavetable designer and morph lab, including YAWN import.~~ Implemented.
+2. Mastering analysis for one performance's stems.
+3. Phase-aware pseudo-3D spectrum.
+4. Image-to-spectrogram.
+5. Oscilloscope music.
+6. Mastering processing.
+
+Additional constraints:
+
+- Wavetable YAWN import is a first-class requirement for phase 9; YAWN may be
+  modified to consume VWaveEditor wavetables.
+- Wavetable morphing must support both ordered keyframes and free blending from
+  the first release.
+- Mastering starts with analysis on stems from one performance.
+- Mastering is profile-based rather than one universal objective: loudness,
+  definition/gaps, separation, reference matching, and custom control.
+- Rendering/automatic processing follows the analysis phase.
+
+### Remaining decisions
+
+- Exact first-release mastering metrics and weights.
+- Whether later mastering processing produces derived tracks or real-time track
+  automation.
+- Whether generator recipes become shared first-class track metadata.
+- Which standard third-party wavetable metadata profile to target for WAV export.

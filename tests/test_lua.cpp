@@ -4,6 +4,7 @@
 #include "vwave/AudioIO.h"
 #include "vwave/Scripting.h"
 #include "vwave/Session.h"
+#include "vwave/Wavetable.h"
 
 #include <cmath>
 #include <algorithm>
@@ -184,4 +185,26 @@ VWTEST("lua script files run with diagnostics") {
     error.clear();
     CHECK(!engine.runFile("/no/such/script.lua", &error));
     CHECK(!error.empty());
+}
+
+VWTEST("lua generic bridge builds wavetable designs") {
+    Session session;
+    ScriptEngine engine(session);
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "lua-design.vwt").generic_string();
+    const std::string script =
+        "local result = vwave.apply('wavetable_design', {"
+        "path = '" + path + "', frame_size = 256, morph_mode = 'spectral',"
+        "frames = {"
+        "{harmonics = {0.0, 1.0}, position = 0.0},"
+        "{harmonics = {0.0, 0.0, 0.5}, position = 1.0}"
+        "}})";
+    std::string error;
+    REQUIRE(engine.runString(script, &error));
+    CHECK(std::filesystem::exists(path));
+    Wavetable table;
+    REQUIRE(Wavetable::load(path, table, &error));
+    CHECK_EQ(table.frameCount(), 2);
+    CHECK(table.morphMode() == WavetableMorphMode::Spectral);
 }

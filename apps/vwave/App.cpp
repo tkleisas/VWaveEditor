@@ -263,6 +263,11 @@ const char* const kAlgorithmNames[] = {"WSOLA", "Phase Vocoder",
                                        "PaulStretch"};
 const int kFrameSizes[] = {256, 512, 1024, 2048, 4096, 8192};
 const char* const kSliceModeNames[] = {"Transients", "Beats", "Markers"};
+const char* const kMorphModeNames[] = {"Linear", "Equal Power",
+                                       "Phase Aligned", "Spectral",
+                                       "Harmonic"};
+const char* const kInterpolationNames[] = {"Nearest", "Linear", "Cubic"};
+const int kWavetableOversampling[] = {1, 2, 4, 8};
 
 } // namespace
 
@@ -289,6 +294,12 @@ App::App() {
     m_synthMorph = {0.0, 1.0, 0.0, false, 0.01};
     m_synthUnison = {1.0, 8.0, 1.0, false, 1.0};
     m_synthGain = {0.0, 1.0, 0.7, false, 0.01};
+    m_framePositionControl = {0.0, 1.0, 0.0, false, 0.001};
+    m_frameWeightControl = {0.0, 2.0, 1.0, false, 0.01};
+    m_tableRootControl = {0.0, 127.0, 60.0, false, 1.0};
+    m_harmonicCount = {1.0, 128.0, 16.0, true, 1.0};
+    m_harmonicLimit = {1.0, 512.0, 64.0, true, 1.0};
+    m_quantizeBits = {1.0, 24.0, 8.0, false, 1.0};
 }
 
 App::~App() {
@@ -692,6 +703,7 @@ void App::selectTrack(int index) {
     m_timeline.setActiveTrack(index);
     clearAnalysis();
     m_wavetable = {};
+    m_frameWeights.clear();
     m_wavetableView.selectedFrame = 0;
     m_view.clamp(m_timeline.lengthFrames());
     setStatus("Track: " + m_timeline.track(index).name);
@@ -706,6 +718,7 @@ void App::removeTrack(int index) {
     syncTrackControls();
     clearAnalysis();
     m_wavetable = {};
+    m_frameWeights.clear();
     m_wavetableView.selectedFrame = 0;
     m_view.fit(m_timeline.lengthFrames());
     m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
@@ -1447,6 +1460,28 @@ void App::drawSidebar() {
                   18, y, 256, m_spectralBlurFrequency);
         y += 30;
     } else if (m_tab == vwave::EditorTab::Wavetable) {
+        syncWavetableDesignControls();
+        auto wtGrid = [&](std::initializer_list<std::pair<
+                              std::string, std::function<void()>>> items) {
+            int column = 0;
+            for (const auto& item : items) {
+                const int bx = 18 + column * (buttonWidth + gap);
+                addButton(item.first, bx, y, buttonWidth, buttonHeight,
+                          item.second, false, false, m_wavetable.valid());
+                ++column;
+                if (column == 2) {
+                    column = 0;
+                    y += buttonHeight + 6;
+                }
+            }
+            if (column != 0) y += buttonHeight + 6;
+        };
+        auto wtFullButton = [&](const std::string& label,
+                                std::function<void()> action) {
+            addButton(label, 18, y, buttonWidth * 2 + gap, buttonHeight,
+                      std::move(action), false, false, m_wavetable.valid());
+            y += buttonHeight + 6;
+        };
         drawSection("WAVETABLE", y);
         grid({{"Size: " + std::to_string(kFrameSizes[m_frameSizeIndex]),
                [this] {
@@ -1456,20 +1491,116 @@ void App::drawSidebar() {
                                         sizeof(kFrameSizes[0]));
                }},
               {"Extract", [this] { extractWavetable(); }}});
+        addButton("Load Wavetable", 18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] {
+                      openDialog(DialogMode::LoadWavetable, "Load wavetable",
+                                 (std::filesystem::current_path() /
+                                  "wavetable.vwt").string(),
+                                 false);
+                  });
+        y += buttonHeight + 6;
         addSlider("Frame count", formatInt(m_wavetableFrameCount.value), 18, y,
                   256, m_wavetableFrameCount);
         y += 30;
-        grid({{"Save", [this] {
-                   openDialog(DialogMode::SaveWavetable, "Save wavetable",
-                              (std::filesystem::current_path() /
-                               "wavetable.vwt").string(),
-                              true);
-               }},
-              {"Normalize", [this] {
-                   if (!m_wavetable.valid()) return;
-                   m_wavetable.normalizeFrames();
-                   setStatus("Wavetable normalized");
-               }}});
+        wtGrid({{"Save", [this] {
+                    openDialog(DialogMode::SaveWavetable, "Save wavetable",
+                               (std::filesystem::current_path() /
+                                "wavetable.vwt").string(),
+                               true);
+                }},
+               {"Normalize", [this] {
+                    if (!m_wavetable.valid()) return;
+                    m_wavetable.normalizeFrames();
+                    setStatus("Wavetable normalized");
+                }}});
+        if (m_wavetable.valid()) {
+            drawSection("DESIGN", y);
+            wtGrid({{std::string("Morph: ") +
+                       kMorphModeNames[static_cast<int>(
+                           m_wavetable.morphMode())],
+                   [this] { cycleWavetableMorphMode(); }},
+                  {std::string("Interp: ") +
+                       kInterpolationNames[static_cast<int>(
+                           m_wavetable.interpolation())],
+                   [this] { cycleWavetableInterpolation(); }}});
+            wtGrid({{"Oversample: " + std::to_string(m_wavetable.oversampling()) +
+                       "x",
+                   [this] { cycleWavetableOversampling(); }},
+                  {"Add Frame", [this] { addWavetableFrame(false); }}});
+            wtGrid({{"Duplicate", [this] { addWavetableFrame(true); }},
+                  {"Delete", [this] { deleteWavetableFrame(); }}});
+            addSlider("Harmonics", formatInt(m_harmonicCount.value), 18, y,
+                      256, m_harmonicCount);
+            y += 30;
+            wtFullButton("Add Harmonic Frame",
+                         [this] { addHarmonicWavetableFrame(); });
+            addSlider("Position", formatMorph(m_framePositionControl.value), 18,
+                      y, 256, m_framePositionControl, [this](double value) {
+                          if (!m_wavetable.valid()) return;
+                          m_wavetable.setFramePosition(
+                              m_wavetableView.selectedFrame, value);
+                      });
+            y += 30;
+            addSlider("Table root", formatMidiNote(m_tableRootControl.value), 18,
+                      y, 256, m_tableRootControl, [this](double value) {
+                          if (m_wavetable.valid())
+                              m_wavetable.setRootNote(value);
+                      });
+            y += 30;
+            wtGrid({{"Align Phases", [this] {
+                       if (!m_wavetable.valid()) return;
+                       m_wavetable.phaseAlignFrames();
+                       setStatus("Wavetable frames phase aligned");
+                   }},
+                  {"Band Limit", [this] {
+                       if (!m_wavetable.valid()) return;
+                       m_wavetable.bandLimitFrames(
+                           static_cast<int>(std::lround(m_harmonicLimit.value)));
+                       setStatus("Wavetable band limited");
+                   }}});
+            addSlider("Harmonic limit", formatInt(m_harmonicLimit.value), 18,
+                      y, 256, m_harmonicLimit);
+            y += 30;
+            addSlider("Quantize bits", formatInt(m_quantizeBits.value), 18, y,
+                      256, m_quantizeBits);
+            y += 30;
+            wtGrid({{"Apply Quantize", [this] {
+                       if (!m_wavetable.valid()) return;
+                       m_wavetable.quantizeFrames(
+                           static_cast<int>(std::lround(m_quantizeBits.value)));
+                       setStatus("Wavetable quantized");
+                   }},
+                  {"Random Phases", [this] {
+                       if (!m_wavetable.valid()) return;
+                       m_wavetable.randomizePhases(1);
+                       setStatus("Wavetable phases randomized");
+                   }}});
+            drawSection("FREE BLEND", y);
+            wtGrid({{std::string("Free Blend: ") +
+                       (m_freeBlend ? "On" : "Off"),
+                   [this] { m_freeBlend = !m_freeBlend; }},
+                  {"Reset Weights", [this] {
+                       if (!m_wavetable.valid()) return;
+                       m_frameWeights.assign(
+                           static_cast<size_t>(m_wavetable.frameCount()), 1.0);
+                       syncWavetableDesignControls();
+                   }}});
+            addSlider("Frame weight", formatMorph(m_frameWeightControl.value),
+                      18, y, 256, m_frameWeightControl, [this](double value) {
+                          if (!m_wavetable.valid()) return;
+                          if (static_cast<int>(m_frameWeights.size()) !=
+                              m_wavetable.frameCount())
+                              m_frameWeights.assign(
+                                  static_cast<size_t>(m_wavetable.frameCount()),
+                                  1.0);
+                          const int frame = m_wavetableView.selectedFrame;
+                          if (frame >= 0 &&
+                              frame < static_cast<int>(m_frameWeights.size()))
+                              m_frameWeights[static_cast<size_t>(frame)] =
+                                  value;
+                      });
+            y += 30;
+        }
         drawSection("SYNTH", y);
         addSlider("Note", formatMidiNote(m_synthNote.value), 18, y, 256,
                   m_synthNote);
@@ -1489,16 +1620,18 @@ void App::drawSidebar() {
         addSlider("Level", formatMorph(m_synthGain.value), 18, y, 256,
                   m_synthGain);
         y += 30;
-        fullButton("Render Note", [this] { renderWavetableNote(); });
-        grid({{"Prev Frame", [this] {
+        wtFullButton("Render Note", [this] { renderWavetableNote(); });
+        wtGrid({{"Prev Frame", [this] {
                    if (!m_wavetable.valid()) return;
                    --m_wavetableView.selectedFrame;
                    m_wavetableView.clamp(m_wavetable.frameCount());
+                   syncWavetableDesignControls();
                }},
               {"Next Frame", [this] {
                    if (!m_wavetable.valid()) return;
                    ++m_wavetableView.selectedFrame;
                    m_wavetableView.clamp(m_wavetable.frameCount());
+                   syncWavetableDesignControls();
                }}});
     }
 
@@ -2804,6 +2937,7 @@ bool App::loadAudio(const std::string& path) {
     m_projectPath.clear();
     syncTrackControls();
     m_wavetable = {};
+    m_frameWeights.clear();
     m_wavetableView.selectedFrame = 0;
     m_view.fit(m_timeline.lengthFrames());
     m_spectralView.maxHz = std::min(
@@ -2855,6 +2989,7 @@ bool App::loadProject(const std::string& path) {
     m_projectPath = path;
     m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
     m_wavetable = {};
+    m_frameWeights.clear();
     m_wavetableView.selectedFrame = 0;
     syncTrackControls();
     m_view.fit(m_timeline.lengthFrames());
@@ -2936,10 +3071,30 @@ void App::extractWavetable() {
         setStatus(error.empty() ? "Wavetable extraction failed" : error);
         return;
     }
+    m_frameWeights.assign(static_cast<size_t>(m_wavetable.frameCount()), 1.0);
+    m_freeBlend = false;
+    m_wavetable.setRootNote(m_tableRootControl.value);
     m_wavetableView.selectedFrame = 0;
+    syncWavetableDesignControls();
     setTab(vwave::EditorTab::Wavetable);
     setStatus("Extracted " + std::to_string(m_wavetable.frameCount()) +
               " wavetable frames");
+}
+
+void App::loadWavetable(const std::string& path) {
+    std::string error;
+    vwave::Wavetable loaded;
+    if (!vwave::Wavetable::loadAuto(path, loaded, &error)) {
+        setStatus(error.empty() ? "Wavetable load failed" : error, 6000);
+        return;
+    }
+    m_wavetable = std::move(loaded);
+    m_frameWeights.assign(static_cast<size_t>(m_wavetable.frameCount()), 1.0);
+    m_freeBlend = false;
+    m_wavetableView.selectedFrame = 0;
+    syncWavetableDesignControls();
+    setTab(vwave::EditorTab::Wavetable);
+    setStatus("Loaded wavetable " + baseName(path));
 }
 
 void App::saveWavetable(const std::string& path) {
@@ -2965,6 +3120,135 @@ void App::saveWavetable(const std::string& path) {
     setStatus("Saved wavetable " + baseName(target));
 }
 
+void App::syncWavetableDesignControls() {
+    if (!m_wavetable.valid()) return;
+    if (static_cast<int>(m_frameWeights.size()) != m_wavetable.frameCount())
+        m_frameWeights.assign(static_cast<size_t>(m_wavetable.frameCount()),
+                              1.0);
+    m_wavetableView.clamp(m_wavetable.frameCount());
+    const int frame = m_wavetableView.selectedFrame;
+    m_framePositionControl.setValue(m_wavetable.framePosition(frame));
+    m_frameWeightControl.setValue(m_frameWeights[static_cast<size_t>(frame)]);
+    m_tableRootControl.setValue(m_wavetable.rootNote());
+}
+
+void App::addWavetableFrame(bool duplicate) {
+    if (!m_wavetable.valid()) return;
+    const int selected = std::clamp(m_wavetableView.selectedFrame, 0,
+                                    m_wavetable.frameCount() - 1);
+    std::vector<float> samples =
+        duplicate ? m_wavetable.frame(selected)
+                  : std::vector<float>(
+                        static_cast<size_t>(m_wavetable.frameSize()), 0.0f);
+    double position = 1.0;
+    if (m_wavetable.frameCount() > 1) {
+        const double current = m_wavetable.framePosition(selected);
+        const double next =
+            selected + 1 < m_wavetable.frameCount()
+                ? m_wavetable.framePosition(selected + 1)
+                : 1.0;
+        position = std::clamp((current + next) * 0.5, 0.0, 1.0);
+    }
+    if (!m_wavetable.addKeyframe(samples, position)) {
+        setStatus("Cannot add wavetable frame");
+        return;
+    }
+    m_frameWeights.push_back(1.0);
+    m_wavetableView.selectedFrame = m_wavetable.frameCount() - 1;
+    syncWavetableDesignControls();
+    setStatus(duplicate ? "Duplicated wavetable frame"
+                        : "Added wavetable frame");
+}
+
+void App::addHarmonicWavetableFrame() {
+    if (!m_wavetable.valid()) return;
+    const int frameSize = m_wavetable.frameSize();
+    const int harmonics = std::clamp(
+        static_cast<int>(std::lround(m_harmonicCount.value)), 1,
+        std::min(128, frameSize / 2));
+    std::vector<double> amplitudes(static_cast<size_t>(harmonics + 1), 0.0);
+    for (int harmonic = 1; harmonic <= harmonics; ++harmonic)
+        amplitudes[static_cast<size_t>(harmonic)] =
+            1.0 / static_cast<double>(harmonic);
+    vwave::Wavetable generated(frameSize);
+    generated.addFrame(std::vector<float>(static_cast<size_t>(frameSize), 0.0f));
+    if (!generated.setFrameFromHarmonics(0, amplitudes)) {
+        setStatus("Cannot generate harmonic frame");
+        return;
+    }
+    generated.normalizeFrames(0.9f);
+    const int selected = std::clamp(m_wavetableView.selectedFrame, 0,
+                                    m_wavetable.frameCount() - 1);
+    double position = 1.0;
+    if (m_wavetable.frameCount() > 1) {
+        const double current = m_wavetable.framePosition(selected);
+        const double next =
+            selected + 1 < m_wavetable.frameCount()
+                ? m_wavetable.framePosition(selected + 1)
+                : 1.0;
+        position = std::clamp((current + next) * 0.5, 0.0, 1.0);
+    }
+    if (!m_wavetable.addKeyframe(generated.frame(0), position)) {
+        setStatus("Cannot add harmonic frame");
+        return;
+    }
+    m_frameWeights.push_back(1.0);
+    m_wavetableView.selectedFrame = m_wavetable.frameCount() - 1;
+    syncWavetableDesignControls();
+    setStatus("Added " + std::to_string(harmonics) + "-harmonic frame");
+}
+
+void App::deleteWavetableFrame() {
+    if (!m_wavetable.valid()) return;
+    if (m_wavetable.frameCount() <= 1) {
+        setStatus("Keep at least one wavetable frame");
+        return;
+    }
+    const int selected = std::clamp(m_wavetableView.selectedFrame, 0,
+                                    m_wavetable.frameCount() - 1);
+    if (!m_wavetable.removeFrame(selected)) return;
+    if (selected < static_cast<int>(m_frameWeights.size()))
+        m_frameWeights.erase(m_frameWeights.begin() + selected);
+    m_wavetableView.clamp(m_wavetable.frameCount());
+    syncWavetableDesignControls();
+    setStatus("Removed wavetable frame");
+}
+
+void App::cycleWavetableMorphMode() {
+    if (!m_wavetable.valid()) return;
+    const int next =
+        (static_cast<int>(m_wavetable.morphMode()) + 1) % 5;
+    m_wavetable.setMorphMode(static_cast<vwave::WavetableMorphMode>(next));
+    syncWavetableDesignControls();
+}
+
+void App::cycleWavetableInterpolation() {
+    if (!m_wavetable.valid()) return;
+    const int next =
+        (static_cast<int>(m_wavetable.interpolation()) + 1) % 3;
+    m_wavetable.setInterpolation(
+        static_cast<vwave::WavetableInterpolation>(next));
+    syncWavetableDesignControls();
+}
+
+void App::cycleWavetableOversampling() {
+    if (!m_wavetable.valid()) return;
+    int index = 0;
+    for (int i = 0;
+         i < static_cast<int>(sizeof(kWavetableOversampling) /
+                              sizeof(kWavetableOversampling[0]));
+         ++i) {
+        if (kWavetableOversampling[i] == m_wavetable.oversampling()) {
+            index = i;
+            break;
+        }
+    }
+    index = (index + 1) %
+            static_cast<int>(sizeof(kWavetableOversampling) /
+                             sizeof(kWavetableOversampling[0]));
+    m_wavetable.setOversampling(kWavetableOversampling[index]);
+}
+
 void App::renderWavetableNote() {
     if (!m_wavetable.valid()) {
         setStatus("Extract a wavetable first");
@@ -2977,6 +3261,12 @@ void App::renderWavetableNote() {
     options.gain = m_synthGain.value;
     options.morph = m_synthMorph.value;
     options.unison = static_cast<int>(std::lround(m_synthUnison.value));
+    if (m_freeBlend) {
+        if (static_cast<int>(m_frameWeights.size()) ==
+            m_wavetable.frameCount()) {
+            options.blendWeights = m_frameWeights;
+        }
+    }
     const vwave::Audio note = vwave::renderWavetableNote(
         m_wavetable, m_synthNote.value, m_synthDuration.value, options);
     if (note.empty()) {
@@ -3111,6 +3401,9 @@ void App::confirmDialog() {
         break;
     case DialogMode::SaveWavetable:
         saveWavetable(path);
+        break;
+    case DialogMode::LoadWavetable:
+        loadWavetable(path);
         break;
     case DialogMode::ExportSlices:
         exportSlices(path);

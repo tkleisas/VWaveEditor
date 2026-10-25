@@ -20,6 +20,9 @@ struct SynthNoteOptions {
     double gain = 0.8;
     int unison = 1;
     double detuneCents = 0.0;
+    int oversampling = 0;
+    bool useWavetableRootNote = false;
+    std::vector<double> blendWeights;
     Adsr envelope;
 };
 

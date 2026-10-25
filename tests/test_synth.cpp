@@ -144,3 +144,51 @@ VWTEST("wavetable synth rejects invalid requests") {
     options.channels = 3;
     CHECK(renderWavetableNote(table, 60.0, 0.1, options).empty());
 }
+
+VWTEST("wavetable synth free blend uses frame weights") {
+    Wavetable table(1024, "blend");
+    REQUIRE(table.addFrame([] {
+        std::vector<float> frame(1024);
+        for (int i = 0; i < 1024; ++i)
+            frame[static_cast<size_t>(i)] = static_cast<float>(
+                0.8 * std::sin(2.0 * 3.14159265358979323846 * i / 1024.0));
+        return frame;
+    }()));
+    REQUIRE(table.addFrame(std::vector<float>(1024, 0.0f)));
+    SynthNoteOptions options;
+    options.sampleRate = 48000;
+    options.channels = 1;
+    options.rootNote = 69.0;
+    options.gain = 0.8;
+    options.envelope.attack = 0.0;
+    options.envelope.decay = 0.0;
+    options.envelope.sustain = 1.0;
+    options.envelope.release = 0.01;
+    options.blendWeights = {1.0, 0.0};
+    const Audio first = renderWavetableNote(table, 69.0, 0.1, options);
+    CHECK(rms(first, 0.0, 0.08) > 0.2);
+    options.blendWeights = {0.0, 1.0};
+    const Audio second = renderWavetableNote(table, 69.0, 0.1, options);
+    CHECK(rms(second, 0.0, 0.08) < 1e-6);
+    options.blendWeights = {1.0};
+    CHECK(renderWavetableNote(table, 69.0, 0.1, options).empty());
+}
+
+VWTEST("wavetable synth supports oversampling and table root note") {
+    Wavetable table = Wavetable::fromHarmonics({0.0, 1.0}, 2048, "oversample");
+    table.setSampleRate(48000);
+    table.setRootNote(57.0);
+    SynthNoteOptions options;
+    options.sampleRate = 48000;
+    options.channels = 2;
+    options.useWavetableRootNote = true;
+    options.oversampling = 4;
+    const Audio note = renderWavetableNote(table, 57.0, 0.1, options);
+    CHECK_EQ(note.numFrames(), int64_t{4800});
+    CHECK_EQ(note.numChannels(), 2);
+    CHECK_NEAR(dominantFrequency(note, 0.02, 0.08), 440.0, 4.0);
+    for (int64_t i = 0; i < note.numFrames(); ++i) {
+        CHECK(std::isfinite(note.sample(0, i)));
+        CHECK(std::isfinite(note.sample(1, i)));
+    }
+}

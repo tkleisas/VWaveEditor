@@ -8,6 +8,7 @@
 #include "vwave/Wavetable.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -137,6 +138,111 @@ nlohmann::json markerToJson(const Marker& marker, int sampleRate) {
     return {{"frame", marker.frame},
             {"time", static_cast<double>(marker.frame) / sampleRate},
             {"name", marker.name}};
+}
+
+bool parseDoubleArray(const nlohmann::json& value,
+                      std::vector<double>& out) {
+    if (!value.is_array()) return false;
+    out.clear();
+    out.reserve(value.size());
+    for (const auto& item : value) {
+        if (!item.is_number()) return false;
+        const double number = item.get<double>();
+        if (!std::isfinite(number)) return false;
+        out.push_back(number);
+    }
+    return true;
+}
+
+nlohmann::json wavetableToJson(const Wavetable& table) {
+    const auto& options = table.designOptions();
+    return {{"ok", true},
+            {"name", table.name()},
+            {"frame_size", table.frameSize()},
+            {"frame_count", table.frameCount()},
+            {"sample_rate", table.sampleRate()},
+            {"root_note", options.rootNote},
+            {"morph_mode", wavetableMorphModeName(options.morphMode)},
+            {"interpolation",
+             wavetableInterpolationName(options.interpolation)},
+            {"oversampling", options.oversampling},
+            {"keyframe_positions", table.framePositions()},
+            {"band_limited", options.bandLimited},
+            {"max_harmonic", options.maxHarmonic},
+            {"quantization_bits", options.quantizationBits},
+            {"normalized", options.normalized},
+            {"dc_removed", options.dcRemoved},
+            {"phase_aligned", options.phaseAligned}};
+}
+
+bool applyWavetableParams(Wavetable& table, const nlohmann::json& params,
+                          std::string* error) {
+    if (params.contains("root_note")) {
+        table.setRootNote(params["root_note"].get<double>());
+    }
+    if (params.contains("morph_mode")) {
+        if (!params["morph_mode"].is_string()) {
+            setError(error, "morph_mode must be a string");
+            return false;
+        }
+        WavetableMorphMode mode;
+        const std::string name = params["morph_mode"].get<std::string>();
+        if (!wavetableMorphModeFromName(name, mode)) {
+            setError(error, "unknown morph_mode: " + name);
+            return false;
+        }
+        table.setMorphMode(mode);
+    }
+    if (params.contains("interpolation")) {
+        if (!params["interpolation"].is_string()) {
+            setError(error, "interpolation must be a string");
+            return false;
+        }
+        WavetableInterpolation interpolation;
+        const std::string name = params["interpolation"].get<std::string>();
+        if (!wavetableInterpolationFromName(name, interpolation)) {
+            setError(error, "unknown interpolation: " + name);
+            return false;
+        }
+        table.setInterpolation(interpolation);
+    }
+    if (params.contains("oversampling"))
+        table.setOversampling(params.value("oversampling", 1));
+    if (params.contains("keyframe_positions")) {
+        std::vector<double> positions;
+        if (!parseDoubleArray(params["keyframe_positions"], positions) ||
+            !table.setFramePositions(positions)) {
+            setError(error, "keyframe_positions must match frame_count");
+            return false;
+        }
+    }
+    if (params.value("align_frames", false)) table.phaseAlignFrames();
+    if (params.contains("max_harmonic"))
+        table.bandLimitFrames(params.value("max_harmonic", 0));
+    else if (params.value("band_limit", false))
+        table.bandLimitFrames(std::min(table.frameSize() / 2, 64));
+    if (params.contains("quantize_bits"))
+        table.quantizeFrames(params.value("quantize_bits", 0));
+    if (params.value("normalize_frames", false)) table.normalizeFrames();
+    if (params.value("remove_dc_frames", false)) table.removeDc();
+    if (params.contains("random_phase_seed")) {
+        const int seed = params.value("random_phase_seed", 0);
+        table.randomizePhases(static_cast<uint32_t>(seed));
+    }
+    return true;
+}
+
+bool saveWavetableFile(const Wavetable& table, const std::string& path,
+                       int sampleRate, std::string* error) {
+    std::string extension =
+        std::filesystem::path(path).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char c) {
+                       return static_cast<char>(std::tolower(c));
+                   });
+    if (extension == ".wav" || extension == ".wave")
+        return table.saveWav(path, sampleRate, error);
+    return table.save(path, error);
 }
 
 std::string requiredString(const nlohmann::json& params, const char* key,
@@ -868,35 +974,142 @@ nlohmann::json Session::execute(const std::string& command,
                     return nullptr;
                 }
                 std::vector<double> amplitudes;
-                for (const auto& value : params["amplitudes"])
-                    amplitudes.push_back(value.get<double>());
+                if (!parseDoubleArray(params["amplitudes"], amplitudes) ||
+                    amplitudes.size() < 2) {
+                    setError(error, "amplitudes must be a numeric array");
+                    return nullptr;
+                }
+                std::vector<double> phases;
+                if (params.contains("phases") &&
+                    !parseDoubleArray(params["phases"], phases)) {
+                    setError(error, "phases must be a numeric array");
+                    return nullptr;
+                }
                 table = Wavetable::fromHarmonics(
-                    amplitudes, optionalInt(params, "frame_size", 2048),
-                    params.value("name", std::string{"Wavetable"}));
-                table.setSampleRate(document().sampleRate());
+                    amplitudes, phases,
+                    optionalInt(params, "frame_size", 2048),
+                    params.value("name", std::string{"Wavetable"}),
+                    optionalBool(params, "normalize", true));
                 if (!table.valid()) {
                     setError(error, "cannot create wavetable from harmonics");
                     return nullptr;
                 }
             }
 
-            const std::string extension =
-                std::filesystem::path(path).extension().string();
-            if (extension == ".wav" || extension == ".wave") {
-                if (!table.saveWav(path,
-                                   optionalInt(params, "sample_rate",
-                                               document().sampleRate()),
+            if (!applyWavetableParams(table, params, error)) return nullptr;
+            const int sampleRate =
+                optionalInt(params, "sample_rate",
+                            table.sampleRate() > 0 ? table.sampleRate()
+                                                   : document().sampleRate());
+            if (sampleRate > 0) table.setSampleRate(sampleRate);
+            if (!saveWavetableFile(table, path,
+                                   sampleRate > 0 ? sampleRate : 48000,
                                    error))
-                    return nullptr;
-            } else {
-                if (!table.save(path, error)) return nullptr;
+                return nullptr;
+            nlohmann::json result = wavetableToJson(table);
+            result["path"] = path;
+            return result;
+        }
+
+        if (command == "wavetable_design") {
+            const std::string path = requiredString(params, "path", error);
+            if (path.empty()) return nullptr;
+            if (!params.contains("frames") || !params["frames"].is_array() ||
+                params["frames"].empty()) {
+                setError(error, "frames must be a non-empty array");
+                return nullptr;
             }
-            return {{"ok", true},
-                    {"path", path},
-                    {"name", table.name()},
-                    {"frame_size", table.frameSize()},
-                    {"frame_count", table.frameCount()},
-                    {"sample_rate", table.sampleRate()}};
+            const int frameSize =
+                std::clamp(optionalInt(params, "frame_size", 2048), 64, 65536);
+            const std::string name =
+                params.value("name", std::string{"Wavetable"});
+            const int sampleRate =
+                optionalInt(params, "sample_rate",
+                            document().sampleRate() > 0
+                                ? document().sampleRate()
+                                : 48000);
+            Wavetable table(frameSize, name);
+            table.setSampleRate(sampleRate > 0 ? sampleRate : 48000);
+            const auto& frames = params["frames"];
+            bool anyPositions = false;
+            for (const auto& frame : frames) {
+                if (frame.contains("position")) {
+                    anyPositions = true;
+                    break;
+                }
+            }
+            for (size_t frameIndex = 0; frameIndex < frames.size();
+                 ++frameIndex) {
+                const auto& frame = frames[frameIndex];
+                if (!frame.is_object()) {
+                    setError(error, "each frame must be an object");
+                    return nullptr;
+                }
+                std::vector<float> samples;
+                if (frame.contains("samples")) {
+                    std::vector<double> values;
+                    if (!parseDoubleArray(frame["samples"], values) ||
+                        static_cast<int>(values.size()) != frameSize) {
+                        setError(error, "frame samples must match frame_size");
+                        return nullptr;
+                    }
+                    samples.resize(values.size());
+                    for (size_t i = 0; i < values.size(); ++i)
+                        samples[i] = static_cast<float>(values[i]);
+                } else if (frame.contains("harmonics")) {
+                    std::vector<double> amplitudes;
+                    if (!parseDoubleArray(frame["harmonics"], amplitudes) ||
+                        amplitudes.size() < 2) {
+                        setError(error, "frame harmonics must be numeric");
+                        return nullptr;
+                    }
+                    std::vector<double> phases;
+                    if (frame.contains("phases") &&
+                        !parseDoubleArray(frame["phases"], phases)) {
+                        setError(error, "frame phases must be numeric");
+                        return nullptr;
+                    }
+                    Wavetable temporary(frameSize);
+                    temporary.addFrame(
+                        std::vector<float>(static_cast<size_t>(frameSize),
+                                           0.0f));
+                    if (!temporary.setFrameFromHarmonics(
+                            0, amplitudes, phases,
+                            frame.value("normalize", false))) {
+                        setError(error, "cannot build frame from harmonics");
+                        return nullptr;
+                    }
+                    samples = temporary.frame(0);
+                } else {
+                    setError(error,
+                             "frame requires samples or harmonics array");
+                    return nullptr;
+                }
+                const double defaultPosition =
+                    frames.size() > 1
+                        ? static_cast<double>(frameIndex) /
+                              static_cast<double>(frames.size() - 1)
+                        : 0.0;
+                const double position =
+                    frame.value("position", defaultPosition);
+                if (anyPositions) {
+                    if (!table.addKeyframe(samples, position)) {
+                        setError(error, "cannot add keyframe");
+                        return nullptr;
+                    }
+                } else {
+                    if (!table.addFrame(samples)) {
+                        setError(error, "cannot add frame");
+                        return nullptr;
+                    }
+                }
+            }
+            if (!applyWavetableParams(table, params, error)) return nullptr;
+            if (!saveWavetableFile(table, path, sampleRate, error))
+                return nullptr;
+            nlohmann::json result = wavetableToJson(table);
+            result["path"] = path;
+            return result;
         }
 
         if (command == "synth_note") {
@@ -904,25 +1117,26 @@ nlohmann::json Session::execute(const std::string& command,
                 requiredString(params, "wavetable", error);
             if (path.empty()) return nullptr;
             Wavetable table;
-            const std::string extension =
-                std::filesystem::path(path).extension().string();
-            if (extension == ".wav" || extension == ".wave") {
-                if (!Wavetable::loadWav(
-                        path, optionalInt(params, "frame_size", 2048), table,
-                        error))
-                    return nullptr;
-            } else {
-                if (!Wavetable::load(path, table, error)) return nullptr;
-            }
+            if (!Wavetable::loadAuto(path, table, error)) return nullptr;
             SynthNoteOptions options;
             options.sampleRate = optionalInt(params, "sample_rate", 0);
             options.channels = optionalInt(params, "channels", 1);
             options.rootNote = optionalDouble(params, "root_note", 69.0);
+            options.useWavetableRootNote =
+                optionalBool(params, "use_table_root", false);
             options.morph = optionalDouble(params, "morph", 0.0);
             options.gain = optionalDouble(params, "gain", 0.8);
             options.unison = optionalInt(params, "unison", 1);
             options.detuneCents =
                 optionalDouble(params, "detune_cents", 0.0);
+            options.oversampling = optionalInt(params, "oversampling", 0);
+            if (params.contains("blend_weights")) {
+                if (!parseDoubleArray(params["blend_weights"],
+                                      options.blendWeights)) {
+                    setError(error, "blend_weights must be a numeric array");
+                    return nullptr;
+                }
+            }
             options.envelope.attack =
                 optionalDouble(params, "attack", 0.005);
             options.envelope.decay =
@@ -1102,7 +1316,8 @@ std::vector<std::string> Session::commandNames() {
         "pitch_shift", "resample", "spectral_gain", "spectral_filter",
         "spectral_gate", "spectral_blur", "analyze_beats", "detect_pitch",
         "slices", "export_slices", "wavetable", "harmonics_wavetable",
-        "synth_note", "generate_sweep", "deconvolve", "add_marker",
+        "wavetable_design", "synth_note", "generate_sweep", "deconvolve",
+        "add_marker",
         "remove_marker", "clear_markers"};
 }
 

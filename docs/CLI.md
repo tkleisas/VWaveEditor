@@ -9,6 +9,7 @@ vwave process <audio> <out> [options]
 vwave analyze <audio> [--beats] [--pitch]
 vwave slices <audio> <directory> [--mode transients|beats|markers]
 vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]
+vwave wavetable-design <spec.json> <out.vwt>
 vwave synth <wavetable> <out.wav> [--note MIDI] [--duration SEC]
 vwave sweep <out.wav> [--seconds SEC] [--start-hz HZ] [--end-hz HZ]
 vwave deconvolve <recorded> <sweep> <out.wav> [--length FRAMES]
@@ -112,19 +113,63 @@ Writes one WAV per slice and a `*_manifest.json` in the output directory.
 ```sh
 vwave wavetable pad.wav pad.vwt --frame-size 2048 --frame-count 16
 vwave wavetable pad.wav pad.wav --frame-size 2048 --frame-count 16
+vwave wavetable pad.wav pad.vwt --frame-size 2048 --frame-count 16 \
+    --morph phase_aligned --interpolation cubic --root 57 \
+    --oversample 4 --band-limit --max-harmonic 96 --quantize 12 \
+    --align-phases
 ```
 
-A `.wvt` output is a self-contained wavetable. A `.wav` output writes
+A `.vwt` output is a self-contained versioned wavetable. A `.wav` output writes
 concatenated mono frames plus a metadata sidecar.
+
+Wavetable options:
+
+- `--morph linear|equal_power|phase_aligned|spectral|harmonic`
+- `--interpolation nearest|linear|cubic`
+- `--root MIDI` sets wavetable root metadata
+- `--oversample N` stores the preferred render oversampling
+- `--band-limit` applies a 64-harmonic limit; `--max-harmonic N` overrides it
+- `--quantize BITS` quantizes frame samples
+- `--align-phases` aligns every frame to the first frame
+- `--no-normalize`, `--no-dc`, `--no-phase-align` disable extraction defaults
+
+### wavetable-design
+
+The design command accepts a JSON spec with `frames`, each containing either a
+`harmonics` array (with optional `phases`) or a full `samples` array:
+
+```json
+{
+  "name": "morph",
+  "frame_size": 2048,
+  "root_note": 60,
+  "morph_mode": "equal_power",
+  "interpolation": "cubic",
+  "oversampling": 2,
+  "frames": [
+    {"harmonics": [0, 1.0], "position": 0.0},
+    {"harmonics": [0, 1.0, 0.5, 0.25], "position": 0.5},
+    {"harmonics": [0, 1.0, 1.0, 1.0], "position": 1.0}
+  ]
+}
+```
+
+```sh
+vwave wavetable-design morph.json morph.vwt
+```
 
 ## synth
 
 ```sh
 vwave synth pad.vwt note.wav --note 60 --duration 2
 vwave synth pad.vwt chord.wav --note 67 --duration 4 --unison 3 --morph 0.5
+vwave synth pad.vwt blend.wav --note 60 --blend 1,0.5,0 --oversample 4
+vwave synth pad.vwt table-root.wav --note 57 --use-table-root
 ```
 
 MIDI note 60 is middle C when the wavetable uses the default root note.
+`--use-table-root` tunes against the wavetable's stored root note instead.
+`--blend` selects free multi-frame weights; the count must match the table.
 
 ## sweep and deconvolve
 

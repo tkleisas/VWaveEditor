@@ -28,8 +28,13 @@ desktop editor and as an embeddable editing core for
   gating, blur, and time-frequency region editing. Independent time and
   log-frequency zoom.
 - **Wavetables**: cycle extraction with pitch detection, harmonic construction,
-  per-frame drawing, morphing, `.vwt` projects, WAV export/import, and offline
-  wavetable-note rendering.
+  per-frame drawing and keyframe positions, ordered and free-blend morphing,
+  linear/equal-power/phase-aligned/spectral/harmonic modes, optional phase
+  alignment, band limiting, quantization, phase randomization, and 1x-8x
+  render oversampling. Versioned `.vwt` v2 projects, WAV + sidecar export, and
+  raw/non-normalized data are preserved. YAWN's Wavetable Synth loads `.vwt`
+  files through its **Load .vwt...** button; custom tables persist in YAWN
+  projects and presets.
 - **Recording**: arm a track, record from the configured input device at the
   playhead, and commit the take to the armed empty track or as a new take track.
   A lock-free ring buffer keeps capture off the UI allocation path.
@@ -88,7 +93,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-release is `v0.0.3`; untagged build trees fall back to `0.0.3`.
+release is `v0.0.4`; untagged build trees fall back to `0.0.4`.
 
 Artifacts land in `build/bin`:
 
@@ -188,8 +193,10 @@ vwave process input.wav stretched.wav \
 
 vwave analyze input.wav
 vwave slices input.wav out/slices --mode transients
-vwave wavetable input.wav table.vwt --frame-size 2048 --frame-count 16
-vwave synth table.vwt note.wav --note 60 --duration 2
+vwave wavetable input.wav table.vwt --frame-size 2048 --frame-count 16 \
+    --morph spectral --root 60 --oversample 2
+vwave wavetable-design design.json designed.vwt
+vwave synth table.vwt note.wav --note 60 --duration 2 --blend 1,0.5,0
 vwave sweep sweep.wav --seconds 5 --start-hz 20 --end-hz 20000
 vwave deconvolve recorded.wav sweep.wav cabinet.wav --length 4096 --trim
 
@@ -332,9 +339,15 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.3** includes the multi-track editing core, track-aware desktop
-editor, recording, settings, CLI, Lua, MCP, C ABI, and the standalone editor
-described above.
+Version **0.0.4** includes the multi-track editing core, track-aware desktop
+editor, recording, settings, CLI, Lua, MCP, C ABI, the wavetable designer,
+YAWN wavetable import, and the standalone editor described above.
+
+Future directions are recorded in [docs/IDEAS.md](docs/IDEAS.md), including
+image-to-spectrogram synthesis, oscilloscope music, phase-aware 3D spectral
+visualization, and mastering analysis with cross-track dynamic spectral
+allocation. The wavetable designer and YAWN interop are implemented; the agreed
+next phase is analysis-only mastering for performance stems.
 
 Deliberate remaining work:
 

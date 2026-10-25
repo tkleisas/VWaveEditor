@@ -25,7 +25,12 @@ void printUsage() {
         "  vwave analyze <audio> [--beats] [--pitch]\n"
         "  vwave slices <audio> <directory> [--mode transients|beats|markers]\n"
         "  vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]\n"
+        "      [--morph linear|equal_power|phase_aligned|spectral|harmonic]\n"
+        "      [--root MIDI] [--oversample N] [--band-limit] [--quantize BITS]\n"
+        "      [--align-phases] [--no-normalize] [--no-dc] [--no-phase-align]\n"
+        "  vwave wavetable-design <spec.json> <out.vwt>\n"
         "  vwave synth <wavetable> <out.wav> [--note MIDI] [--duration SEC]\n"
+        "      [--morph VALUE] [--blend W1,W2,...] [--oversample N] [--use-table-root]\n"
         "  vwave sweep <out.wav> [--seconds SEC] [--start-hz HZ] [--end-hz HZ]\n"
         "  vwave deconvolve <recorded> <sweep> <out.wav> [--length FRAMES]\n"
         "  vwave project info <project.vwdoc>\n"
@@ -270,11 +275,56 @@ int commandWavetable(const std::vector<std::string>& args) {
             parameters["start"] = std::stod(valueAt(args, i, "--start"));
         } else if (args[i] == "--end") {
             parameters["end"] = std::stod(valueAt(args, i, "--end"));
+        } else if (args[i] == "--morph") {
+            parameters["morph_mode"] = valueAt(args, i, "--morph");
+        } else if (args[i] == "--interpolation") {
+            parameters["interpolation"] =
+                valueAt(args, i, "--interpolation");
+        } else if (args[i] == "--root") {
+            parameters["root_note"] = std::stod(valueAt(args, i, "--root"));
+        } else if (args[i] == "--oversample") {
+            parameters["oversampling"] =
+                std::stoi(valueAt(args, i, "--oversample"));
+        } else if (args[i] == "--band-limit") {
+            parameters["band_limit"] = true;
+        } else if (args[i] == "--max-harmonic") {
+            parameters["max_harmonic"] =
+                std::stoi(valueAt(args, i, "--max-harmonic"));
+        } else if (args[i] == "--quantize") {
+            parameters["quantize_bits"] =
+                std::stoi(valueAt(args, i, "--quantize"));
+        } else if (args[i] == "--align-phases") {
+            parameters["align_frames"] = true;
+        } else if (args[i] == "--no-normalize") {
+            parameters["normalize"] = false;
+        } else if (args[i] == "--no-dc") {
+            parameters["remove_dc"] = false;
+        } else if (args[i] == "--no-phase-align") {
+            parameters["phase_align"] = false;
         } else {
             return fail("unknown wavetable option: " + args[i]);
         }
     }
     printJson(executeOrFail(session, "wavetable", parameters));
+    return 0;
+}
+
+int commandWavetableDesign(const std::vector<std::string>& args) {
+    if (args.size() < 4)
+        return fail("wavetable-design requires a spec and output");
+    std::ifstream in(args[2], std::ios::binary);
+    if (!in) return fail("cannot open wavetable spec: " + args[2]);
+    json parameters;
+    try {
+        in >> parameters;
+    } catch (const std::exception& error) {
+        return fail(std::string("invalid wavetable spec: ") + error.what());
+    }
+    if (!parameters.is_object())
+        return fail("wavetable spec must be a JSON object");
+    parameters["path"] = args[3];
+    vwave::Session session;
+    printJson(executeOrFail(session, "wavetable_design", parameters));
     return 0;
 }
 
@@ -296,7 +346,28 @@ int commandSynth(const std::vector<std::string>& args) {
             parameters["unison"] = std::stoi(valueAt(args, i, "--unison"));
         else if (args[i] == "--morph")
             parameters["morph"] = std::stod(valueAt(args, i, "--morph"));
-        else
+        else if (args[i] == "--oversample")
+            parameters["oversampling"] =
+                std::stoi(valueAt(args, i, "--oversample"));
+        else if (args[i] == "--use-table-root")
+            parameters["use_table_root"] = true;
+        else if (args[i] == "--blend") {
+            const std::string list = valueAt(args, i, "--blend");
+            json weights = json::array();
+            size_t start = 0;
+            while (start <= list.size()) {
+                const size_t comma = list.find(',', start);
+                const std::string item = list.substr(
+                    start, comma == std::string::npos
+                               ? std::string::npos
+                               : comma - start);
+                if (item.empty()) return fail("invalid --blend list");
+                weights.push_back(std::stod(item));
+                if (comma == std::string::npos) break;
+                start = comma + 1;
+            }
+            parameters["blend_weights"] = std::move(weights);
+        } else
             return fail("unknown synth option: " + args[i]);
     }
     printJson(executeOrFail(session, "synth_note", parameters));
@@ -517,6 +588,7 @@ int main(int argc, char** argv) {
     if (args[1] == "analyze") return commandAnalyze(args);
     if (args[1] == "slices") return commandSlices(args);
     if (args[1] == "wavetable") return commandWavetable(args);
+    if (args[1] == "wavetable-design") return commandWavetableDesign(args);
     if (args[1] == "synth") return commandSynth(args);
     if (args[1] == "sweep") return commandSweep(args);
     if (args[1] == "deconvolve") return commandDeconvolve(args);

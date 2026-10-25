@@ -146,14 +146,25 @@ before applying edits.
 Extraction selects evenly spaced frames, estimates cycle length from YIN pitch
 or from the requested segmentation, resamples each cycle to a constant frame
 size, optionally rotates to the first upward zero crossing, removes DC, and
-normalizes. Wavetable `.vwt` files store frame metadata and base64 float data.
-WAV export writes concatenated mono frames plus a metadata sidecar.
+normalizes. Versioned `.vwt` v2 files store frame data, keyframe positions,
+root note, morph/interpolation mode, and quality/artefact metadata. WAV export
+writes concatenated mono frames plus a metadata sidecar.
+
+Ordered morphing interpolates keyframes at explicit positions. Free blending
+uses a weight per frame. Modes are linear, equal-power, phase-aligned, spectral
+(complex spectral interpolation), and harmonic (magnitude interpolation with a
+stable phase source). Phase alignment is non-destructive for the phase-aligned
+morph mode; explicit alignment, band limiting, quantization, and phase
+randomization are separate editing operations. Raw, unnormalized tables load
+without forced correction.
 
 ### Synthesis
 
-A wavetable oscillator with linear phase/frame interpolation, ADSR envelope,
-multiple detuned unison voices, stereo panning, and MIDI-note frequency
-mapping. Rendering is offline and deterministic.
+A wavetable oscillator with ADSR envelope, multiple detuned unison voices,
+stereo panning, MIDI-note frequency mapping, and 1x-8x internal oversampling.
+Phase-axis interpolation can be nearest, linear, or cubic. Rendering is offline
+and deterministic. YAWN's Wavetable Synth imports `.vwt` files into its Custom
+table slot and resamples frames to its 256-sample engine size.
 
 ### Capture
 

@@ -58,6 +58,7 @@ track; dedicated track tools add, select, configure, and remove tracks.
 | `vwave_slices` | Transient, beat, or marker slicing |
 | `vwave_export_slices` | Write slice WAVs and manifest |
 | `vwave_wavetable` | Extract or construct a wavetable |
+| `vwave_wavetable_design` | Build a multi-keyframe wavetable |
 | `vwave_synth_note` | Render a wavetable note |
 | `vwave_generate_sweep` | Create an exponential sweep |
 | `vwave_deconvolve` | Extract a linear impulse response |

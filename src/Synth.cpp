@@ -48,6 +48,10 @@ Audio renderWavetableNote(const Wavetable& wavetable, double midiNote,
     if (options.sampleRate < 0 || options.channels < 1 ||
         options.channels > 2)
         return Audio{};
+    if (!options.blendWeights.empty() &&
+        static_cast<int>(options.blendWeights.size()) !=
+            wavetable.frameCount())
+        return Audio{};
 
     const int sampleRate = options.sampleRate > 0
                                ? options.sampleRate
@@ -59,9 +63,17 @@ Audio renderWavetableNote(const Wavetable& wavetable, double midiNote,
         std::llround(durationSeconds * static_cast<double>(sampleRate)));
     if (frames <= 0) return Audio{};
 
-    const double rootNote = std::isfinite(options.rootNote)
-                                ? options.rootNote
-                                : 69.0;
+    const int oversampling =
+        std::clamp(options.oversampling > 0 ? options.oversampling
+                                            : wavetable.oversampling(),
+                   1, 8);
+    const double internalRate =
+        static_cast<double>(sampleRate) * static_cast<double>(oversampling);
+
+    const double rootNote =
+        options.useWavetableRootNote
+            ? wavetable.rootNote()
+            : (std::isfinite(options.rootNote) ? options.rootNote : 69.0);
     const double frequency =
         440.0 * std::pow(2.0, (midiNote - rootNote) / 12.0);
     if (!std::isfinite(frequency) || frequency <= 0.0) return Audio{};
@@ -72,8 +84,6 @@ Audio renderWavetableNote(const Wavetable& wavetable, double midiNote,
                               : 0.0;
     const double gain = std::isfinite(options.gain) ? options.gain : 0.8;
     const double morph = std::clamp(options.morph, 0.0, 1.0);
-    const double framePosition =
-        morph * static_cast<double>(wavetable.frameCount() - 1);
     const double release = std::max(0.0, options.envelope.release);
     const double noteOff =
         std::max(0.0, durationSeconds - std::min(release, durationSeconds));
@@ -93,7 +103,7 @@ Audio renderWavetableNote(const Wavetable& wavetable, double midiNote,
         const double voiceFrequency =
             frequency * std::pow(2.0, cents / 1200.0);
         increments[static_cast<size_t>(voice)] =
-            voiceFrequency / static_cast<double>(sampleRate);
+            voiceFrequency / internalRate;
         phases[static_cast<size_t>(voice)] =
             static_cast<double>(voice) * 0.37 / static_cast<double>(unison);
         const double pan = unison > 1
@@ -106,32 +116,43 @@ Audio renderWavetableNote(const Wavetable& wavetable, double midiNote,
     }
 
     const double voiceScale = gain / std::sqrt(static_cast<double>(unison));
+    const bool freeBlend = !options.blendWeights.empty();
     for (int64_t frame = 0; frame < frames; ++frame) {
-        const double time =
-            static_cast<double>(frame) / static_cast<double>(sampleRate);
-        const double envelope =
-            envelopeValue(options.envelope, time, noteOff);
-        if (envelope <= 0.0) continue;
         double left = 0.0;
         double right = 0.0;
-        for (int voice = 0; voice < unison; ++voice) {
-            const double value = wavetable.sample(
-                framePosition, phases[static_cast<size_t>(voice)]);
-            left += value * leftGain[static_cast<size_t>(voice)];
-            right += value * rightGain[static_cast<size_t>(voice)];
-            double& phase = phases[static_cast<size_t>(voice)];
-            phase += increments[static_cast<size_t>(voice)];
-            phase -= std::floor(phase);
+        for (int sub = 0; sub < oversampling; ++sub) {
+            const int64_t internalFrame =
+                frame * static_cast<int64_t>(oversampling) + sub;
+            const double time =
+                static_cast<double>(internalFrame) / internalRate;
+            const double envelope =
+                envelopeValue(options.envelope, time, noteOff);
+            if (envelope <= 0.0) continue;
+            for (int voice = 0; voice < unison; ++voice) {
+                const double phase = phases[static_cast<size_t>(voice)];
+                const double value =
+                    freeBlend
+                        ? wavetable.sampleBlend(options.blendWeights, phase)
+                        : wavetable.sampleMorph(morph, phase);
+                left += value * leftGain[static_cast<size_t>(voice)] *
+                        envelope;
+                right += value * rightGain[static_cast<size_t>(voice)] *
+                         envelope;
+                double& voicePhase = phases[static_cast<size_t>(voice)];
+                voicePhase += increments[static_cast<size_t>(voice)];
+                voicePhase -= std::floor(voicePhase);
+            }
         }
-        const double amplitude = voiceScale * envelope;
+        const double scale =
+            voiceScale / static_cast<double>(oversampling);
         if (options.channels == 1) {
             output.sample(0, frame) = static_cast<float>(
-                (left + right) * 0.7071067811865476 * amplitude);
+                (left + right) * 0.7071067811865476 * scale);
         } else {
-            output.sample(0, frame) =
-                static_cast<float>(left * amplitude * 1.4142135623730951);
-            output.sample(1, frame) =
-                static_cast<float>(right * amplitude * 1.4142135623730951);
+            output.sample(0, frame) = static_cast<float>(
+                left * 1.4142135623730951 * scale);
+            output.sample(1, frame) = static_cast<float>(
+                right * 1.4142135623730951 * scale);
         }
     }
     return output;

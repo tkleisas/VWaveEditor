@@ -122,7 +122,10 @@ Use core types directly from a YAWN panel:
 - `vwave::detectPitch(audio, range)` for the pitch readout.
 - `vwave::WaveformViewport` and `vwave::SpectralViewport` for coordinate
   mapping; both are headless and unit tested.
-- `vwave::Wavetable::sample(framePosition, phase)` for a wavetable display.
+- `vwave::Wavetable::sampleMorph(position, phase)` or
+  `sampleBlend(weights, phase)` for ordered/free wavetable playback;
+  `morphedFrame(position)` for display.
+- `vwave::Wavetable::loadAuto(path, table)` for `.vwt` or WAV+sidecar import.
 
 The standalone editor demonstrates the intended interaction model: selection
 drag, wheel zoom, beat/slice/marker overlays, time-frequency region selection,
