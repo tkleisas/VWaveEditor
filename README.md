@@ -15,7 +15,9 @@ desktop editor and as an embeddable editing core for
   volume, pan, start offset, selection, and remove controls. Playback mixes all
   audible tracks, with solo and mute handled live.
 - **Non-destructive editing**: immutable track sources, replayed edit history,
-  exact undo/redo, clipboard, and timeline project persistence.
+  exact undo/redo, clipboard, timeline project persistence, and reproducible
+  track recipes for generated image/scope/synth tracks. See
+  [Track recipes](docs/RECIPES.md).
 - **Waveform operations**: cut, copy, paste, insert, delete, crop, gain,
   normalize, fade in/out, reverse, invert, silence, DC removal, resample.
 - **Time and pitch**: WSOLA and phase-vocoder time stretching, pitch shifting,
@@ -24,9 +26,10 @@ desktop editor and as an embeddable editing core for
   timeline position.
 - **Analysis**: spectral-flux onsets, tempo/beat-grid detection, YIN pitch
   detection, transient slicing, slice export with a JSON manifest, and
-  analysis-only mastering for aligned stems: masking/overlap maps, phase
-  coherence, per-stem levels/true peak, profile-based per-band gain
-  suggestions, and JSON reports. See [Mastering analysis](docs/MASTERING.md).
+  mastering for aligned stems: masking/overlap maps, phase coherence, per-stem
+  levels/true peak, profile-based per-band gain suggestions, JSON reports, and
+  offline processed-stem rendering with a mix ceiling. See
+  [Mastering analysis and processing](docs/MASTERING.md).
 - **Spectral editing**: STFT gain, Butterworth low/high-pass masks, spectral
   gating, blur, and time-frequency region editing. Independent time and
   log-frequency zoom. A phase-aware CPU-projected 3D waterfall adds magnitude
@@ -37,6 +40,11 @@ desktop editor and as an embeddable editing core for
   direct/mirrored/looped time mapping, run Griffin–Lim/phase-locked/random/color
   reconstruction, and render to a new track. See
   [Image to spectrogram](docs/IMAGE_SPECTROGRAM.md).
+- **Oscilloscope music**: render circles, ellipses, Lissajous curves, spirals,
+  figure eights, lines, and hand-drawn XY polylines to stereo audio with
+  arc-length traversal, scan-rate control, forward/reverse/ping-pong direction,
+  band-limited or raw output, and `.vscope` path save/load. See
+  [Oscilloscope music](docs/OSCILLOSCOPE.md).
 - **Wavetables**: cycle extraction with pitch detection, harmonic construction,
   per-frame drawing and keyframe positions, ordered and free-blend morphing,
   linear/equal-power/phase-aligned/spectral/harmonic modes, optional phase
@@ -104,7 +112,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-release is `v0.0.5`; untagged build trees fall back to `0.0.5`.
+release is `v0.0.6`; untagged build trees fall back to `0.0.6`.
 
 Artifacts land in `build/bin`:
 
@@ -141,7 +149,7 @@ Important controls:
 | Key / control | Action |
 | --- | --- |
 | `Space` | Play/stop the mix |
-| `1` / `2` / `3` / `4` / `5` | Waveform / spectrum / wavetable / mastering / image view |
+| `1` / `2` / `3` / `4` / `5` / `6` | Waveform / spectrum / wavetable / mastering / image / scope view |
 | Spectrum `View: 2D/3D` | Toggle the phase-aware waterfall; hover for phase readout |
 | Wheel | Zoom time (waveform/spectrum) |
 | `Ctrl`+wheel (spectrum) | Zoom displayed frequency range |
@@ -212,11 +220,14 @@ vwave synth table.vwt note.wav --note 60 --duration 2 --blend 1,0.5,0
 vwave sweep sweep.wav --seconds 5 --start-hz 20 --end-hz 20000
 vwave deconvolve recorded.wav sweep.wav cabinet.wav --length 4096 --trim
 vwave mastering session.vwdoc --profile definition --out mastering.json
+vwave mastering-render session.vwdoc --profile definition --out-dir mastered
 vwave image cover.png cover.wav --duration 8 --phase fast_griffin_lim
+vwave scope scope.wav --shape lissajous --a 3 --b 2 --scan-hz 90
 
 vwave project info session.vwdoc
 vwave project add-track session.vwdoc pad.wav --name Pad --start 0.5
 vwave project set session.vwdoc 1 --gain -6 --pan -0.2 --mute
+vwave project regenerate session.vwdoc
 vwave project mixdown session.vwdoc mix.wav
 ```
 
@@ -333,7 +344,7 @@ SDL2 editor / CLI / Lua / MCP
           vwave_core
   Timeline: tracks, routing, mixdown
   Document: source + edit history
-  DSP | analysis | spectral | wavetable | mastering | phase 3D | image
+  DSP | analysis | spectral | wavetable | mastering | phase 3D | image | scope
   synthesis | capture | recording buffer
 ```
 
@@ -353,17 +364,18 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.5** includes the multi-track editing core, track-aware desktop
+Version **0.0.6** includes the multi-track editing core, track-aware desktop
 editor, recording, settings, CLI, Lua, MCP, C ABI, the wavetable designer,
-YAWN wavetable import, analysis-only mastering for aligned stems, the
-phase-aware 3D spectrum, image-to-spectrogram synthesis, and the standalone
-editor described above.
+YAWN wavetable import, mastering analysis and processing, the phase-aware 3D
+spectrum, image-to-spectrogram synthesis, oscilloscope music, reproducible
+track recipes, and the standalone editor described above.
 
-Future directions are recorded in [docs/IDEAS.md](docs/IDEAS.md), including
-oscilloscope music and mastering processing with cross-track dynamic spectral
-allocation. The wavetable designer, YAWN interop, analysis-only mastering,
-phase-aware 3D spectrum, and image-to-spectrogram synthesis are implemented;
-the agreed next phase is oscilloscope music.
+All planned feature phases are implemented: wavetable design and YAWN interop,
+mastering analysis and processing, the phase-aware 3D spectrum,
+image-to-spectrogram synthesis, and oscilloscope music. Remaining ideas in
+[docs/IDEAS.md](docs/IDEAS.md) are advanced enhancements and deferred platform
+work, including real-time mastering automation, reference matching, LUFS
+metering, neural capture, and deeper YAWN embedding.
 
 Deliberate remaining work:
 

@@ -1,12 +1,14 @@
 #include "vwave/Mastering.h"
 
 #include "vwave/FFT.h"
+#include "vwave/Spectral.h"
 #include "vwave/Timeline.h"
 
 #include <algorithm>
 #include <cmath>
 #include <complex>
 #include <fstream>
+#include <iomanip>
 #include <numeric>
 #include <sstream>
 #include <vector>
@@ -15,6 +17,7 @@ namespace vwave {
 
 namespace {
 
+constexpr double kPi = 3.14159265358979323846;
 constexpr double kSilence = 1e-20;
 
 double powerDb(double power) {
@@ -562,6 +565,136 @@ MasteringAnalysis analyzeMastering(const Timeline& timeline,
     }
     analysis.summary = summary.str();
     return analysis;
+}
+
+MasteringRenderResult renderMastering(
+    const Timeline& timeline, const MasteringAnalysis& analysis,
+    const MasteringProcessingOptions& options, std::string* error) {
+    if (error) error->clear();
+    MasteringRenderResult result;
+    if (!analysis.valid || analysis.stems.empty()) {
+        if (error) *error = "run mastering analysis first";
+        return result;
+    }
+    if (timeline.empty() || timeline.sampleRate() <= 0) {
+        if (error) *error = "no timeline audio to process";
+        return result;
+    }
+    const int fftSize = nextPowerOfTwo(
+        std::clamp(options.fftSize, 512, 16384));
+    const int hop = std::clamp(options.hopSize, 64, fftSize);
+    const double ceilingDb = std::clamp(options.ceilingDb, -48.0, 0.0);
+    std::vector<double> edges;
+    edges.reserve(analysis.bands.size() + 1);
+    if (analysis.bands.empty()) {
+        if (error) *error = "analysis has no bands";
+        return result;
+    }
+    edges.push_back(analysis.bands.front().lowHz);
+    for (const auto& band : analysis.bands) edges.push_back(band.highHz);
+    for (const auto& stem : analysis.stems) {
+        if (stem.index < 0 || stem.index >= timeline.trackCount()) {
+            if (error) *error = "analysis stem no longer exists";
+            return result;
+        }
+        if (static_cast<int>(stem.bands.size()) !=
+            static_cast<int>(analysis.bands.size())) {
+            if (error) *error = "analysis stem band mismatch";
+            return result;
+        }
+        std::vector<double> gains;
+        gains.reserve(stem.bands.size());
+        MasteringProcessedStem processed;
+        processed.trackIndex = stem.index;
+        processed.name = timeline.track(stem.index).name;
+        for (const auto& band : stem.bands) {
+            gains.push_back(band.suggestedGainDb);
+            processed.minCutDb =
+                std::min(processed.minCutDb, band.suggestedGainDb);
+            processed.maxBoostDb =
+                std::max(processed.maxBoostDb, band.suggestedGainDb);
+        }
+        const Audio& source =
+            timeline.track(stem.index).document.audio();
+        processed.audio =
+            spectralBandGains(source, edges, gains, {}, fftSize, hop);
+        if (processed.audio.empty()) {
+            if (error) *error = "cannot process master stem";
+            return result;
+        }
+        result.stems.push_back(std::move(processed));
+    }
+
+    const int64_t length = timeline.lengthFrames();
+    const int sampleRate = timeline.sampleRate();
+    if (length <= 0) {
+        if (error) *error = "timeline has no audio";
+        return result;
+    }
+    Audio mix(2, length, sampleRate);
+    for (const auto& processed : result.stems) {
+        const auto& track = timeline.track(processed.trackIndex);
+        const Audio& source = processed.audio;
+        const double gain = std::pow(10.0, track.gainDb / 20.0);
+        double leftGain = 1.0;
+        double rightGain = 1.0;
+        if (source.numChannels() == 1) {
+            const double angle = (track.pan + 1.0) * kPi / 4.0;
+            leftGain = std::cos(angle);
+            rightGain = std::sin(angle);
+        } else if (track.pan < 0.0) {
+            rightGain = 1.0 + track.pan;
+        } else if (track.pan > 0.0) {
+            leftGain = 1.0 - track.pan;
+        }
+        leftGain *= gain;
+        rightGain *= gain;
+        const int64_t start = std::max<int64_t>(0, track.startFrame);
+        const int64_t end = std::min<int64_t>(
+            length, start + source.numFrames());
+        for (int64_t frame = start; frame < end; ++frame) {
+            const int64_t local = frame - start;
+            const float left = source.sample(0, local);
+            const float right = source.numChannels() > 1
+                                    ? source.sample(1, local)
+                                    : left;
+            mix.sample(0, frame) +=
+                static_cast<float>(left * leftGain);
+            mix.sample(1, frame) +=
+                static_cast<float>(right * rightGain);
+        }
+    }
+    AudioStats mixStats = analyzeAudioStats(mix);
+    if (options.limitMix && mixStats.truePeakDb > ceilingDb) {
+        result.appliedGainDb = ceilingDb - mixStats.truePeakDb;
+        const double scale = std::pow(10.0, result.appliedGainDb / 20.0);
+        for (auto& processed : result.stems) {
+            for (int ch = 0; ch < processed.audio.numChannels(); ++ch) {
+                float* data = processed.audio.channel(ch);
+                for (int64_t i = 0; i < processed.audio.numFrames(); ++i)
+                    data[i] = static_cast<float>(data[i] * scale);
+            }
+        }
+        for (int ch = 0; ch < mix.numChannels(); ++ch) {
+            float* data = mix.channel(ch);
+            for (int64_t i = 0; i < mix.numFrames(); ++i)
+                data[i] = static_cast<float>(data[i] * scale);
+        }
+        mixStats = analyzeAudioStats(mix);
+    }
+    result.mix = std::move(mix);
+    result.mixPeakDb = mixStats.peakDb;
+    result.mixTruePeakDb = mixStats.truePeakDb;
+    result.valid = true;
+    std::ostringstream summary;
+    summary << result.stems.size() << " processed stems, profile "
+            << masteringProfileName(analysis.profile);
+    if (result.appliedGainDb != 0.0) {
+        summary << ", mix ceiling gain " << std::fixed << std::setprecision(2)
+                << result.appliedGainDb << " dB";
+    }
+    result.summary = summary.str();
+    return result;
 }
 
 nlohmann::json masteringAnalysisToJson(const MasteringAnalysis& analysis) {

@@ -8,7 +8,9 @@ vwave info <audio>
 vwave process <audio> <out> [options]
 vwave analyze <audio> [--beats] [--pitch]
 vwave mastering <project.vwdoc> [--profile NAME] [--out report.json]
+vwave mastering-render <project.vwdoc> [--out-dir DIR] [--add-tracks]
 vwave image <image> <out.wav> [options]
+vwave scope <out.wav> [options]
 vwave slices <audio> <directory> [--mode transients|beats|markers]
 vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]
 vwave wavetable-design <spec.json> <out.vwt>
@@ -110,6 +112,21 @@ vwave slices break.wav slices/ --mode beats
 
 Writes one WAV per slice and a `*_manifest.json` in the output directory.
 
+## scope
+
+```sh
+vwave scope circle.wav --shape circle --scan-hz 120 --duration 2
+vwave scope lissajous.wav --shape lissajous --a 3 --b 2 \
+    --scan-hz 90 --band-limit-hz 14000 --save-path shape.vscope
+vwave scope custom.wav --path-file shape.vscope --raw --duration 4
+```
+
+Renders an XY path to stereo audio. Options: `--shape`, `--path-file`,
+`--point-count`, `--size`, `--a`, `--b`, `--phase`, `--turns`, `--name`,
+`--duration`, `--scan-hz`, `--sample-rate`, `--gain`, `--smoothing`, `--raw`,
+`--band-limit-hz`, `--oversample`, `--direction`, `--no-normalize`, `--peak`,
+`--save-path`. See [Oscilloscope music](OSCILLOSCOPE.md).
+
 ## image
 
 ```sh
@@ -141,6 +158,21 @@ suggested gain curves. See [Mastering analysis](MASTERING.md).
 
 Options: `--profile`, `--out`, `--band-count`, `--fft-size`, `--hop`,
 `--max-cut`, `--max-boost`, `--smoothing`, `--include-muted`.
+
+### mastering-render
+
+```sh
+vwave mastering-render session.vwdoc --profile definition \
+    --out-dir mastered --prefix song --ceiling -1
+vwave mastering-render session.vwdoc --profile definition \
+    --add-tracks --mute-originals --ceiling -1
+```
+
+Applies static profile gain curves and writes processed stem WAVs, a mastered
+mix, and a JSON manifest. `--add-tracks` adds derived tracks at the original
+offsets; `--mute-originals` mutes the source tracks. Additional options:
+`--process-fft-size`, `--process-hop`, `--limit-mix`/`--no-limit`, `--ceiling`,
+`--prefix`.
 
 ## wavetable
 
@@ -214,6 +246,16 @@ vwave deconvolve recorded.wav sweep.wav cab.wav --length 4096 --trim
 
 `--length` is the output IR frame count. `--trim` aligns the IR peak at frame
 zero.
+
+## project regenerate
+
+```sh
+vwave project regenerate session.vwdoc
+vwave project regenerate session.vwdoc 2
+```
+
+Re-runs the stored generator recipe for the active track or the given track
+index and saves the project. See [Track recipes](RECIPES.md).
 
 ## project
 

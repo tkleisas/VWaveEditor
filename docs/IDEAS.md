@@ -8,9 +8,10 @@ and spectral artefacts can be intentional sound-design tools.
 
 ## Agreed direction (2026-10-25)
 
-- The **wavetable designer, YAWN import, analysis-only mastering,
-  phase-aware 3D spectrum, and image-to-spectrogram synthesis are
-  implemented**. The next epic is oscilloscope music.
+- The **wavetable designer, YAWN import, mastering analysis and processing,
+  phase-aware 3D spectrum, image-to-spectrogram synthesis, and oscilloscope
+  music are implemented**. Remaining work is advanced enhancement and deferred
+  platform integration, not an outstanding planned phase.
 - Wavetables import into YAWN through the versioned `.vwt` format and YAWN's
   Wavetable Synth Custom slot.
 - Wavetable morphing supports **both ordered keyframe morphing and free
@@ -192,6 +193,12 @@ Turn a picture into audio through inverse STFT synthesis.
 
 ## 3. Oscilloscope music lab
 
+**Implemented first phase:** generated and hand-drawn XY paths render to stereo
+with arc-length traversal, scan-rate control, direction modes, raw/band-limited
+output, `.vscope` persistence, UI/CLI/Lua/MCP automation, and render-to-track.
+Text/SVG import, multi-pass thickness, embedded recipes, and XY editing of
+existing stereo audio remain future work.
+
 Visualize and edit stereo audio as an XY vector path.
 
 - 2D vectorscope with zoom and time selection.
@@ -245,11 +252,12 @@ Extend the spectrogram beyond magnitude-only rendering.
 
 ## 5. Mastering analysis and spectral allocation
 
-**Analysis-only phase implemented:** the analyzer reports logarithmic band
-power, masking/dominance, cross-stem phase coherence, per-stem RMS/peak/true
-peak/crest/correlation, and profile-specific gain suggestions for balanced,
-definition, separation, fullness, loudness, and custom goals. Reports export as
-JSON and are available from the Mastering tab, CLI, Lua, MCP, and Session.
+**Analysis and offline processing implemented:** the analyzer reports
+logarithmic band power, masking/dominance, cross-stem phase coherence, per-stem
+RMS/peak/true peak/crest/correlation, and profile-specific gain suggestions.
+Processing applies static per-band curves as derived stems with an optional
+common mix ceiling. Reports/manifests are available from the Mastering tab,
+CLI, Lua, MCP, and Session.
 
 Analyze a performance spread across multiple tracks (for example four stem
 WAVs) and propose or apply dynamic spectral balance.
@@ -374,8 +382,9 @@ Remaining:
 
 ## 6. Cross-cutting infrastructure
 
-- Generator recipes stored with tracks so image/oscilloscope/wavetable/mastering
-  results can be regenerated.
+- ~~Generator recipes stored with tracks so image/oscilloscope/wavetable
+  results can be regenerated.~~ Implemented for image, oscilloscope, and synth
+  tracks; mastering-stem recipes remain future work.
 - Common parameter-preset system and JSON serialization.
 - Lua, MCP, and CLI access for every generator/analyzer.
 - Progress reporting and cancellation for long offline jobs.
@@ -395,11 +404,12 @@ Remaining:
    Implemented.
 4. ~~Image → spectrogram: image import, mapping controls, phase
    reconstruction, preview, and generated track recipes.~~ Implemented.
-5. **Oscilloscope music**:
-   path/vector generator, XY editor, band-limited/raw synthesis, and preview.
-6. **Mastering processing**:
-   derived-track renders, then track automation/dynamic EQ when the automation
-   infrastructure exists.
+5. ~~Oscilloscope music: path/vector generator, XY editor, band-limited/raw
+   synthesis, and preview.~~ Implemented.
+6. ~~Mastering processing: derived-track renders, then track
+   automation/dynamic EQ when the automation infrastructure exists.~~
+   Offline derived-track rendering implemented; real-time automation remains
+   future work.
 
 ## Decisions needed next
 

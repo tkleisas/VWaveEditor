@@ -3,6 +3,7 @@
 #include "vwave/Analysis.h"
 #include "vwave/AudioIO.h"
 #include "vwave/Processing.h"
+#include "vwave/Recipe.h"
 #include "vwave/Synth.h"
 #include "vwave/Version.h"
 
@@ -34,6 +35,16 @@ SDL_Color kOrange{238, 168, 76, 255};
 SDL_Color kRed{224, 92, 92, 255};
 SDL_Color kBlue{86, 145, 230, 255};
 SDL_Color kCanvas{16, 18, 24, 255};
+
+bool isScopePath(const std::string& path) {
+    std::string extension =
+        std::filesystem::path(path).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char c) {
+                       return static_cast<char>(std::tolower(c));
+                   });
+    return extension == ".vscope";
+}
 
 bool isImagePath(const std::string& path) {
     std::string extension =
@@ -314,6 +325,11 @@ const char* const kImagePhaseNames[] = {"Griffin-Lim", "Fast GL",
                                         "Phase Locked", "Random", "Color"};
 const char* const kImageTimeNames[] = {"Direct", "Mirrored", "Looped"};
 const char* const kImageFrequencyNames[] = {"Linear", "Log"};
+const char* const kScopeShapeNames[] = {"Polyline", "Line", "Circle",
+                                        "Ellipse", "Lissajous", "Spiral",
+                                        "Figure 8"};
+const char* const kScopeDirectionNames[] = {"Forward", "Reverse", "Ping-Pong"};
+const int kScopeOversampling[] = {1, 2, 4, 8};
 
 } // namespace
 
@@ -348,16 +364,28 @@ App::App() {
     m_imageThreshold = {0.0, 0.95, 0.0, false, 0.01};
     m_imageLoops = {1.0, 8.0, 1.0, false, 1.0};
     m_imageIterations = {0.0, 64.0, 24.0, false, 1.0};
+    m_scopePointCount = {16.0, 1024.0, 256.0, true, 1.0};
+    m_scopeSize = {0.1, 1.0, 0.8, false, 0.01};
+    m_scopeA = {1.0, 9.0, 3.0, false, 1.0};
+    m_scopeB = {1.0, 9.0, 2.0, false, 1.0};
+    m_scopePhase = {0.0, 6.283185307179586, 0.0, false, 0.01};
+    m_scopeTurns = {1.0, 16.0, 4.0, false, 1.0};
+    m_scopeScanHz = {20.0, 2000.0, 120.0, true, 1.0};
+    m_scopeDuration = {0.1, 30.0, 2.0, true, 0.1};
+    m_scopeGain = {0.0, 1.0, 0.8, false, 0.01};
+    m_scopeSmoothing = {0.0, 0.95, 0.0, false, 0.01};
     m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
     m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
     m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};
     m_masteringSmoothing = {0.0, 4.0, 1.0, false, 1.0};
+    m_masteringCeiling = {-12.0, 0.0, -1.0, false, 0.1};
     m_framePositionControl = {0.0, 1.0, 0.0, false, 0.001};
     m_frameWeightControl = {0.0, 2.0, 1.0, false, 0.01};
     m_tableRootControl = {0.0, 127.0, 60.0, false, 1.0};
     m_harmonicCount = {1.0, 128.0, 16.0, true, 1.0};
     m_harmonicLimit = {1.0, 512.0, 64.0, true, 1.0};
     m_quantizeBits = {1.0, 24.0, 8.0, false, 1.0};
+    generateScopePath();
 }
 
 App::~App() {
@@ -635,7 +663,8 @@ void App::draw() {
     SDL_RenderFillRect(m_renderer, &content);
 
     if (m_timeline.empty() && m_tab != vwave::EditorTab::Image &&
-        m_tab != vwave::EditorTab::Mastering) {
+        m_tab != vwave::EditorTab::Mastering &&
+        m_tab != vwave::EditorTab::Oscilloscope) {
         drawText("Open audio/image or create your first track", content.x + 40,
                  content.y + 60, kTextDim, fontTitle());
         drawText("Ctrl+O or drag and drop WAV, AIFF, FLAC, OGG",
@@ -650,8 +679,10 @@ void App::draw() {
         drawWavetable(content);
     } else if (m_tab == vwave::EditorTab::Mastering) {
         drawMastering(content);
-    } else {
+    } else if (m_tab == vwave::EditorTab::Image) {
         drawImage(content);
+    } else {
+        drawOscilloscope(content);
     }
 
     drawFooter();
@@ -1205,6 +1236,10 @@ void App::drawMenuBar() {
                    setTab(vwave::EditorTab::Mastering);
                    analyzeMasteringStems();
                }, tracks, "4"),
+        action("Regenerate Active Track",
+               [this] { regenerateActiveTrack(); },
+               tracks && !m_timeline.track(m_timeline.activeTrack())
+                             .recipe.empty()),
         action("Export Mastering Report...",
                [this] {
                    openDialog(DialogMode::SaveMasteringReport,
@@ -1226,6 +1261,8 @@ void App::drawMenuBar() {
                true, "4"),
         action("Image", [this] { setTab(vwave::EditorTab::Image); }, true,
                "5"),
+        action("Scope", [this] { setTab(vwave::EditorTab::Oscilloscope); },
+               true, "6"),
         separator(),
         action("Zoom In", [this] { zoomTime(1.25); }, tracks, "+"),
         action("Zoom Out", [this] { zoomTime(0.8); }, tracks, "-"),
@@ -1351,8 +1388,11 @@ void App::drawToolbar() {
     addButton("Image", 554, tabY, 76, 29,
               [this] { setTab(vwave::EditorTab::Image); }, false,
               m_tab == vwave::EditorTab::Image);
+    addButton("Scope", 634, tabY, 76, 29,
+              [this] { setTab(vwave::EditorTab::Oscilloscope); }, false,
+              m_tab == vwave::EditorTab::Oscilloscope);
 
-    int x = 640;
+    int x = 720;
     addButton("Open", x, tabY, 60, 29,
               [this] { openDialog(DialogMode::Open, "Open audio, project, or image",
                                   "", false); });
@@ -1773,6 +1813,19 @@ void App::drawSidebar() {
                       m_mastering = {};
                   });
         y += buttonHeight + 6;
+        addSlider("Ceiling", formatDb(m_masteringCeiling.value), 18, y, 256,
+                  m_masteringCeiling, [this](double) { m_mastering = {}; });
+        y += 30;
+        addButton(std::string("Mute originals: ") +
+                      (m_masteringMuteOriginals ? "On" : "Off"),
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { m_masteringMuteOriginals = !m_masteringMuteOriginals; });
+        y += buttonHeight + 6;
+        addButton("Render Processed Stems", 18, y,
+                  buttonWidth * 2 + gap, 26,
+                  [this] { renderMasteringStems(); }, true, false,
+                  m_mastering.valid);
+        y += 32;
         addButton("Export Report", 18, y, buttonWidth * 2 + gap, buttonHeight,
                   [this] {
                       openDialog(DialogMode::SaveMasteringReport,
@@ -1895,6 +1948,103 @@ void App::drawSidebar() {
         addSlider("GL iterations", formatInt(m_imageIterations.value), 18, y,
                   256, m_imageIterations);
         y += 30;
+    } else if (m_tab == vwave::EditorTab::Oscilloscope) {
+        const bool hasScope = m_scopePath.valid();
+        drawSection("SCOPE PATH", y);
+        addButton(std::string("Shape: ") +
+                      kScopeShapeNames[m_scopeShape],
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { cycleScopeShape(); });
+        y += buttonHeight + 6;
+        addSlider("Points", formatInt(m_scopePointCount.value), 18, y, 256,
+                  m_scopePointCount,
+                  [this](double) { generateScopePath(); });
+        y += 30;
+        addSlider("Size", formatMorph(m_scopeSize.value), 18, y, 256,
+                  m_scopeSize, [this](double) { generateScopePath(); });
+        y += 30;
+        addSlider("A", formatInt(m_scopeA.value), 18, y, 256, m_scopeA,
+                  [this](double) { generateScopePath(); });
+        y += 30;
+        addSlider("B", formatInt(m_scopeB.value), 18, y, 256, m_scopeB,
+                  [this](double) { generateScopePath(); });
+        y += 30;
+        addSlider("Phase", formatMorph(m_scopePhase.value), 18, y, 256,
+                  m_scopePhase, [this](double) { generateScopePath(); });
+        y += 30;
+        addSlider("Turns", formatInt(m_scopeTurns.value), 18, y, 256,
+                  m_scopeTurns, [this](double) { generateScopePath(); });
+        y += 30;
+        addButton(std::string("Closed: ") +
+                      (m_scopePath.closed ? "On" : "Off"),
+                  18, y, buttonWidth, buttonHeight, [this] {
+                      m_scopePath.closed = !m_scopePath.closed;
+                  }, false, false, hasScope);
+        addButton("Clear Path", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      m_scopeShape = 0;
+                      m_scopePath = {};
+                      m_scopePath.name = "Path";
+                      setStatus("Scope path cleared; click the scope to add points");
+                  });
+        y += buttonHeight + 6;
+        addButton("Load Path", 18, y, buttonWidth, buttonHeight, [this] {
+            openDialog(DialogMode::LoadScopePath, "Load scope path",
+                       (std::filesystem::current_path() /
+                        "path.vscope").string(),
+                       false);
+        });
+        addButton("Save Path", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      openDialog(DialogMode::SaveScopePath, "Save scope path",
+                                 (std::filesystem::current_path() /
+                                  "path.vscope").string(),
+                                 true);
+                  }, false, false, hasScope);
+        y += buttonHeight + 6;
+        drawSection("RENDER", y);
+        addSlider("Scan", formatHz(m_scopeScanHz.value), 18, y, 256,
+                  m_scopeScanHz);
+        y += 30;
+        addSlider("Duration", formatSecondsControl(m_scopeDuration.value), 18,
+                  y, 256, m_scopeDuration);
+        y += 30;
+        addSlider("Gain", formatMorph(m_scopeGain.value), 18, y, 256,
+                  m_scopeGain);
+        y += 30;
+        addSlider("Smoothing", formatMorph(m_scopeSmoothing.value), 18, y, 256,
+                  m_scopeSmoothing);
+        y += 30;
+        addButton(std::string("Band Limit: ") +
+                      (m_scopeBandLimited ? "On" : "Off"),
+                  18, y, buttonWidth, buttonHeight,
+                  [this] { m_scopeBandLimited = !m_scopeBandLimited; });
+        addButton("Oversample: " +
+                      std::to_string(kScopeOversampling[m_scopeOversampling]) +
+                      "x",
+                  18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                  [this] { cycleScopeOversampling(); });
+        y += buttonHeight + 6;
+        addButton(std::string("Direction: ") +
+                      kScopeDirectionNames[m_scopeDirection],
+                  18, y, buttonWidth, buttonHeight,
+                  [this] { cycleScopeDirection(); });
+        addButton(std::string("Normalize: ") +
+                      (m_scopeNormalize ? "On" : "Off"),
+                  18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                  [this] { m_scopeNormalize = !m_scopeNormalize; });
+        y += buttonHeight + 6;
+        addButton("Render to Track", 18, y, buttonWidth * 2 + gap, 26,
+                  [this] { renderScopeToTrack(); }, true, false, hasScope);
+        y += 32;
+        if (hasScope) {
+            std::ostringstream info;
+            info << m_scopePath.points.size() << " points  "
+                 << (m_scopePath.closed ? "closed" : "open") << "  "
+                 << formatMorph(m_scopePath.length());
+            drawText(info.str(), 18, y, kTextDim, fontSmall());
+            y += 18;
+        }
     }
 
     drawSection("EDIT", y);
@@ -3148,6 +3298,95 @@ void App::saveMasteringReport(const std::string& path) {
     setStatus("Saved mastering report " + baseName(path));
 }
 
+void App::renderMasteringStems() {
+    if (!m_mastering.valid) {
+        setStatus("Analyze stems first");
+        return;
+    }
+    vwave::MasteringProcessingOptions options;
+    options.fftSize = 2048;
+    options.hopSize = 512;
+    options.limitMix = true;
+    options.ceilingDb = m_masteringCeiling.value;
+    std::string error;
+    const vwave::MasteringRenderResult rendered =
+        vwave::renderMastering(m_timeline, m_mastering, options, &error);
+    if (!rendered.valid) {
+        setStatus(error.empty() ? "Mastering render failed" : error, 6000);
+        return;
+    }
+    struct OriginalInfo {
+        int64_t start = 0;
+        double gainDb = 0.0;
+        double pan = 0.0;
+        bool solo = false;
+        std::string name;
+        int index = -1;
+    };
+    std::vector<OriginalInfo> originals;
+    originals.reserve(rendered.stems.size());
+    for (const auto& stem : rendered.stems) {
+        const auto& original = m_timeline.track(stem.trackIndex);
+        originals.push_back({original.startFrame, original.gainDb,
+                             original.pan, original.solo, original.name,
+                             stem.trackIndex});
+    }
+    m_player.stop();
+    for (size_t i = 0; i < rendered.stems.size(); ++i) {
+        const auto& stem = rendered.stems[i];
+        const auto& info = originals[i];
+        if (!m_timeline.addAudioTrack(info.name + " (mastered)", stem.audio,
+                                      info.start, &error)) {
+            setStatus("Cannot add mastered stem: " + error);
+            return;
+        }
+        const int index = m_timeline.trackCount() - 1;
+        m_timeline.setTrackGainDb(index, info.gainDb);
+        m_timeline.setTrackPan(index, info.pan);
+        m_timeline.setTrackSolo(index, info.solo);
+        if (m_masteringMuteOriginals) {
+            m_timeline.setTrackMuted(info.index, true);
+            m_timeline.setTrackSolo(info.index, false);
+        }
+    }
+    m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
+    syncTrackControls();
+    m_view.fit(m_timeline.lengthFrames());
+    clearAnalysis();
+    setTab(vwave::EditorTab::Waveform);
+    updateWindowTitle();
+    std::ostringstream status;
+    status << "Added " << rendered.stems.size() << " mastered stems";
+    if (rendered.appliedGainDb != 0.0)
+        status << "  ceiling gain " << formatDb(rendered.appliedGainDb);
+    setStatus(status.str());
+}
+
+void App::regenerateActiveTrack() {
+    if (m_timeline.empty()) return;
+    const int index = m_timeline.activeTrack();
+    if (index < 0 || index >= m_timeline.trackCount()) return;
+    if (m_timeline.track(index).recipe.empty()) {
+        setStatus("Active track has no recipe");
+        return;
+    }
+    vwave::Audio regenerated;
+    std::string error;
+    if (!vwave::regenerateTrack(m_timeline, index, regenerated, &error)) {
+        setStatus(error.empty() ? "Regenerate failed" : error, 6000);
+        return;
+    }
+    m_player.stop();
+    const int64_t start = m_timeline.track(index).startFrame;
+    if (!m_timeline.setTrackAudio(index, std::move(regenerated), start,
+                                  &error)) {
+        setStatus("Regenerate failed: " + error, 6000);
+        return;
+    }
+    clearAnalysis();
+    setStatus("Regenerated track " + m_timeline.track(index).name);
+}
+
 void App::drawMastering(const SDL_Rect& area) {
     if (!m_mastering.valid) {
         drawText("No mastering analysis", area.x + 40, area.y + 54,
@@ -3379,7 +3618,10 @@ void App::renderImageToTrack() {
         setStatus("Cannot add image track: " + error);
         return;
     }
-    m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
+    const int trackIndex = m_timeline.trackCount() - 1;
+    m_timeline.track(trackIndex).recipe =
+        vwave::makeImageTrackRecipe(m_imagePath, options);
+    m_timeline.setActiveTrack(trackIndex);
     syncTrackControls();
     m_view.fit(m_timeline.lengthFrames());
     m_playhead = start;
@@ -3431,6 +3673,194 @@ void App::drawImage(const SDL_Rect& area) {
              fontSmall());
     drawText("Brightness = magnitude; color can drive phase; alpha gates.",
              area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
+}
+
+void App::generateScopePath() {
+    if (m_scopeShape <= 0) return;
+    const vwave::ScopeShape shape =
+        static_cast<vwave::ScopeShape>(m_scopeShape);
+    m_scopePath = makeScopeShape(
+        shape, static_cast<int>(std::lround(m_scopePointCount.value)),
+        m_scopeSize.value, m_scopeA.value, m_scopeB.value,
+        m_scopePhase.value,
+        static_cast<int>(std::lround(m_scopeTurns.value)));
+}
+
+void App::cycleScopeShape() {
+    m_scopeShape = (m_scopeShape + 1) %
+                   static_cast<int>(sizeof(kScopeShapeNames) /
+                                    sizeof(kScopeShapeNames[0]));
+    if (m_scopeShape == 0) {
+        m_scopePath = {};
+        m_scopePath.name = "Path";
+        setStatus("Polyline mode: click the scope to add points");
+    } else {
+        generateScopePath();
+        setStatus("Scope shape: " + std::string(kScopeShapeNames[m_scopeShape]));
+    }
+}
+
+void App::cycleScopeDirection() {
+    m_scopeDirection = (m_scopeDirection + 1) % 3;
+}
+
+void App::cycleScopeOversampling() {
+    m_scopeOversampling = (m_scopeOversampling + 1) % 4;
+}
+
+void App::renderScopeToTrack() {
+    if (!m_scopePath.valid()) {
+        setStatus("Create or load a scope path first");
+        return;
+    }
+    vwave::ScopeRenderOptions options;
+    options.sampleRate =
+        m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;
+    options.duration = m_scopeDuration.value;
+    options.scanHz = m_scopeScanHz.value;
+    options.gain = m_scopeGain.value;
+    options.smoothing = m_scopeSmoothing.value;
+    options.bandLimited = m_scopeBandLimited;
+    options.bandLimitHz = 16000.0;
+    options.oversampling = kScopeOversampling[m_scopeOversampling];
+    options.direction = static_cast<vwave::ScopeDirection>(m_scopeDirection);
+    options.normalize = m_scopeNormalize;
+    options.peak = 0.9;
+    std::string error;
+    const vwave::Audio rendered =
+        vwave::renderScopePath(m_scopePath, options, &error);
+    if (rendered.empty()) {
+        setStatus(error.empty() ? "Scope render failed" : error, 6000);
+        return;
+    }
+    m_player.stop();
+    const int64_t start =
+        clampFrame(m_playhead, m_timeline.lengthFrames());
+    const std::string name =
+        m_scopePath.name.empty() ? std::string("Scope") : m_scopePath.name;
+    if (!m_timeline.addAudioTrack(name, rendered, start, &error)) {
+        setStatus("Cannot add scope track: " + error);
+        return;
+    }
+    const int trackIndex = m_timeline.trackCount() - 1;
+    m_timeline.track(trackIndex).recipe =
+        vwave::makeScopeTrackRecipe(m_scopePath, options);
+    m_timeline.setActiveTrack(trackIndex);
+    syncTrackControls();
+    m_view.fit(m_timeline.lengthFrames());
+    m_playhead = start;
+    clearAnalysis();
+    setTab(vwave::EditorTab::Waveform);
+    updateWindowTitle();
+    setStatus("Rendered scope path to track (" +
+              formatSeconds(rendered.duration()) + ")");
+}
+
+void App::loadScopePathFile(const std::string& path) {
+    vwave::ScopePath loaded;
+    std::string error;
+    if (!vwave::loadScopePath(path, loaded, &error)) {
+        setStatus(error.empty() ? "Scope path load failed" : error, 6000);
+        return;
+    }
+    m_scopePath = std::move(loaded);
+    m_scopeShape = 0;
+    setTab(vwave::EditorTab::Oscilloscope);
+    setStatus("Loaded scope path " + baseName(path));
+}
+
+void App::saveScopePathFile(const std::string& path) {
+    if (!m_scopePath.valid()) {
+        setStatus("Create a scope path first");
+        return;
+    }
+    const std::string target = withExtension(path, ".vscope");
+    std::string error;
+    if (!vwave::saveScopePath(m_scopePath, target, &error)) {
+        setStatus(error.empty() ? "Scope path save failed" : error, 6000);
+        return;
+    }
+    setStatus("Saved scope path " + baseName(target));
+}
+
+void App::drawOscilloscope(const SDL_Rect& area) {
+    if (!m_scopePath.valid()) {
+        drawText("No scope path", area.x + 40, area.y + 54, kTextDim,
+                 fontTitle());
+        drawText("Choose a generated shape, load a .vscope path, or clear the path and click to draw.",
+                 area.x + 40, area.y + 90, kTextFaint, fontNormal());
+        return;
+    }
+    drawText("Oscilloscope path", area.x + 20, area.y + 10, kAccent,
+             fontBold());
+    std::ostringstream info;
+    info << m_scopePath.points.size() << " points  "
+         << (m_scopePath.closed ? "closed" : "open") << "  "
+         << kScopeShapeNames[m_scopeShape] << "  scan "
+         << formatHz(m_scopeScanHz.value);
+    drawText(info.str(), area.x + 20, area.y + 28, kTextFaint, fontSmall());
+
+    const int availableW = area.w - 40;
+    const int availableH = area.h - 78;
+    const int side = std::clamp(std::min(availableW, availableH), 160,
+                                std::max(160, availableH));
+    SDL_Rect rect{area.x + (area.w - side) / 2, area.y + 46, side, side};
+    m_scopeArea = rect;
+    SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b, 255);
+    SDL_RenderFillRect(m_renderer, &rect);
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 90);
+    for (int i = 1; i < 8; ++i) {
+        const int x = rect.x + rect.w * i / 8;
+        const int y = rect.y + rect.h * i / 8;
+        SDL_RenderDrawLine(m_renderer, x, rect.y, x, rect.y + rect.h);
+        SDL_RenderDrawLine(m_renderer, rect.x, y, rect.x + rect.w, y);
+    }
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 210);
+    SDL_RenderDrawLine(m_renderer, rect.x, rect.y + rect.h / 2,
+                       rect.x + rect.w, rect.y + rect.h / 2);
+    SDL_RenderDrawLine(m_renderer, rect.x + rect.w / 2, rect.y,
+                       rect.x + rect.w / 2, rect.y + rect.h);
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
+    SDL_RenderDrawRect(m_renderer, &rect);
+
+    auto mapPoint = [&](const vwave::ScopePoint& point) {
+        const double x = std::clamp(point.x, -1.0, 1.0);
+        const double y = std::clamp(point.y, -1.0, 1.0);
+        return SDL_Point{
+            rect.x + static_cast<int>(std::llround((x + 1.0) * 0.5 * rect.w)),
+            rect.y + static_cast<int>(std::llround((1.0 - y) * 0.5 * rect.h))};
+    };
+    SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 240);
+    for (size_t i = 1; i < m_scopePath.points.size(); ++i) {
+        const SDL_Point a = mapPoint(m_scopePath.points[i - 1]);
+        const SDL_Point b = mapPoint(m_scopePath.points[i]);
+        SDL_RenderDrawLine(m_renderer, a.x, a.y, b.x, b.y);
+    }
+    if (m_scopePath.closed && m_scopePath.points.size() > 2) {
+        const SDL_Point a = mapPoint(m_scopePath.points.back());
+        const SDL_Point b = mapPoint(m_scopePath.points.front());
+        SDL_RenderDrawLine(m_renderer, a.x, a.y, b.x, b.y);
+    }
+    if (m_scopeShape == 0) {
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               230);
+        for (const auto& point : m_scopePath.points) {
+            const SDL_Point p = mapPoint(point);
+            SDL_Rect dot{p.x - 2, p.y - 2, 4, 4};
+            SDL_RenderFillRect(m_renderer, &dot);
+        }
+    }
+    drawText("x", rect.x + rect.w + 6, rect.y + rect.h / 2 - 6, kTextFaint,
+             fontSmall());
+    drawText("y", rect.x + rect.w / 2 - 3, rect.y - 16, kTextFaint,
+             fontSmall());
+    if (m_scopeShape == 0) {
+        drawText("Click to add points; click near the first point to close.",
+                 area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
+    } else {
+        drawText("Generated path. Choose Polyline to draw by hand.",
+                 area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
+    }
 }
 
 void App::drawSettingsDialog() {
@@ -3842,6 +4272,10 @@ bool App::loadFile(const std::string& path) {
     const std::string extension =
         std::filesystem::path(path).extension().string();
     if (extension == ".vwdoc") return loadProject(path);
+    if (isScopePath(path)) {
+        loadScopePathFile(path);
+        return m_scopePath.valid();
+    }
     if (isImagePath(path)) {
         loadImage(path);
         return m_image.valid();
@@ -4344,6 +4778,12 @@ void App::confirmDialog() {
     case DialogMode::LoadImage:
         loadImage(path);
         break;
+    case DialogMode::SaveScopePath:
+        saveScopePathFile(path);
+        break;
+    case DialogMode::LoadScopePath:
+        loadScopePathFile(path);
+        break;
     case DialogMode::ExportSlices:
         exportSlices(path);
         break;
@@ -4369,6 +4809,7 @@ void App::handleEvent(const SDL_Event& event) {
         const std::string extension =
             std::filesystem::path(path).extension().string();
         if (extension == ".vwdoc") loadProject(path);
+        else if (isScopePath(path)) loadScopePathFile(path);
         else if (isImagePath(path)) loadImage(path);
         else if (m_timeline.empty()) loadAudio(path);
         else addTrackFile(path);
@@ -4495,6 +4936,8 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         setTab(vwave::EditorTab::Mastering);
     } else if (key == SDLK_5) {
         setTab(vwave::EditorTab::Image);
+    } else if (key == SDLK_6) {
+        setTab(vwave::EditorTab::Oscilloscope);
     } else if (key == SDLK_b) {
         analyzeBeats();
     } else if (key == SDLK_p) {
@@ -4685,6 +5128,39 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
             m_drawingWavetable = true;
             m_lastWavetableSample = -1;
         }
+    } else if (m_tab == vwave::EditorTab::Oscilloscope) {
+        if (event.button != SDL_BUTTON_LEFT || m_scopeShape != 0) return;
+        SDL_Point point{event.x, event.y};
+        if (!SDL_PointInRect(&point, &m_scopeArea) || m_scopeArea.w <= 0 ||
+            m_scopeArea.h <= 0)
+            return;
+        const double x =
+            (static_cast<double>(event.x - m_scopeArea.x) /
+             static_cast<double>(m_scopeArea.w)) *
+                2.0 -
+            1.0;
+        const double y =
+            1.0 -
+            (static_cast<double>(event.y - m_scopeArea.y) /
+             static_cast<double>(m_scopeArea.h)) *
+                2.0;
+        const vwave::ScopePoint candidate{std::clamp(x, -1.0, 1.0),
+                                          std::clamp(y, -1.0, 1.0)};
+        if (m_scopePath.points.size() >= 3) {
+            const auto& first = m_scopePath.points.front();
+            if (std::hypot(candidate.x - first.x, candidate.y - first.y) <
+                0.06) {
+                m_scopePath.closed = true;
+                setStatus("Scope path closed");
+                return;
+            }
+        }
+        m_scopePath.name = "Path";
+        m_scopePath.points.push_back(candidate);
+        m_scopePath.closed = false;
+        setStatus("Scope point " +
+                  std::to_string(m_scopePath.points.size()) +
+                  " added");
     }
 }
 
@@ -4829,7 +5305,8 @@ void App::handleWheel(const SDL_MouseWheelEvent& event) {
     }
     if (!SDL_PointInRect(&wheelPoint, &m_contentRect)) return;
     if (m_tab == vwave::EditorTab::Mastering ||
-        m_tab == vwave::EditorTab::Image)
+        m_tab == vwave::EditorTab::Image ||
+        m_tab == vwave::EditorTab::Oscilloscope)
         return;
     if (m_tab == vwave::EditorTab::Spectrum) {
         if (m_spectrum3D) return;

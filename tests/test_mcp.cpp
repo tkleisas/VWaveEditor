@@ -221,4 +221,8 @@ VWTEST("mcp tool names are stable") {
           names.end());
     CHECK(std::find(names.begin(), names.end(), "vwave_image_spectrogram") !=
           names.end());
+    CHECK(std::find(names.begin(), names.end(),
+                    "vwave_oscilloscope_render") != names.end());
+    CHECK(std::find(names.begin(), names.end(), "vwave_mastering_render") !=
+          names.end());
 }

@@ -517,6 +517,12 @@ VWTEST("session command list is stable") {
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "image_spectrogram") !=
           commands.end());
+    CHECK(std::find(commands.begin(), commands.end(),
+                    "oscilloscope_render") != commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "mastering_render") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "regenerate_track") !=
+          commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "add_track") !=
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "track_set") !=
@@ -663,6 +669,14 @@ VWTEST("session image spectrogram renders a track") {
     CHECK_EQ(result["frames"], 800);
     CHECK(std::filesystem::exists(outPath));
     CHECK_EQ(session.timeline().trackCount(), 1);
+    CHECK_EQ(session.timeline().track(0).recipe.value(
+                 "type", std::string{}),
+             std::string("image_spectrogram"));
+    const json regenerated =
+        session.execute("regenerate_track", {{"index", 0}}, &error);
+    REQUIRE(!regenerated.is_null());
+    CHECK_EQ(regenerated["recipe_type"].get<std::string>(),
+             "image_spectrogram");
     Audio audio;
     REQUIRE(readAudio(outPath, audio));
     CHECK_EQ(audio.numChannels(), 2);
@@ -675,4 +689,97 @@ VWTEST("session image spectrogram renders a track") {
         &error);
     CHECK(invalid.is_null());
     CHECK(!error.empty());
+}
+
+VWTEST("session oscilloscope renders circles and custom paths") {
+    TempDirectory directory;
+    Session session;
+    std::string error;
+    const std::string outPath =
+        (directory.path() / "scope.wav").string();
+    const json result = session.execute(
+        "oscilloscope_render",
+        {{"out", outPath},
+         {"shape", "circle"},
+         {"size", 0.8},
+         {"point_count", 128},
+         {"duration", 0.1},
+         {"sample_rate", 8000},
+         {"scan_hz", 100.0},
+         {"band_limited", false},
+         {"replace", true}},
+        &error);
+    REQUIRE(!result.is_null());
+    CHECK_EQ(result["channels"], 2);
+    CHECK_EQ(result["frames"], 800);
+    CHECK_EQ(result["scan_hz"].get<double>(), 100.0);
+    CHECK(std::filesystem::exists(outPath));
+    CHECK_EQ(session.timeline().trackCount(), 1);
+
+    const std::string pathFile =
+        (directory.path() / "custom.vscope").string();
+    const json custom = session.execute(
+        "oscilloscope_render",
+        {{"out", (directory.path() / "custom.wav").string()},
+         {"points", json::array({json::array({-0.5, -0.5}),
+                                  json::array({0.5, -0.5}),
+                                  json::array({0.5, 0.5}),
+                                  json::array({-0.5, 0.5})})},
+         {"closed", true},
+         {"duration", 0.05},
+         {"sample_rate", 8000},
+         {"scan_hz", 50.0},
+         {"band_limited", false},
+         {"save_path", pathFile}},
+        &error);
+    REQUIRE(!custom.is_null());
+    CHECK_EQ(custom["points"], 4);
+    CHECK(std::filesystem::exists(pathFile));
+
+    const json invalid = session.execute(
+        "oscilloscope_render",
+        {{"out", outPath}, {"shape", "not-a-shape"}},
+        &error);
+    CHECK(invalid.is_null());
+    CHECK(!error.empty());
+}
+
+VWTEST("session mastering render writes stems and derived tracks") {
+    TempDirectory directory;
+    Session session;
+    std::string error;
+    REQUIRE(session.timeline().addAudioTrack(
+        "bass", tone(100.0, 0.3, 48000, 1), 0, &error));
+    REQUIRE(session.timeline().addAudioTrack(
+        "lead", tone(1000.0, 0.3, 48000, 1), 0, &error));
+    const std::string outDir = (directory.path() / "mastered").string();
+    const json result = session.execute(
+        "mastering_render",
+        {{"profile", "definition"},
+         {"band_count", 8},
+         {"fft_size", 512},
+         {"hop_size", 256},
+         {"process_fft_size", 512},
+         {"process_hop_size", 256},
+         {"out_dir", outDir},
+         {"prefix", "test"},
+         {"add_tracks", true},
+         {"mute_originals", true},
+         {"ceiling_db", -1.0}},
+        &error);
+    REQUIRE(!result.is_null());
+    CHECK_EQ(result["stems"].size(), size_t{2});
+    CHECK_EQ(result["added_tracks"].size(), size_t{2});
+    CHECK_EQ(session.timeline().trackCount(), 4);
+    CHECK(session.timeline().track(0).muted);
+    CHECK(session.timeline().track(1).muted);
+    CHECK(std::filesystem::exists(result["mix_path"].get<std::string>()));
+    CHECK(std::filesystem::exists(result["manifest"].get<std::string>()));
+    for (const auto& stem : result["stems"]) {
+        CHECK(std::filesystem::exists(stem["path"].get<std::string>()));
+    }
+    Audio mix;
+    REQUIRE(readAudio(result["mix_path"].get<std::string>(), mix));
+    CHECK(mix.numChannels() == 2);
+    CHECK(mix.peak() <= 0.98f);
 }

@@ -93,6 +93,36 @@ struct MasteringAnalysis {
 MasteringAnalysis analyzeMastering(const Timeline& timeline,
                                    const MasteringOptions& options = {},
                                    std::string* error = nullptr);
+
+struct MasteringProcessingOptions {
+    int fftSize = 2048;
+    int hopSize = 512;
+    bool limitMix = true;
+    double ceilingDb = -1.0;
+};
+
+struct MasteringProcessedStem {
+    int trackIndex = -1;
+    std::string name;
+    Audio audio;
+    double minCutDb = 0.0;
+    double maxBoostDb = 0.0;
+};
+
+struct MasteringRenderResult {
+    bool valid = false;
+    std::vector<MasteringProcessedStem> stems;
+    Audio mix;
+    double appliedGainDb = 0.0;
+    double mixPeakDb = -120.0;
+    double mixTruePeakDb = -120.0;
+    std::string summary;
+};
+
+MasteringRenderResult renderMastering(
+    const Timeline& timeline, const MasteringAnalysis& analysis,
+    const MasteringProcessingOptions& options = {},
+    std::string* error = nullptr);
 nlohmann::json masteringAnalysisToJson(const MasteringAnalysis& analysis);
 bool saveMasteringAnalysis(const MasteringAnalysis& analysis,
                            const std::string& path,

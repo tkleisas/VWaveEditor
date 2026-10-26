@@ -24,7 +24,9 @@ void printUsage() {
         "  vwave process <audio> <out> [options]\n"
         "  vwave analyze <audio> [--beats] [--pitch]\n"
         "  vwave mastering <project.vwdoc> [--profile NAME] [--out report.json]\n"
+        "  vwave mastering-render <project.vwdoc> [--out-dir DIR] [--add-tracks]\n"
         "  vwave image <image> <out.wav> [--duration SEC] [--phase MODE]\n"
+        "  vwave scope <out.wav> [--shape NAME] [--scan-hz HZ] [--duration SEC]\n"
         "  vwave slices <audio> <directory> [--mode transients|beats|markers]\n"
         "  vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]\n"
         "      [--morph linear|equal_power|phase_aligned|spectral|harmonic]\n"
@@ -42,6 +44,7 @@ void printUsage() {
         "  vwave project select-track <project> <index>\n"
         "  vwave project set <project> <index> [--gain DB] [--pan V]\n"
         "      [--name NAME] [--start SEC] [--mute|--unmute] [--solo] [--arm]\n"
+        "  vwave project regenerate <project> [index]\n"
         "  vwave project mixdown <project> <out.wav>\n"
         "  vwave lua <script.lua> [audio]\n"
         "  vwave command <name> [json] [--input audio] [--output audio]\n"
@@ -284,6 +287,61 @@ int commandMastering(const std::vector<std::string>& args) {
     return 0;
 }
 
+int commandMasteringRender(const std::vector<std::string>& args) {
+    if (args.size() < 3)
+        return fail("mastering-render requires a project file");
+    vwave::Session session;
+    executeOrFail(session, "load_project", {{"path", args[2]}});
+    json parameters = {{"profile", "balanced"}};
+    for (size_t i = 3; i < args.size(); ++i) {
+        if (args[i] == "--profile") {
+            parameters["profile"] = valueAt(args, i, "--profile");
+        } else if (args[i] == "--out-dir") {
+            parameters["out_dir"] = valueAt(args, i, "--out-dir");
+        } else if (args[i] == "--prefix") {
+            parameters["prefix"] = valueAt(args, i, "--prefix");
+        } else if (args[i] == "--add-tracks") {
+            parameters["add_tracks"] = true;
+        } else if (args[i] == "--mute-originals") {
+            parameters["mute_originals"] = true;
+        } else if (args[i] == "--ceiling") {
+            parameters["ceiling_db"] =
+                std::stod(valueAt(args, i, "--ceiling"));
+        } else if (args[i] == "--band-count") {
+            parameters["band_count"] =
+                std::stoi(valueAt(args, i, "--band-count"));
+        } else if (args[i] == "--fft-size") {
+            parameters["fft_size"] =
+                std::stoi(valueAt(args, i, "--fft-size"));
+        } else if (args[i] == "--hop") {
+            parameters["hop_size"] = std::stoi(valueAt(args, i, "--hop"));
+        } else if (args[i] == "--process-fft-size") {
+            parameters["process_fft_size"] =
+                std::stoi(valueAt(args, i, "--process-fft-size"));
+        } else if (args[i] == "--process-hop") {
+            parameters["process_hop_size"] =
+                std::stoi(valueAt(args, i, "--process-hop"));
+        } else if (args[i] == "--max-cut") {
+            parameters["max_cut_db"] =
+                std::stod(valueAt(args, i, "--max-cut"));
+        } else if (args[i] == "--max-boost") {
+            parameters["max_boost_db"] =
+                std::stod(valueAt(args, i, "--max-boost"));
+        } else if (args[i] == "--smoothing") {
+            parameters["smoothing_bands"] =
+                std::stoi(valueAt(args, i, "--smoothing"));
+        } else if (args[i] == "--include-muted") {
+            parameters["include_muted"] = true;
+        } else if (args[i] == "--no-limit") {
+            parameters["limit_mix"] = false;
+        } else {
+            return fail("unknown mastering-render option: " + args[i]);
+        }
+    }
+    printJson(executeOrFail(session, "mastering_render", parameters));
+    return 0;
+}
+
 int commandImage(const std::vector<std::string>& args) {
     if (args.size() < 4) return fail("image requires an image and output");
     vwave::Session session;
@@ -343,6 +401,67 @@ int commandImage(const std::vector<std::string>& args) {
         }
     }
     printJson(executeOrFail(session, "image_spectrogram", parameters));
+    return 0;
+}
+
+int commandScope(const std::vector<std::string>& args) {
+    if (args.size() < 3) return fail("scope requires an output file");
+    vwave::Session session;
+    json parameters = {{"out", args[2]}, {"shape", "circle"}};
+    for (size_t i = 3; i < args.size(); ++i) {
+        if (args[i] == "--shape") {
+            parameters["shape"] = valueAt(args, i, "--shape");
+        } else if (args[i] == "--path-file") {
+            parameters["path_file"] = valueAt(args, i, "--path-file");
+        } else if (args[i] == "--point-count") {
+            parameters["point_count"] =
+                std::stoi(valueAt(args, i, "--point-count"));
+        } else if (args[i] == "--size") {
+            parameters["size"] = std::stod(valueAt(args, i, "--size"));
+        } else if (args[i] == "--a") {
+            parameters["a"] = std::stod(valueAt(args, i, "--a"));
+        } else if (args[i] == "--b") {
+            parameters["b"] = std::stod(valueAt(args, i, "--b"));
+        } else if (args[i] == "--phase") {
+            parameters["phase"] = std::stod(valueAt(args, i, "--phase"));
+        } else if (args[i] == "--turns") {
+            parameters["turns"] = std::stoi(valueAt(args, i, "--turns"));
+        } else if (args[i] == "--name") {
+            parameters["name"] = valueAt(args, i, "--name");
+        } else if (args[i] == "--duration") {
+            parameters["duration"] =
+                std::stod(valueAt(args, i, "--duration"));
+        } else if (args[i] == "--scan-hz") {
+            parameters["scan_hz"] = std::stod(valueAt(args, i, "--scan-hz"));
+        } else if (args[i] == "--sample-rate") {
+            parameters["sample_rate"] =
+                std::stoi(valueAt(args, i, "--sample-rate"));
+        } else if (args[i] == "--gain") {
+            parameters["gain"] = std::stod(valueAt(args, i, "--gain"));
+        } else if (args[i] == "--smoothing") {
+            parameters["smoothing"] =
+                std::stod(valueAt(args, i, "--smoothing"));
+        } else if (args[i] == "--raw") {
+            parameters["band_limited"] = false;
+        } else if (args[i] == "--band-limit-hz") {
+            parameters["band_limit_hz"] =
+                std::stod(valueAt(args, i, "--band-limit-hz"));
+        } else if (args[i] == "--oversample") {
+            parameters["oversampling"] =
+                std::stoi(valueAt(args, i, "--oversample"));
+        } else if (args[i] == "--direction") {
+            parameters["direction"] = valueAt(args, i, "--direction");
+        } else if (args[i] == "--no-normalize") {
+            parameters["normalize"] = false;
+        } else if (args[i] == "--peak") {
+            parameters["peak"] = std::stod(valueAt(args, i, "--peak"));
+        } else if (args[i] == "--save-path") {
+            parameters["save_path"] = valueAt(args, i, "--save-path");
+        } else {
+            return fail("unknown scope option: " + args[i]);
+        }
+    }
+    printJson(executeOrFail(session, "oscilloscope_render", parameters));
     return 0;
 }
 
@@ -621,6 +740,14 @@ int commandProject(const std::vector<std::string>& args) {
         printJson(session.info());
         return 0;
     }
+    if (subcommand == "regenerate") {
+        json parameters = json::object();
+        if (args.size() >= 5) parameters["index"] = std::stoi(args[4]);
+        executeOrFail(session, "regenerate_track", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
     if (subcommand == "mixdown") {
         if (args.size() < 5) return fail("mixdown requires an output file");
         executeOrFail(session, "save_mixdown", {{"path", args[4]}});
@@ -689,7 +816,10 @@ int main(int argc, char** argv) {
     if (args[1] == "analyze") return commandAnalyze(args);
     if (args[1] == "slices") return commandSlices(args);
     if (args[1] == "mastering") return commandMastering(args);
+    if (args[1] == "mastering-render")
+        return commandMasteringRender(args);
     if (args[1] == "image") return commandImage(args);
+    if (args[1] == "scope") return commandScope(args);
     if (args[1] == "wavetable") return commandWavetable(args);
     if (args[1] == "wavetable-design") return commandWavetableDesign(args);
     if (args[1] == "synth") return commandSynth(args);

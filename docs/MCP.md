@@ -61,7 +61,9 @@ track; dedicated track tools add, select, configure, and remove tracks.
 | `vwave_wavetable_design` | Build a multi-keyframe wavetable |
 | `vwave_synth_note` | Render a wavetable note |
 | `vwave_mastering_analysis` | Analyze stem masking, phase, and suggested gains |
+| `vwave_mastering_render` | Render processed mastering stems/files |
 | `vwave_image_spectrogram` | Render an image into audio through inverse STFT |
+| `vwave_oscilloscope_render` | Render an XY scope path to stereo audio |
 | `vwave_generate_sweep` | Create an exponential sweep |
 | `vwave_deconvolve` | Extract a linear impulse response |
 | `vwave_command` | Execute any Session command |

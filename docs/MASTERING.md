@@ -1,8 +1,12 @@
-# Mastering analysis
+# Mastering analysis and processing
 
-VWaveEditor's mastering tool analyzes aligned stems from one performance. It
-does **not** modify audio. The output is a report of masking, phase coherence,
-levels, and profile-specific per-band gain suggestions.
+VWaveEditor's mastering tool analyzes aligned stems from one performance and can
+render the profile gain curves as processed derived tracks. The source tracks
+remain untouched.
+
+Analysis reports masking, phase coherence, levels, and profile-specific
+per-band gain suggestions. Processing applies those static per-band curves
+offline; real-time dynamic EQ/automation is future work.
 
 ## Input model
 
@@ -55,6 +59,24 @@ avoid one-band spikes.
 True peak is an estimate from 4× cubic interpolation, not a standards-compliant
 oversampled true-peak meter. Loudness is RMS dBFS, not LUFS.
 
+## Processing
+
+`renderMastering()` applies each stem's suggested band gains with a
+Hann-windowed STFT gain mask and overlap-add reconstruction.
+
+- Processed stems are derived copies; source tracks are preserved.
+- The processed mix is checked against a ceiling using the same 4× cubic
+  true-peak estimate as analysis.
+- If the mix exceeds the ceiling, one common gain is applied to every processed
+  stem and the mix, preserving their relative balance.
+- Output can be written as individual stem WAVs, a mastered mix, and a JSON
+  manifest.
+- Session/UI rendering can add the processed stems back to the timeline at
+  their original offsets, gain, pan, and solo state. Optionally mute the
+  originals to audition the processed mix.
+- Processing is static over the whole track; it is not a time-varying dynamic
+  EQ or real-time automation yet.
+
 ## UI
 
 The **Mastering** tab (`4`) provides:
@@ -64,6 +86,8 @@ The **Mastering** tab (`4`) provides:
 - Mix band levels with masking and phase overlays
 - Per-stem suggested-gain cells: red for cuts, green for boosts, outlined cells
   for the dominant stem at that frequency
+- Ceiling and mute-originals controls
+- **Render Processed Stems** to derived timeline tracks
 - **Export Report** as JSON
 
 ## CLI
@@ -72,6 +96,10 @@ The **Mastering** tab (`4`) provides:
 vwave mastering session.vwdoc --profile definition --out mastering.json
 vwave mastering session.vwdoc --profile separation \
     --band-count 48 --max-cut 18 --smoothing 2 --include-muted
+vwave mastering-render session.vwdoc --profile definition \
+    --out-dir mastered --prefix song --ceiling -1
+vwave mastering-render session.vwdoc --profile definition \
+    --add-tracks --mute-originals --ceiling -1
 ```
 
 ## Lua
@@ -83,19 +111,31 @@ local report = vwave.apply("mastering_analysis", {
     out = "/reports/mastering.json"
 })
 vwave.log(report.summary)
+
+local rendered = vwave.apply("mastering_render", {
+    profile = "definition",
+    out_dir = "/renders/mastered",
+    prefix = "song",
+    add_tracks = true,
+    mute_originals = true,
+    ceiling_db = -1.0
+})
+vwave.log(rendered.summary)
 ```
 
 ## MCP
 
-Use `vwave_mastering_analysis` or the generic `vwave_command` with
-`mastering_analysis`. The full JSON report is returned and can optionally be
-written with `out`.
+Use `vwave_mastering_analysis` for analysis and `vwave_mastering_render` for
+offline processing. Both are also available through `vwave_command`.
 
 ## Limitations
 
-- Analysis only; no audio is rendered or changed.
-- Reference matching is not implemented.
-- Band power uses the per-channel spectra; phase coherence uses a mono downmix
-  of each stem. Stereo correlation is reported separately.
-- The analysis is not persisted in the project. Re-run it after changing stems,
-  faders, mute/solo, or track offsets.
+- Processing applies static profile curves, not time-varying dynamic EQ.
+- Reference matching and standards-compliant LUFS metering are not implemented.
+- True peak is an interpolation estimate; band power uses per-channel spectra,
+  while phase coherence uses a mono downmix.
+- Analysis and processing recipes are not persisted in the project. Re-run after
+  changing stems, faders, mute/solo, or track offsets.
+- Derived processing does not change source tracks. Undo history is per-track;
+  adding/muting derived tracks is not part of track-document undo.
+- Real-time mastering automation is future work.

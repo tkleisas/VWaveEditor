@@ -287,7 +287,7 @@ Deferred:
 
 ## Implementation status
 
-As of the v0.0.5 development line:
+As of the v0.0.6 development line:
 
 - Phases 0–8 are implemented and test-green.
 - Multi-track Timeline, track controls, multi-track playback/export, recording,
@@ -302,11 +302,10 @@ As of the v0.0.5 development line:
   settings, ring buffers, UI viewport math, C ABI, and a headless desktop smoke
   test.
 
-## Future feature plan (post-v0.0.5)
+## Future feature plan (post-v0.0.6)
 
 Detailed design notes and options are recorded in
-[docs/IDEAS.md](IDEAS.md). Phases 9-12 are implemented; phases 13+ are
-proposals.
+[docs/IDEAS.md](IDEAS.md). All planned phases 9-14 are implemented.
 
 ### Phase 9: Wavetable designer and morph lab (implemented)
 
@@ -378,25 +377,38 @@ Remaining from the original scope: image sequences/collages, hue-to-pan or
 separate band/track mapping, generated-recipe persistence, in-app audio preview,
 and progress/cancel for very long Griffin–Lim jobs.
 
-### Phase 13: Oscilloscope music
+### Phase 13: Oscilloscope music (implemented)
 
-- XY scope view and time selection.
-- Parametric/polyline/path rendering to stereo audio with band-limited and raw
-  modes.
-- Arc traversal, loops, passes, smoothing, and path persistence.
-- Path recipe stored on generated tracks.
+Implemented:
 
-### Phase 14: Mastering processing
+- XY scope view with generated circle, ellipse, Lissajous, spiral, figure-eight,
+  and line paths; hand-drawn polyline editing.
+- Arc-length traversal to stereo audio with configurable scan rate and
+  forward/reverse/ping-pong direction.
+- Raw and band-limited rendering with 1x–8x oversampling, low-pass filtering,
+  smoothing, and normalization.
+- `.vscope` path save/load, Scope tab, CLI, Lua, MCP, and Session automation.
+- Tests for shapes, arc-length sampling, stereo circle output, direction,
+  limits, path persistence, and invalid input.
 
-- Analysis-only assistant for multi-track masking/overlap.
-- Objectives: loudness under a true-peak ceiling, separation, definition,
-  complementary EQ, masking reduction, reference matching.
-- Constraints: per-track/band gain limits, true peak, phase/mono compatibility,
-  smoothing rates, transient preservation.
-- Start with preview and derived-track renders; add real-time track automation
-  after per-track DSP state and undo integration.
-- Tests on synthetic stems for masking reduction, constraints, determinism, and
-  clicks.
+Remaining from the original scope: text/SVG import, multi-pass thickness,
+embedded track recipes, and editing existing stereo audio in the XY domain.
+
+### Phase 14: Mastering processing (implemented)
+
+Implemented:
+
+- Static per-band gain curves applied through STFT masks and overlap-add.
+- Derived processed stems and a mastered mix; source tracks preserved.
+- Optional common ceiling gain using the 4x cubic true-peak estimate.
+- Processed stems can be written as WAVs with a JSON manifest or added back to
+  the timeline at their original offsets/gain/pan.
+- UI render button, CLI `mastering-render`, Lua, MCP, and Session command.
+- Tests for processed-stem lengths, determinism, ceiling constraints, output
+  files, derived-track insertion, and report generation.
+
+Remaining from the original scope: time-varying dynamic EQ, real-time track
+automation, reference matching, and standards-compliant LUFS metering.
 
 ### Agreed priorities
 
@@ -406,8 +418,8 @@ The phase numbers below group capability workstreams; the delivery order is:
 2. ~~Mastering analysis for one performance's stems.~~ Implemented.
 3. ~~Phase-aware pseudo-3D spectrum.~~ Implemented.
 4. ~~Image-to-spectrogram.~~ Implemented.
-5. Oscilloscope music.
-6. Mastering processing.
+5. ~~Oscilloscope music.~~ Implemented.
+6. ~~Mastering processing.~~ Implemented.
 
 Additional constraints:
 
@@ -420,11 +432,16 @@ Additional constraints:
   definition/gaps, separation, fullness, and custom control.
 - Rendering/automatic processing follows the analysis phase.
 
+### Cross-cutting implemented
+
+- Image, oscilloscope, and synth-note tracks can store versioned recipes.
+- Recipes persist in timeline projects and regenerate through
+  `regenerate_track`/Process → Regenerate Active Track.
+
 ### Remaining decisions
 
-- Whether later mastering processing produces derived tracks or real-time track
-  automation.
-- How reference matching and standards-compliant LUFS metering should be
-  integrated.
+- How real-time mastering automation should integrate with per-track DSP state
+  and undo.
+- How reference matching and standards-compliant LUFS metering should work.
 - Whether generator recipes become shared first-class track metadata.
 - Which standard third-party wavetable metadata profile to target for WAV export.

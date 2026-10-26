@@ -128,9 +128,14 @@ Use core types directly from a YAWN panel:
   `sampleBlend(weights, phase)` for ordered/free wavetable playback;
   `morphedFrame(position)` for display.
 - `vwave::Wavetable::loadAuto(path, table)` for `.vwt` or WAV+sidecar import.
-- `vwave::analyzeMastering(timeline, options)` for analysis-only stem
-  masking/phase/gain reports.
+- `vwave::analyzeMastering(timeline, options)` for stem masking/phase/gain
+  reports.
+- `vwave::renderMastering(timeline, analysis, options)` for offline processed
+  stems and a ceiling-limited mix.
+- `vwave::regenerateTrack(timeline, index, audio)` for stored generator
+  recipes.
 - `vwave::imageToSpectrogram(image, options)` for UI-free image synthesis.
+- `vwave::renderScopePath(path, options)` for UI-free oscilloscope synthesis.
 
 The standalone editor demonstrates the intended interaction model: selection
 drag, wheel zoom, beat/slice/marker overlays, time-frequency region selection,

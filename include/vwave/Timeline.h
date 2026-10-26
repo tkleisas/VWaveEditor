@@ -14,6 +14,7 @@ namespace vwave {
 struct TimelineTrack {
     std::string name;
     Document document;
+    nlohmann::json recipe;
     int64_t startFrame = 0;
     double gainDb = 0.0;
     double pan = 0.0;

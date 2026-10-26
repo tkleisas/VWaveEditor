@@ -60,6 +60,10 @@ PhaseSpectrogram computePhaseSpectrogram(const Audio& audio,
 Audio spectralGain(const Audio& audio, double lowHz, double highHz,
                    double gainDb, Range range = {}, int fftSize = 2048,
                    int hopSize = 512);
+Audio spectralBandGains(const Audio& audio,
+                        const std::vector<double>& bandEdges,
+                        const std::vector<double>& gainsDb, Range range = {},
+                        int fftSize = 2048, int hopSize = 512);
 Audio spectralFilter(const Audio& audio, const std::string& type,
                      double cutoffHz, Range range = {}, int order = 4,
                      int fftSize = 2048, int hopSize = 512);

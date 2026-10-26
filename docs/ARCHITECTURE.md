@@ -160,6 +160,15 @@ momentum/phase-locked variants, random phase, or hue-derived phase. Hann analysi
 and synthesis windows are overlap-added and normalized. The core stays UI-free;
 image decoding is an independent core module, not SDL code.
 
+### Oscilloscope synthesis
+
+`ScopePath` stores normalized XY points and optional closure. Render traverses
+the path by arc length at a configurable scan rate, producing X/Y as stereo
+channels. Direction supports forward, reverse, and ping-pong. Raw mode reads the
+path directly; band-limited mode oversamples, applies a two-pole Butterworth
+low-pass, then decimates. Optional smoothing and peak normalization are applied
+after synthesis. Paths persist as versioned `.vscope` JSON.
+
 ### Wavetables
 
 Extraction selects evenly spaced frames, estimates cycle length from YIN pitch
@@ -177,6 +186,15 @@ morph mode; explicit alignment, band limiting, quantization, and phase
 randomization are separate editing operations. Raw, unnormalized tables load
 without forced correction.
 
+### Track recipes
+
+`TimelineTrack` optionally stores a versioned JSON recipe. Image, oscilloscope,
+and synth-note generators attach recipes when they create a track. The project
+serializer stores them per track. `renderTrackRecipe()` recreates audio from the
+recipe, and `regenerate_track` replaces the track source while preserving its
+timeline offset. Recipes are metadata; they are outside the per-document undo
+history.
+
 ### Mastering analysis
 
 The mastering analyzer aligns timeline tracks by offset and runs a
@@ -184,7 +202,14 @@ Hann-windowed STFT over the project length. Log-spaced bands report combined
 and per-stem power, cross-stem complex coherence, masking density, and
 profile-specific gain suggestions. Band power is computed per channel; phase
 coherence uses a mono downmix. Profiles control masking strength, maximum
-cut/boost, and optional gap filling. Mix metrics come from the current audible
+cut/boost, and optional gap filling.
+
+`renderMastering()` applies each stem's static band-gain curve with a
+Hann-windowed STFT mask and overlap-add, then sums the processed stems with
+their original offsets/gain/pan to check a common mix ceiling. The 4x cubic
+true-peak estimate is used; if the mix exceeds the ceiling, one common gain is
+applied to all processed stems and the mix. Derived stems can be written as WAVs
+or added back to the timeline; source tracks are never replaced. Mix metrics come from the current audible
 mixdown (including faders/pan); spectral suggestions use raw stem audio before
 track faders. The analyzer never mutates tracks. True peak is estimated with
 4× cubic interpolation; loudness is RMS dBFS rather than LUFS.
@@ -284,11 +309,14 @@ The suite covers:
 - phase STFT frequency/confidence, frame caps, and silence handling;
 - image decoding and image-to-spectrogram duration, mapping, phase, alpha, and
   invalid-input handling;
+- oscilloscope path generation, arc-length sampling, direction, normalization,
+  band-limited rendering, and path persistence;
 - wavetable extraction, interpolation, persistence, synthesis;
-- mastering stem masking, profiles, phase coherence, gain limits, and reports;
+- mastering stem masking, profiles, phase coherence, gain limits, reports, and
+  offline processed-stem rendering;
 - sweep/deconvolution reciprocity, normalization, capture manifests;
-- timeline track controls, offsets, selection translation, mixdown, and project
-  persistence (including empty/legacy tracks);
+- timeline track controls, offsets, selection translation, mixdown, project
+  persistence (including empty/legacy tracks), and track recipe round-trips;
 - settings persistence and safe defaults;
 - ring-buffer wrap/full/discard behavior;
 - parameter-slider linear/log/stepped mapping and spectral zoom;
@@ -306,8 +334,11 @@ The suite covers:
   selection.
 - Image-to-spectrogram stereo output duplicates mono; hue-to-pan, image
   sequences/collages, and regeneration recipes are future work.
-- Mastering analysis is offline and analysis-only; true peak is an
-  interpolation estimate and loudness is RMS dBFS, not LUFS.
+- Oscilloscope polyline editing is click-only, and generated tracks do not yet
+  embed path recipes.
+- Mastering processing is static and offline; time-varying dynamic EQ and
+  real-time automation are future work. True peak is an interpolation estimate
+  and loudness is RMS dBFS, not LUFS.
 - The standalone UI is stereo-focused; the core is channel-agnostic.
 - Recording is one target at a time; punch-in, loop recording, and comping are
   future work.

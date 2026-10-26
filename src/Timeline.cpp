@@ -374,6 +374,8 @@ nlohmann::json Timeline::toJson() const {
     for (const auto& item : m_tracks) {
         nlohmann::json trackJson;
         trackJson["name"] = item.name;
+        if (!item.recipe.is_null() && !item.recipe.empty())
+            trackJson["recipe"] = item.recipe;
         trackJson["startFrame"] = item.startFrame;
         trackJson["gainDb"] = item.gainDb;
         trackJson["pan"] = item.pan;
@@ -468,6 +470,9 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
         for (const auto& trackJson : root["tracks"]) {
             TimelineTrack item;
             item.name = trackJson.value("name", std::string{});
+            if (trackJson.contains("recipe") &&
+                trackJson["recipe"].is_object())
+                item.recipe = trackJson["recipe"];
             item.startFrame = trackJson.value("startFrame", int64_t{0});
             item.gainDb = trackJson.value("gainDb", 0.0);
             item.pan = trackJson.value("pan", 0.0);

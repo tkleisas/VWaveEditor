@@ -209,6 +209,10 @@ VWTEST("timeline project round-trip preserves tracks and controls") {
     REQUIRE(timeline.setTrackMuted(0, true));
     REQUIRE(timeline.setTrackSolo(2, true));
     REQUIRE(timeline.setTrackArmed(1, true));
+    timeline.track(0).recipe = {
+        {"type", "oscilloscope_render"},
+        {"version", 1},
+        {"shape", "circle"}};
     timeline.setActiveTrack(2);
     timeline.setSelection(100, 800);
 

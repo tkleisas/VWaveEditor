@@ -6,6 +6,7 @@
 #include "vwave/Analysis.h"
 #include "vwave/Document.h"
 #include "vwave/ImageSpectrogram.h"
+#include "vwave/Oscilloscope.h"
 #include "vwave/Mastering.h"
 #include "vwave/Settings.h"
 #include "vwave/Spectral.h"
@@ -79,6 +80,8 @@ private:
         LoadWavetable,
         SaveMasteringReport,
         LoadImage,
+        SaveScopePath,
+        LoadScopePath,
         ExportSlices
     };
 
@@ -95,6 +98,7 @@ private:
     void drawWavetable(const SDL_Rect& area);
     void drawMastering(const SDL_Rect& area);
     void drawImage(const SDL_Rect& area);
+    void drawOscilloscope(const SDL_Rect& area);
     void drawFooter();
     void drawDialog();
     void drawButton(const Button& button);
@@ -160,11 +164,20 @@ private:
     void renderWavetableNote();
     void analyzeMasteringStems();
     void saveMasteringReport(const std::string& path);
+    void renderMasteringStems();
+    void regenerateActiveTrack();
     void loadImage(const std::string& path);
     void renderImageToTrack();
     void cycleImagePhaseMode();
     void cycleImageFrequencyScale();
     void cycleImageTimeMapping();
+    void generateScopePath();
+    void cycleScopeShape();
+    void cycleScopeDirection();
+    void cycleScopeOversampling();
+    void renderScopeToTrack();
+    void loadScopePathFile(const std::string& path);
+    void saveScopePathFile(const std::string& path);
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -275,8 +288,15 @@ private:
     vwave::WavetableViewport m_wavetableView;
     vwave::MasteringAnalysis m_mastering;
     vwave::ImageData m_image;
+    vwave::ScopePath m_scopePath;
+    SDL_Rect m_scopeArea{};
     std::string m_imagePath;
     SDL_Texture* m_imageTexture = nullptr;
+    int m_scopeShape = 2;
+    int m_scopeDirection = 0;
+    int m_scopeOversampling = 2;
+    bool m_scopeBandLimited = true;
+    bool m_scopeNormalize = true;
     int m_imageFrequencyScale = 1;
     int m_imageTimeMapping = 0;
     int m_imagePhaseMode = 1;
@@ -289,6 +309,7 @@ private:
     bool m_imageFlipVertical = false;
     int m_masteringProfile = 0;
     bool m_masteringIncludeMuted = false;
+    bool m_masteringMuteOriginals = true;
     std::vector<double> m_frameWeights;
     bool m_freeBlend = false;
     vwave::Spectrogram m_spectrogram;
@@ -363,10 +384,21 @@ private:
     vwave::ParameterSlider m_imageThreshold;
     vwave::ParameterSlider m_imageLoops;
     vwave::ParameterSlider m_imageIterations;
+    vwave::ParameterSlider m_scopePointCount;
+    vwave::ParameterSlider m_scopeSize;
+    vwave::ParameterSlider m_scopeA;
+    vwave::ParameterSlider m_scopeB;
+    vwave::ParameterSlider m_scopePhase;
+    vwave::ParameterSlider m_scopeTurns;
+    vwave::ParameterSlider m_scopeScanHz;
+    vwave::ParameterSlider m_scopeDuration;
+    vwave::ParameterSlider m_scopeGain;
+    vwave::ParameterSlider m_scopeSmoothing;
     vwave::ParameterSlider m_masteringBands;
     vwave::ParameterSlider m_masteringMaxCut;
     vwave::ParameterSlider m_masteringMaxBoost;
     vwave::ParameterSlider m_masteringSmoothing;
+    vwave::ParameterSlider m_masteringCeiling;
     vwave::ParameterSlider m_framePositionControl;
     vwave::ParameterSlider m_frameWeightControl;
     vwave::ParameterSlider m_tableRootControl;

@@ -156,6 +156,21 @@ vwave.apply("wavetable_design", {
 })
 ```
 
+## Oscilloscope music
+
+```lua
+vwave.apply("oscilloscope_render", {
+    out = "/audio/scope.wav",
+    shape = "lissajous",
+    a = 3, b = 2,
+    scan_hz = 90.0,
+    duration = 2.0,
+    band_limited = true,
+    save_path = "/paths/lissajous.vscope",
+    replace = true
+})
+```
+
 ## Image to spectrogram
 
 ```lua
@@ -178,6 +193,16 @@ local report = vwave.apply("mastering_analysis", {
     out = "/reports/mastering.json"
 })
 vwave.log(report.summary)
+
+local rendered = vwave.apply("mastering_render", {
+    profile = "definition",
+    out_dir = "/renders/mastered",
+    prefix = "song",
+    add_tracks = true,
+    mute_originals = true,
+    ceiling_db = -1.0
+})
+vwave.log(rendered.summary)
 ```
 
 Profiles: `balanced`, `definition`, `separation`, `fullness`, `loudness`,

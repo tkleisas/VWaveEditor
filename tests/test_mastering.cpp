@@ -250,3 +250,51 @@ VWTEST("mastering profile names round-trip") {
     MasteringProfile invalid = MasteringProfile::Balanced;
     CHECK(!masteringProfileFromName("nope", invalid));
 }
+
+VWTEST("mastering processing renders constrained processed stems") {
+    const Timeline timeline = makeTimeline();
+    MasteringOptions analysisOptions;
+    analysisOptions.fftSize = 1024;
+    analysisOptions.hopSize = 512;
+    analysisOptions.bandCount = 16;
+    analysisOptions.profile = MasteringProfile::Definition;
+    std::string error;
+    const MasteringAnalysis analysis =
+        analyzeMastering(timeline, analysisOptions, &error);
+    REQUIRE(analysis.valid);
+
+    MasteringProcessingOptions renderOptions;
+    renderOptions.fftSize = 1024;
+    renderOptions.hopSize = 256;
+    renderOptions.limitMix = true;
+    renderOptions.ceilingDb = -1.0;
+    const MasteringRenderResult rendered =
+        renderMastering(timeline, analysis, renderOptions, &error);
+    REQUIRE(rendered.valid);
+    CHECK(error.empty());
+    CHECK_EQ(rendered.stems.size(), size_t{3});
+    CHECK(!rendered.mix.empty());
+    CHECK(rendered.mix.numChannels() == 2);
+    CHECK_EQ(rendered.mix.numFrames(), timeline.lengthFrames());
+    CHECK(rendered.mixTruePeakDb <= -0.95);
+    for (const auto& stem : rendered.stems) {
+        CHECK(!stem.audio.empty());
+        CHECK_EQ(stem.audio.sampleRate(), timeline.sampleRate());
+        CHECK_EQ(stem.audio.numFrames(),
+                 timeline.track(stem.trackIndex).document.numFrames());
+        for (int64_t i = 0; i < stem.audio.numFrames(); ++i)
+            CHECK(std::isfinite(stem.audio.sample(0, i)));
+    }
+
+    const MasteringRenderResult again =
+        renderMastering(timeline, analysis, renderOptions, &error);
+    REQUIRE(again.valid);
+    REQUIRE(again.stems.size() == rendered.stems.size());
+    for (size_t i = 0; i < rendered.stems.size(); ++i) {
+        CHECK(again.stems[i].audio.equals(rendered.stems[i].audio));
+    }
+
+    MasteringAnalysis empty;
+    CHECK(!renderMastering(timeline, empty, {}, &error).valid);
+    CHECK(!error.empty());
+}

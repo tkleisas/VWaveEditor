@@ -410,6 +410,49 @@ Audio spectralGain(const Audio& audio, double lowHz, double highHz,
     return processSpectralRange(audio, range, fft, hop, processor);
 }
 
+Audio spectralBandGains(const Audio& audio,
+                        const std::vector<double>& bandEdges,
+                        const std::vector<double>& gainsDb, Range range,
+                        int fftSize, int hopSize) {
+    if (bandEdges.size() < 2 || gainsDb.size() + 1 != bandEdges.size())
+        return Audio{};
+    for (size_t i = 0; i < bandEdges.size(); ++i) {
+        if (!std::isfinite(bandEdges[i]) || bandEdges[i] <= 0.0)
+            return Audio{};
+        if (i > 0 && bandEdges[i] <= bandEdges[i - 1]) return Audio{};
+    }
+    for (double gain : gainsDb) {
+        if (!std::isfinite(gain)) return Audio{};
+    }
+    const int fft = normalizedFftSize(fftSize);
+    const int hop = normalizedHop(hopSize, fft);
+    const int bins = fft / 2 + 1;
+    std::vector<float> binGain(static_cast<size_t>(bins), 1.0f);
+    for (int bin = 0; bin < bins; ++bin) {
+        const double frequency =
+            static_cast<double>(bin) * audio.sampleRate() / fft;
+        const auto upper =
+            std::lower_bound(bandEdges.begin(), bandEdges.end(), frequency);
+        size_t band = 0;
+        if (upper == bandEdges.begin()) {
+            band = 0;
+        } else if (upper == bandEdges.end()) {
+            band = gainsDb.size() - 1;
+        } else {
+            band = static_cast<size_t>(upper - bandEdges.begin()) - 1;
+        }
+        band = std::min(band, gainsDb.size() - 1);
+        binGain[static_cast<size_t>(bin)] = static_cast<float>(
+            std::pow(10.0, gainsDb[band] / 20.0));
+    }
+    auto processor = [&](std::vector<std::complex<float>>& spectrum, int, int) {
+        for (int bin = 0; bin < bins; ++bin)
+            spectrum[static_cast<size_t>(bin)] *=
+                binGain[static_cast<size_t>(bin)];
+    };
+    return processSpectralRange(audio, range, fft, hop, processor);
+}
+
 Audio spectralFilter(const Audio& audio, const std::string& type,
                      double cutoffHz, Range range, int order, int fftSize,
                      int hopSize) {

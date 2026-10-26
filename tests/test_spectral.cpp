@@ -242,3 +242,20 @@ VWTEST("phase spectrogram caps frames and handles empty input") {
         computePhaseSpectrogram(Audio{}, 2048, 16);
     CHECK(!empty.valid());
 }
+
+VWTEST("spectral band gains apply a multi-band curve") {
+    const Audio audio = makeMix({440.0, 6000.0}, {0.5, 0.4}, 0.4);
+    const std::vector<double> edges = {20.0, 1000.0, 20000.0};
+    const std::vector<double> gains = {0.0, -24.0};
+    const Audio filtered =
+        spectralBandGains(audio, edges, gains, {}, 2048, 512);
+    REQUIRE(!filtered.empty());
+    const double lowRatio = amplitudeAt(filtered, 440.0, 0.1, 0.3) /
+                            amplitudeAt(audio, 440.0, 0.1, 0.3);
+    const double highRatio = amplitudeAt(filtered, 6000.0, 0.1, 0.3) /
+                             amplitudeAt(audio, 6000.0, 0.1, 0.3);
+    CHECK_NEAR(lowRatio, 1.0, 0.12);
+    CHECK(highRatio < 0.1);
+    CHECK(spectralBandGains(audio, {20.0}, {0.0}).empty());
+    CHECK(spectralBandGains(audio, {20.0, 10.0}, {0.0}).empty());
+}
