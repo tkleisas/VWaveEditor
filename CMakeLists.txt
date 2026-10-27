@@ -129,7 +129,14 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/AnalysisController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/EventDispatch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/KeyboardInput.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/MouseInput.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/MouseDown.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/MouseMotion.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/MouseUp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/MouseWheel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/OscilloscopeMouse.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/SpectrumMouse.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/WaveformMouse.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/WavetableMouse.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ClipController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/PlaybackController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ImageController.cpp
