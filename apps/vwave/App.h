@@ -7,6 +7,7 @@
 #include "controllers/AnalysisController.h"
 #include "controllers/ClipController.h"
 #include "controllers/LoopController.h"
+#include "controllers/StereoController.h"
 #include "services/AnalysisService.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
@@ -296,6 +297,7 @@ private:
     uint64_t m_scopeRequest = 0;
     uint64_t m_wavetableRequest = 0;
     AudioPlayer m_player;
+    vwave::app::StereoController m_stereo;
     AudioRecorder m_recorder;
     bool m_recording = false;
     int64_t m_recordStartFrame = 0;
@@ -358,7 +360,6 @@ private:
     int64_t m_waveDragPreviewFrame = 0;
     int m_repeatDragCount = 0;
     int64_t m_clipDragOriginalFrames = 0;
-    vwave::StereoPadding m_stereoPadding = vwave::StereoPadding::Back;
     int m_spectrum3DHoverX = -1;
     int m_spectrum3DHoverY = -1;
     SDL_Texture* m_spectrogramTexture = nullptr;

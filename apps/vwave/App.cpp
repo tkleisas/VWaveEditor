@@ -29,6 +29,16 @@ App::App()
     : m_analysis(m_jobs, m_dispatcher),
       m_analysisData(
           m_analysis, [this](const std::string& status) { setStatus(status); }),
+      m_stereo(
+          m_timeline, m_player,
+          [this] {
+              m_clips.reset();
+              syncTrackControls();
+              clearAnalysis();
+              m_view.fit(m_timeline.lengthFrames());
+              m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+          },
+          [this](const std::string& status) { setStatus(status); }),
       m_clips(
           m_timeline, m_playhead, m_stretchRatio,
           [this](const std::function<bool(std::string*)>& edit,
@@ -950,76 +960,13 @@ void App::stretchActiveTrack() {
     }, "Track stretched");
 }
 
-void App::splitActiveStereoTrack() {
-    if (!hasTracks()) return;
-    const int index = m_timeline.activeTrack();
-    if (m_timeline.track(index).document.numChannels() != 2) {
-        setStatus("Active track is not stereo");
-        return;
-    }
-    m_player.stop();
-    std::string error;
-    if (!m_timeline.splitStereoTrack(index, true, &error)) {
-        setStatus(error.empty() ? "Split failed" : error, 6000);
-        return;
-    }
-    m_clips.reset();
-    syncTrackControls();
-    clearAnalysis();
-    m_view.fit(m_timeline.lengthFrames());
-    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-    setStatus("Split stereo track into mono tracks");
-}
+void App::splitActiveStereoTrack() { m_stereo.splitActive(); }
 
 void App::combineActiveMono(int direction) {
-    if (!hasTracks()) return;
-    const int active = m_timeline.activeTrack();
-    const int other = active + direction;
-    if (active < 0 || other < 0 || other >= m_timeline.trackCount()) {
-        setStatus("No adjacent track to combine");
-        return;
-    }
-    if (m_timeline.track(active).document.numChannels() != 1 ||
-        m_timeline.track(other).document.numChannels() != 1) {
-        setStatus("Both tracks must be mono");
-        return;
-    }
-    m_player.stop();
-    std::string error;
-    vwave::StereoCombineOptions options;
-    options.padding = m_stereoPadding;
-    options.keepOriginals = true;
-    if (!m_timeline.combineMonoTracks(
-            direction < 0 ? other : active,
-            direction < 0 ? active : other, options, &error)) {
-        setStatus(error.empty() ? "Combine failed" : error, 6000);
-        return;
-    }
-    m_clips.reset();
-    syncTrackControls();
-    clearAnalysis();
-    m_view.fit(m_timeline.lengthFrames());
-    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-    setStatus("Combined mono tracks with " +
-              std::string(vwave::stereoPaddingName(m_stereoPadding)) +
-              " padding");
+    m_stereo.combineActive(direction);
 }
 
-void App::cycleStereoPadding() {
-    switch (m_stereoPadding) {
-    case vwave::StereoPadding::Back:
-        m_stereoPadding = vwave::StereoPadding::Front;
-        break;
-    case vwave::StereoPadding::Front:
-        m_stereoPadding = vwave::StereoPadding::Both;
-        break;
-    case vwave::StereoPadding::Both:
-        m_stereoPadding = vwave::StereoPadding::Back;
-        break;
-    }
-    setStatus("Stereo padding: " +
-              std::string(vwave::stereoPaddingName(m_stereoPadding)));
-}
+void App::cycleStereoPadding() { m_stereo.cyclePadding(); }
 
 void App::toggleClipTool() { m_clips.toggleTool(); }
 

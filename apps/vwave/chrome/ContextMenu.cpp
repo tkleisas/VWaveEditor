@@ -121,7 +121,7 @@ void App::openTrackContextMenu(int trackIndex, int x, int y) {
     }, mono && trackIndex + 1 < m_timeline.trackCount() &&
            m_timeline.track(trackIndex + 1).document.numChannels() == 1);
     add("Stereo Padding: " +
-            std::string(vwave::stereoPaddingName(m_stereoPadding)),
+            std::string(vwave::stereoPaddingName(m_stereo.padding())),
         [this] { cycleStereoPadding(); });
     separator();
     const bool clipMode =

@@ -506,4 +506,5 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Extracted `ClipController` for clip-tool state and clip editing actions.
 - Extracted `AnalysisController` and moved beat/pitch analysis to background
   jobs with cached results.
+- Extracted `StereoController` for padding mode and stereo/mono track conversion.
 - Next: extract transport/track controllers, then split `Session` and `Document`.

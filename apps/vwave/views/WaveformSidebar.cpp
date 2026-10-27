@@ -112,7 +112,7 @@ void App::drawTrackSidebar(int& y) {
               [this] { splitActiveStereoTrack(); }, false, false,
               activeStereo);
     addButton("Pad: " +
-                  std::string(vwave::stereoPaddingName(m_stereoPadding)),
+                  std::string(vwave::stereoPaddingName(m_stereo.padding())),
               18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
               [this] { cycleStereoPadding(); }, false, false,
               !m_timeline.empty());
