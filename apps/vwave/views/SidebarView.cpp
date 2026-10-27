@@ -117,18 +117,18 @@ void App::drawSidebar() {
     if (m_tab == vwave::EditorTab::Spectrum) {
         drawSection("SPECTRAL", y);
         std::string regionText = "Region: whole document";
-        if (m_spectralRegion.active && !m_spectralRegion.frames.empty()) {
+        if (m_spectralController.region().active && !m_spectralController.region().frames.empty()) {
             std::ostringstream out;
             out << "Region: "
                 << formatSeconds(static_cast<double>(
-                                     m_spectralRegion.frames.start) /
+                                     m_spectralController.region().frames.start) /
                                  std::max(1, activeDocument().sampleRate()))
                 << " - "
                 << formatSeconds(static_cast<double>(
-                                     m_spectralRegion.frames.end) /
+                                     m_spectralController.region().frames.end) /
                                  std::max(1, activeDocument().sampleRate()))
-                << "  " << formatHz(m_spectralRegion.lowHz) << " - "
-                << formatHz(m_spectralRegion.highHz);
+                << "  " << formatHz(m_spectralController.region().lowHz) << " - "
+                << formatHz(m_spectralController.region().highHz);
             regionText = out.str();
         } else if (activeDocument().selection().active) {
             regionText = "Region: current track selection";

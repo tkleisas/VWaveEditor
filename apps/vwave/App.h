@@ -10,6 +10,7 @@
 #include "controllers/PlaybackController.h"
 #include "controllers/RecordingController.h"
 #include "controllers/SelectionController.h"
+#include "controllers/SpectralController.h"
 #include "views/WaveformPeakCache.h"
 #include "controllers/StereoController.h"
 #include "controllers/TrackController.h"
@@ -304,7 +305,6 @@ private:
     vwave::EditorTab m_tab = vwave::EditorTab::Waveform;
     vwave::WaveformViewport m_view;
     vwave::SpectralViewport m_spectralView;
-    vwave::SpectralRegion m_spectralRegion;
     vwave::Wavetable m_wavetable;
     vwave::WavetableViewport m_wavetableView;
     vwave::MasteringAnalysis m_mastering;
@@ -404,6 +404,7 @@ private:
     vwave::ParameterSlider m_stretchRatio;
     vwave::app::ClipController m_clips;
     vwave::app::SelectionController m_selection;
+    vwave::app::SpectralController m_spectralController;
     vwave::app::WaveformPeakCache m_peakCache;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;

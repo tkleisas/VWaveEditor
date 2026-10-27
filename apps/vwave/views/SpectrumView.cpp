@@ -171,19 +171,19 @@ void App::drawSpectrum(const SDL_Rect& area) {
                            rect.y + rect.h);
     }
 
-    if (m_spectralRegion.active && !m_spectralRegion.frames.empty()) {
+    if (m_spectralController.region().active && !m_spectralController.region().frames.empty()) {
         const int x0 = rect.x + static_cast<int>(
-            (static_cast<double>(trackStart + m_spectralRegion.frames.start) -
+            (static_cast<double>(trackStart + m_spectralController.region().frames.start) -
              m_view.startFrame) /
             std::max(1.0, m_view.visibleFrames) * rect.w);
         const int x1 = rect.x + static_cast<int>(
-            (static_cast<double>(trackStart + m_spectralRegion.frames.end) -
+            (static_cast<double>(trackStart + m_spectralController.region().frames.end) -
              m_view.startFrame) /
             std::max(1.0, m_view.visibleFrames) * rect.w);
         const double highY =
-            m_spectralView.yAtFrequency(m_spectralRegion.highHz, rect.h);
+            m_spectralView.yAtFrequency(m_spectralController.region().highHz, rect.h);
         const double lowY =
-            m_spectralView.yAtFrequency(m_spectralRegion.lowHz, rect.h);
+            m_spectralView.yAtFrequency(m_spectralController.region().lowHz, rect.h);
         SDL_Rect selection{std::min(x0, x1), rect.y + static_cast<int>(highY),
                            std::max(1, std::abs(x1 - x0)),
                            std::max(1, static_cast<int>(lowY - highY))};
@@ -193,8 +193,8 @@ void App::drawSpectrum(const SDL_Rect& area) {
         SDL_RenderDrawRect(m_renderer, &selection);
         std::ostringstream description;
         description << std::fixed << std::setprecision(0)
-                    << m_spectralRegion.lowHz << " - "
-                    << m_spectralRegion.highHz << " Hz";
+                    << m_spectralController.region().lowHz << " - "
+                    << m_spectralController.region().highHz << " Hz";
         drawText(description.str(), selection.x + 4, selection.y - 14,
                  kAccent, fontSmall());
     }

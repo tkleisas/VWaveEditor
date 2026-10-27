@@ -108,6 +108,11 @@ App::App()
               m_view.clamp(m_timeline.lengthFrames());
               m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
           },
+          [this](const std::string& status) { setStatus(status); }),
+      m_spectralController(
+          m_timeline, m_player,
+          [this](const std::function<bool(std::string*)>& edit,
+                 const std::string& success) { runEdit(edit, success); },
           [this](const std::string& status) { setStatus(status); }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
@@ -1189,7 +1194,7 @@ void App::markEdited() {
     m_overviewDirty = true;
     m_spectrogramDirty = true;
     m_analysisData.clear();
-    m_spectralRegion.clear();
+    m_spectralController.clear();
     updateWindowTitle();
 }
 
@@ -1201,7 +1206,7 @@ void App::clearAnalysis() {
     m_analysisData.clear();
     m_overviewDirty = true;
     m_spectrogramDirty = true;
-    m_spectralRegion.clear();
+    m_spectralController.clear();
 }
 
 void App::analyzeBeats() {
@@ -1375,11 +1380,25 @@ void App::copySelectionToNewTrack() {
 }
 
 vwave::Range App::spectralTimeRange() const {
-    if (m_spectralRegion.active && !m_spectralRegion.frames.empty())
-        return m_spectralRegion.frames;
-    if (activeDocument().selection().active)
-        return activeDocument().selectedRange();
-    return {0, activeDocument().numFrames()};
+    return m_spectralController.timeRange();
+}
+
+void App::applySpectralGain(double db) {
+    m_spectralController.applyGain(db);
+}
+
+void App::applySpectralFilter(bool lowpass) {
+    m_spectralController.applyFilter(lowpass, m_spectralCutoff.value);
+}
+
+void App::applySpectralGate() {
+    m_spectralController.applyGate(m_spectralGate.value);
+}
+
+void App::applySpectralBlur() {
+    m_spectralController.applyBlur(
+        static_cast<int>(std::lround(m_spectralBlurTime.value)),
+        static_cast<int>(std::lround(m_spectralBlurFrequency.value)));
 }
 
 void App::addMarkerAtPlayhead() { m_selection.addMarkerAtPlayhead(); }
@@ -1803,83 +1822,6 @@ void App::renderWavetableNote() {
     setStatus("Rendering wavetable note...", 60000);
 }
 
-void App::applySpectralGain(double db) {
-    if (activeDocument().audio().empty()) return;
-    const vwave::Range range = spectralTimeRange();
-    if (range.empty()) {
-        setStatus("Select a time range or drag a spectral region first");
-        return;
-    }
-    m_player.stop();
-    activeDocument().setSelection(range.start, range.end);
-    std::string error;
-    if (!activeDocument().spectralGain(m_spectralLow.value, m_spectralHigh.value, db,
-                                 &error)) {
-        setStatus(error.empty() ? "Spectral edit failed" : error);
-        return;
-    }
-    markEdited();
-    setStatus(db <= -100.0 ? "Spectral region erased" : "Spectral gain applied");
-}
-
-void App::applySpectralFilter(bool lowpass) {
-    if (activeDocument().audio().empty()) return;
-    const vwave::Range range = spectralTimeRange();
-    if (range.empty()) {
-        setStatus("Select a time range or drag a spectral region first");
-        return;
-    }
-    m_player.stop();
-    activeDocument().setSelection(range.start, range.end);
-    std::string error;
-    if (!activeDocument().spectralFilter(lowpass ? "lowpass" : "highpass",
-                                   m_spectralCutoff.value, &error)) {
-        setStatus(error.empty() ? "Spectral filter failed" : error);
-        return;
-    }
-    markEdited();
-    setStatus(lowpass ? "Lowpass applied" : "Highpass applied");
-}
-
-void App::applySpectralGate() {
-    if (activeDocument().audio().empty()) return;
-    const vwave::Range range = spectralTimeRange();
-    if (range.empty()) {
-        setStatus("Select a time range or drag a spectral region first");
-        return;
-    }
-    m_player.stop();
-    activeDocument().setSelection(range.start, range.end);
-    std::string error;
-    if (!activeDocument().spectralGate(m_spectralGate.value, &error)) {
-        setStatus(error.empty() ? "Spectral gate failed" : error);
-        return;
-    }
-    markEdited();
-    setStatus("Spectral gate applied");
-}
-
-void App::applySpectralBlur() {
-    if (activeDocument().audio().empty()) return;
-    const vwave::Range range = spectralTimeRange();
-    if (range.empty()) {
-        setStatus("Select a time range or drag a spectral region first");
-        return;
-    }
-    m_player.stop();
-    activeDocument().setSelection(range.start, range.end);
-    std::string error;
-    if (!activeDocument().spectralBlur(
-            static_cast<int>(std::lround(m_spectralBlurTime.value)),
-            static_cast<int>(std::lround(m_spectralBlurFrequency.value)),
-            &error)) {
-        setStatus(error.empty() ? "Spectral blur failed" : error);
-        return;
-    }
-    markEdited();
-    setStatus("Spectral blur applied");
-}
-
 void App::openDialog(DialogMode mode, const std::string& title,
                      const std::string& initialPath, bool save) {
     m_openMenu = -1;
@@ -2060,8 +2002,8 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
     } else if (key == SDLK_SPACE) {
         togglePlay();
     } else if (key == SDLK_ESCAPE) {
-        if (m_spectralRegion.active) {
-            m_spectralRegion.clear();
+        if (m_spectralController.region().active) {
+            m_spectralController.clear();
             setStatus("Spectral selection cleared");
         } else {
             m_timeline.clearSelection();
@@ -2510,7 +2452,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 m_player.stop();
                 m_playhead = clampFrame(frame, m_timeline.lengthFrames());
                 m_timeline.clearSelection();
-                m_spectralRegion.clear();
+                m_spectralController.clear();
                 m_waveDrag = WaveDragMode::LoopSelection;
                 m_waveDragTrack = -1;
                 m_waveDragMouseX = event.x;
@@ -2524,7 +2466,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
             m_draggingSpectrum = true;
             m_spectrumStartX = event.x;
             m_spectrumStartY = event.y;
-            m_spectralRegion.clear();
+            m_spectralController.clear();
         }
     } else if (m_tab == vwave::EditorTab::Wavetable) {
         SDL_Point point{event.x, event.y};
@@ -2720,16 +2662,16 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
             m_playhead = clampFrame(m_spectrumClickFrame,
                                     m_timeline.lengthFrames());
             m_timeline.clearSelection();
-            m_spectralRegion.clear();
+            m_spectralController.clear();
             setStatus("Playhead " +
                       formatSeconds(static_cast<double>(m_playhead) /
                                     std::max(1, m_timeline.sampleRate())));
-        } else if (m_spectralRegion.frames.length() < 2 ||
-                   m_spectralRegion.highHz <= m_spectralRegion.lowHz) {
-            m_spectralRegion.active = false;
+        } else if (m_spectralController.region().frames.length() < 2 ||
+                   m_spectralController.region().highHz <= m_spectralController.region().lowHz) {
+            m_spectralController.region().active = false;
         } else {
-            m_spectralLow.setValue(m_spectralRegion.lowHz);
-            m_spectralHigh.setValue(m_spectralRegion.highHz);
+            m_spectralLow.setValue(m_spectralController.region().lowHz);
+            m_spectralHigh.setValue(m_spectralController.region().highHz);
         }
         m_spectrumClickCandidate = false;
     }
@@ -2924,12 +2866,12 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
                 std::min(y0, y1) - m_spectrumArea.y, m_spectrumArea.h);
             const double hz1 = m_spectralView.frequencyAtY(
                 std::max(y0, y1) - m_spectrumArea.y, m_spectrumArea.h);
-            m_spectralRegion.frames = {std::min(local0, local1),
+            m_spectralController.region().frames = {std::min(local0, local1),
                                        std::max(local0, local1)};
-            m_spectralRegion.lowHz = std::min(hz0, hz1);
-            m_spectralRegion.highHz = std::max(hz0, hz1);
-            m_spectralRegion.active =
-                m_spectralRegion.frames.length() > 0;
+            m_spectralController.region().lowHz = std::min(hz0, hz1);
+            m_spectralController.region().highHz = std::max(hz0, hz1);
+            m_spectralController.region().active =
+                m_spectralController.region().frames.length() > 0;
         }
     }
     if (m_drawingWavetable && m_wavetable.valid()) {
