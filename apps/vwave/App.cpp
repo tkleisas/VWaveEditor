@@ -130,7 +130,8 @@ App::App()
               clearAnalysis();
               setTab(vwave::EditorTab::Waveform);
               updateWindowTitle();
-          }),
+          },
+          [this] { setTab(vwave::EditorTab::Image); }),
       m_scopeController(
           m_jobs, m_dispatcher, m_timeline, m_player,
           [this](const std::string& status) { setStatus(status); },
@@ -765,9 +766,7 @@ void App::cycleImageFrequencyScale() {
 
 void App::cycleImageTimeMapping() { m_imageController.cycleTimeMapping(); }
 
-void App::loadImage(const std::string& path) {
-    if (m_imageController.load(path)) setTab(vwave::EditorTab::Image);
-}
+void App::loadImage(const std::string& path) { m_imageController.load(path); }
 
 void App::renderImageToTrack() {
     vwave::app::ImageRenderParams params;
@@ -1093,8 +1092,7 @@ bool App::loadFile(const std::string& path) {
         return m_scopeController.valid();
     }
     if (isImagePath(path)) {
-        loadImage(path);
-        return m_imageController.valid();
+        return m_imageController.load(path);
     }
     return loadAudio(path);
 }

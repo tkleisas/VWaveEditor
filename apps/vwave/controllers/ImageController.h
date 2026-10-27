@@ -28,16 +28,18 @@ class ImageController {
 public:
     using StatusSink = std::function<void(const std::string&)>;
     using RenderSink = std::function<void(int64_t start)>;
+    using Sink = std::function<void()>;
 
     ImageController(SDL_Renderer* renderer, vwave::JobSystem& jobs,
                     UiDispatcher& dispatcher, vwave::Timeline& timeline,
                     AudioPlayer& player, StatusSink status,
-                    RenderSink rendered);
+                    RenderSink rendered, Sink loaded);
 
     const vwave::ImageData& image() const { return m_image; }
     const std::string& path() const { return m_path; }
     SDL_Texture* texture() const { return m_texture; }
     bool valid() const { return m_image.valid(); }
+    bool loading() const { return m_loading; }
 
     int frequencyScale() const { return m_frequencyScale; }
     int timeMapping() const { return m_timeMapping; }
@@ -74,11 +76,15 @@ private:
     AudioPlayer& m_player;
     StatusSink m_status;
     RenderSink m_rendered;
+    Sink m_loaded;
     vwave::ImageData m_image;
     std::string m_path;
     SDL_Texture* m_texture = nullptr;
     vwave::JobHandle m_job;
+    vwave::JobHandle m_loadJob;
     uint64_t m_request = 0;
+    uint64_t m_loadRequest = 0;
+    bool m_loading = false;
     int m_frequencyScale = 1;
     int m_timeMapping = 0;
     int m_phaseMode = 1;

@@ -533,4 +533,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   with stale-result rejection and timeline snapshots.
 - Expanded editor smoke coverage with a generated stereo tone, all editor
   tabs, and the settings dialog.
+- Moved image decoding to background jobs; texture creation and tab switch
+  happen on the UI thread after the load completes.
 - Next: remaining async/performance work.
