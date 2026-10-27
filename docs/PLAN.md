@@ -531,8 +531,8 @@ automation presets; the cut-up arrangement model itself is implemented.
   `Document.cpp` 227, `Timeline.cpp` 157.
 - Moved mastering analysis and processed-stem rendering to background jobs
   with stale-result rejection and timeline snapshots.
-- Expanded editor smoke coverage with a generated stereo tone, all editor
-  tabs, and the settings dialog.
+- Expanded editor smoke coverage to load a generated stereo tone through the
+  asynchronous file path, then visit all editor tabs and the settings dialog.
 - Moved image decoding to background jobs; texture creation and tab switch
   happen on the UI thread after the load completes.
 - Moved wavetable file loading to background jobs with stale-result rejection.

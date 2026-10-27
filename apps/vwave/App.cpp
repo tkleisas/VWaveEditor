@@ -339,12 +339,20 @@ int App::run() {
             audio.sample(0, frame) = static_cast<float>(value);
             audio.sample(1, frame) = static_cast<float>(value * 0.8);
         }
+        const auto path =
+            std::filesystem::temp_directory_path() /
+            "vwave_editor_smoke.wav";
         std::string error;
-        if (!m_timeline.addAudioTrack("Smoke", audio, 0, &error))
-            return 1;
-        m_timeline.setActiveTrack(0);
-        syncTrackControls();
-        m_view.fit(m_timeline.lengthFrames());
+        if (!vwave::writeAudio(path.string(), audio, {}, &error)) return 1;
+        if (!loadAudio(path.string())) return 1;
+        const Uint32 deadline = SDL_GetTicks() + 5000;
+        while (!hasTracks() && SDL_GetTicks() < deadline) {
+            m_dispatcher.drain();
+            SDL_Delay(2);
+        }
+        std::error_code removeError;
+        std::filesystem::remove(path, removeError);
+        if (!hasTracks()) return 1;
     }
     static const vwave::EditorTab kSmokeTabs[] = {
         vwave::EditorTab::Waveform, vwave::EditorTab::Spectrum,

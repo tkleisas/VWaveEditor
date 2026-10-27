@@ -33,7 +33,7 @@ bool FileLoadController::loadAudio(const std::string& path, AudioSink loaded) {
             error = exception.what();
         }
         if (control.cancelled()) return;
-        m_dispatcher.post([this, request, audio = std::move(audio),
+        m_dispatcher.post([this, request, audio = std::move(audio), success,
                            error = std::move(error), path,
                            loaded = std::move(loaded)]() mutable {
             if (request != m_request) return;
