@@ -535,4 +535,5 @@ automation presets; the cut-up arrangement model itself is implemented.
   tabs, and the settings dialog.
 - Moved image decoding to background jobs; texture creation and tab switch
   happen on the UI thread after the load completes.
+- Moved wavetable file loading to background jobs with stale-result rejection.
 - Next: remaining async/performance work.

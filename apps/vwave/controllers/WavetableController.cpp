@@ -17,18 +17,22 @@ WavetableController::WavetableController(vwave::JobSystem& jobs,
                                          UiDispatcher& dispatcher,
                                          vwave::Timeline& timeline,
                                          AudioPlayer& player,
-                                         StatusSink status, RenderSink rendered)
+                                         StatusSink status, RenderSink rendered,
+                                         Sink loaded)
     : m_jobs(jobs),
       m_dispatcher(dispatcher),
       m_timeline(timeline),
       m_player(player),
       m_status(std::move(status)),
-      m_rendered(std::move(rendered)) {}
+      m_rendered(std::move(rendered)),
+      m_loaded(std::move(loaded)) {}
 
 void WavetableController::clear() {
     m_table = {};
     m_weights.clear();
     m_view.selectedFrame = 0;
+    ++m_loadRequest;
+    if (m_loadJob.valid()) m_loadJob.cancel();
 }
 
 void WavetableController::syncWeights() {
@@ -54,17 +58,37 @@ void WavetableController::extract(
 }
 
 bool WavetableController::load(const std::string& path) {
-    std::string error;
-    vwave::Wavetable loaded;
-    if (!vwave::Wavetable::loadAuto(path, loaded, &error)) {
-        m_status(error.empty() ? "Wavetable load failed" : error);
+    if (path.empty()) {
+        m_status("Wavetable path is empty");
         return false;
     }
-    m_table = std::move(loaded);
-    m_weights.assign(static_cast<size_t>(m_table.frameCount()), 1.0);
-    m_freeBlend = false;
-    m_view.selectedFrame = 0;
-    m_status("Loaded wavetable " + baseName(path));
+    const uint64_t request = ++m_loadRequest;
+    if (m_loadJob.valid()) m_loadJob.cancel();
+    m_status("Loading wavetable...");
+    m_loadJob = m_jobs.submit([this, request, path](vwave::JobControl& control) {
+        std::string error;
+        vwave::Wavetable loaded;
+        try {
+            vwave::Wavetable::loadAuto(path, loaded, &error);
+        } catch (const std::exception& exception) {
+            error = exception.what();
+        }
+        if (control.cancelled()) return;
+        m_dispatcher.post([this, request, loaded = std::move(loaded),
+                           error = std::move(error), path]() mutable {
+            if (request != m_loadRequest) return;
+            if (!loaded.valid()) {
+                m_status(error.empty() ? "Wavetable load failed" : error);
+                return;
+            }
+            m_table = std::move(loaded);
+            m_weights.assign(static_cast<size_t>(m_table.frameCount()), 1.0);
+            m_freeBlend = false;
+            m_view.selectedFrame = 0;
+            m_loaded();
+            m_status("Loaded wavetable " + baseName(path));
+        });
+    });
     return true;
 }
 
@@ -260,7 +284,9 @@ void WavetableController::render(const WavetableNoteParams& params) {
 
 void WavetableController::cancel() {
     ++m_request;
+    ++m_loadRequest;
     if (m_job.valid()) m_job.cancel();
+    if (m_loadJob.valid()) m_loadJob.cancel();
 }
 
 } // namespace vwave::app

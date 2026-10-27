@@ -28,10 +28,11 @@ class WavetableController {
 public:
     using StatusSink = std::function<void(const std::string&)>;
     using RenderSink = std::function<void()>;
+    using Sink = std::function<void()>;
 
     WavetableController(vwave::JobSystem& jobs, UiDispatcher& dispatcher,
                         vwave::Timeline& timeline, AudioPlayer& player,
-                        StatusSink status, RenderSink rendered);
+                        StatusSink status, RenderSink rendered, Sink loaded);
 
     vwave::Wavetable& table() { return m_table; }
     const vwave::Wavetable& table() const { return m_table; }
@@ -65,11 +66,14 @@ private:
     AudioPlayer& m_player;
     StatusSink m_status;
     RenderSink m_rendered;
+    Sink m_loaded;
     vwave::Wavetable m_table;
     vwave::WavetableViewport m_view;
     std::vector<double> m_weights;
     vwave::JobHandle m_job;
+    vwave::JobHandle m_loadJob;
     uint64_t m_request = 0;
+    uint64_t m_loadRequest = 0;
     bool m_freeBlend = false;
 };
 

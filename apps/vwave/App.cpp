@@ -153,6 +153,10 @@ App::App()
               clearAnalysis();
               setTab(vwave::EditorTab::Waveform);
               updateWindowTitle();
+          },
+          [this] {
+              syncWavetableDesignControls();
+              setTab(vwave::EditorTab::Wavetable);
           }),
       m_settingsController(
           m_player, [this](const std::string& status) { setStatus(status); },
@@ -1256,9 +1260,7 @@ void App::extractWavetable() {
 }
 
 void App::loadWavetable(const std::string& path) {
-    if (!m_wavetableController.load(path)) return;
-    syncWavetableDesignControls();
-    setTab(vwave::EditorTab::Wavetable);
+    m_wavetableController.load(path);
 }
 
 void App::saveWavetable(const std::string& path) {
