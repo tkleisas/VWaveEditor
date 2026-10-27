@@ -135,6 +135,10 @@ correctness and simple project serialization.
 
 ## Clip arrangement
 
+`ClipArrangement` owns clip validation, rendering, source-range operations, and
+clip gain/fades. `Document` delegates clip edits to it while retaining undo
+history and project serialization.
+
 A document can own a clip arrangement in addition to its base audio:
 
 ```text

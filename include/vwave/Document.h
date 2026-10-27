@@ -2,6 +2,7 @@
 
 #include "vwave/Audio.h"
 #include "vwave/AudioIO.h"
+#include "vwave/ClipArrangement.h"
 
 #include <nlohmann/json.hpp>
 
@@ -26,22 +27,6 @@ struct Slice {
     Range range;
     std::string name;
 };
-
-struct Clip {
-    int64_t sourceStart = 0;
-    int64_t sourceLength = 0;
-    int64_t timelineStart = 0;
-    double stretch = 1.0;
-    double gainDb = 0.0;
-    double fadeInSeconds = 0.0;
-    double fadeOutSeconds = 0.0;
-    std::string name;
-};
-
-int64_t clipOutputFrames(const Clip& clip);
-nlohmann::json clipToJson(const Clip& clip);
-bool clipFromJson(const nlohmann::json& json, Clip& out,
-                  std::string* error = nullptr);
 
 class Operation {
 public:
@@ -243,8 +228,6 @@ public:
 private:
     bool rebuild();
     bool validateRange(const Operation& operation, std::string* error) const;
-    bool validateClips(const std::vector<Clip>& clips, int64_t baseFrames,
-                       std::string* error) const;
     bool applyProcess(const Operation& operation, Audio& working,
                       std::string* error) const;
     bool applyOperation(const Operation& operation, Audio& working,
@@ -252,8 +235,6 @@ private:
     bool applyHistoryOperation(const Operation& operation, Audio& base,
                                std::vector<Clip>& clips, Selection& after,
                                std::string* error) const;
-    Audio renderClips(const Audio& base,
-                      const std::vector<Clip>& clips) const;
     void refreshArranged();
 
     struct HistoryEntry {
@@ -269,7 +250,7 @@ private:
     mutable Audio m_arranged;
     mutable bool m_cacheValid = false;
     mutable bool m_arrangedValid = false;
-    std::vector<Clip> m_clips;
+    ClipArrangement m_clips;
     Selection m_selection;
     Audio m_clipboard;
     std::vector<Marker> m_markers;

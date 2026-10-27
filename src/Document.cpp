@@ -192,52 +192,6 @@ std::string joinLabel(const std::string& name, double value,
 
 } // namespace
 
-int64_t clipOutputFrames(const Clip& clip) {
-    if (clip.sourceLength <= 0 || !std::isfinite(clip.stretch) ||
-        clip.stretch <= 0.0)
-        return 0;
-    const double value =
-        static_cast<double>(clip.sourceLength) * clip.stretch;
-    if (value >= static_cast<double>(std::numeric_limits<int64_t>::max()))
-        return 0;
-    return std::max<int64_t>(1, static_cast<int64_t>(std::llround(value)));
-}
-
-nlohmann::json clipToJson(const Clip& clip) {
-    return {{"sourceStart", clip.sourceStart},
-            {"sourceLength", clip.sourceLength},
-            {"timelineStart", clip.timelineStart},
-            {"stretch", clip.stretch},
-            {"gainDb", clip.gainDb},
-            {"fadeInSeconds", clip.fadeInSeconds},
-            {"fadeOutSeconds", clip.fadeOutSeconds},
-            {"name", clip.name}};
-}
-
-bool clipFromJson(const nlohmann::json& json, Clip& out,
-                  std::string* error) {
-    try {
-        if (!json.is_object()) {
-            setError(error, "clip must be an object");
-            return false;
-        }
-        Clip clip;
-        clip.sourceStart = json.value("sourceStart", int64_t{0});
-        clip.sourceLength = json.value("sourceLength", int64_t{0});
-        clip.timelineStart = json.value("timelineStart", int64_t{0});
-        clip.stretch = json.value("stretch", 1.0);
-        clip.gainDb = json.value("gainDb", 0.0);
-        clip.fadeInSeconds = json.value("fadeInSeconds", 0.0);
-        clip.fadeOutSeconds = json.value("fadeOutSeconds", 0.0);
-        clip.name = json.value("name", std::string{});
-        out = std::move(clip);
-        return true;
-    } catch (const std::exception& e) {
-        setError(error, std::string("cannot parse clip: ") + e.what());
-        return false;
-    }
-}
-
 const char* stretchAlgorithmName(StretchAlgorithm algorithm) {
     switch (algorithm) {
     case StretchAlgorithm::Wsola: return "wsola";
@@ -551,71 +505,8 @@ const Audio& Document::audio() const {
 }
 
 void Document::refreshArranged() {
-    m_arranged = renderClips(m_rendered, m_clips);
+    m_arranged = m_clips.render(m_rendered);
     m_arrangedValid = true;
-}
-
-Audio Document::renderClips(const Audio& base,
-                            const std::vector<Clip>& clips) const {
-    if (clips.empty()) return base;
-    if (base.empty()) return Audio{};
-
-    int64_t totalFrames = 0;
-    for (const auto& clip : clips) {
-        const int64_t frames = clipOutputFrames(clip);
-        if (frames <= 0) continue;
-        totalFrames = std::max(totalFrames, clip.timelineStart + frames);
-    }
-    if (totalFrames <= 0) return Audio(base.numChannels(), 0, base.sampleRate());
-
-    Audio output(base.numChannels(), totalFrames, base.sampleRate());
-    for (const auto& clip : clips) {
-        if (clip.sourceLength <= 0 || clip.timelineStart < 0) continue;
-        const int64_t expectedFrames = clipOutputFrames(clip);
-        if (expectedFrames <= 0) continue;
-        Audio segment = base.slice(
-            {clip.sourceStart, clip.sourceStart + clip.sourceLength});
-        if (std::abs(clip.stretch - 1.0) > 1e-9) {
-            segment = vwave::timeStretch(segment, clip.stretch,
-                                         StretchAlgorithm::Wsola);
-        }
-        if (segment.empty()) continue;
-        const int64_t frames =
-            std::min<int64_t>(segment.numFrames(),
-                              totalFrames - clip.timelineStart);
-        if (frames <= 0) continue;
-        const int64_t fadeInFrames = std::clamp<int64_t>(
-            static_cast<int64_t>(std::llround(
-                clip.fadeInSeconds * base.sampleRate())),
-            0, frames);
-        const int64_t fadeOutFrames = std::clamp<int64_t>(
-            static_cast<int64_t>(std::llround(
-                clip.fadeOutSeconds * base.sampleRate())),
-            0, frames);
-        const double gain = dbToLinear(clip.gainDb);
-        for (int64_t frame = 0; frame < frames; ++frame) {
-            double envelope = gain;
-            if (fadeInFrames > 0 && frame < fadeInFrames) {
-                envelope *= static_cast<double>(frame) /
-                            static_cast<double>(fadeInFrames);
-            }
-            if (fadeOutFrames > 0 &&
-                frame >= frames - fadeOutFrames) {
-                const double position =
-                    fadeOutFrames > 1
-                        ? static_cast<double>(frame -
-                                              (frames - fadeOutFrames)) /
-                              static_cast<double>(fadeOutFrames - 1)
-                        : 1.0;
-                envelope *= 1.0 - position;
-            }
-            for (int ch = 0; ch < output.numChannels(); ++ch) {
-                output.sample(ch, clip.timelineStart + frame) +=
-                    static_cast<float>(segment.sample(ch, frame) * envelope);
-            }
-        }
-    }
-    return output;
 }
 
 int Document::sampleRate() const { return audio().sampleRate(); }
@@ -658,33 +549,21 @@ bool Document::hasClips() const {
 
 const std::vector<Clip>& Document::clips() const {
     if (!m_cacheValid) const_cast<Document*>(this)->rebuild();
-    return m_clips;
+    return m_clips.clips();
 }
 
 int Document::clipIndexAt(int64_t frame) const {
     if (!m_cacheValid) const_cast<Document*>(this)->rebuild();
-    for (size_t i = 0; i < m_clips.size(); ++i) {
-        const Clip& clip = m_clips[i];
-        const int64_t end =
-            clip.timelineStart + clipOutputFrames(clip);
-        if (frame >= clip.timelineStart && frame < end)
-            return static_cast<int>(i);
-    }
-    return -1;
+    return m_clips.indexAt(frame);
 }
 
 bool Document::createClipArrangement(std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (m_rendered.empty()) {
-        setError(error, "document is empty");
-        return false;
-    }
     if (!m_clips.empty()) return true;
-    Clip clip;
-    clip.sourceLength = m_rendered.numFrames();
-    clip.name = "Clip 1";
-    return setClipArrangement({std::move(clip)}, "Create clips", error);
+    std::vector<Clip> clips;
+    if (!m_clips.makeFull(m_rendered.numFrames(), clips, error)) return false;
+    return setClipArrangement(std::move(clips), "Create clips", error);
 }
 
 bool Document::setClipArrangement(std::vector<Clip> clips,
@@ -701,70 +580,17 @@ bool Document::setClipArrangement(std::vector<Clip> clips,
 bool Document::splitClipAt(int64_t frame, std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (m_rendered.empty()) {
-        setError(error, "document is empty");
+    std::vector<Clip> clips;
+    if (!m_clips.splitAt(frame, m_rendered.numFrames(), clips, error))
         return false;
-    }
-    std::vector<Clip> clips = m_clips;
-    if (clips.empty()) {
-        Clip clip;
-        clip.sourceLength = m_rendered.numFrames();
-        clip.name = "Clip 1";
-        clips.push_back(std::move(clip));
-    }
-    int index = -1;
-    for (size_t i = 0; i < clips.size(); ++i) {
-        const int64_t end =
-            clips[i].timelineStart + clipOutputFrames(clips[i]);
-        if (frame > clips[i].timelineStart && frame < end) {
-            index = static_cast<int>(i);
-            break;
-        }
-    }
-    if (index < 0) {
-        setError(error, "split point is not inside a clip");
-        return false;
-    }
-    Clip& clip = clips[static_cast<size_t>(index)];
-    if (clip.sourceLength < 2) {
-        setError(error, "clip is too short to split");
-        return false;
-    }
-    const int64_t local = frame - clip.timelineStart;
-    const int64_t sourceOffset = std::clamp<int64_t>(
-        static_cast<int64_t>(std::llround(
-            static_cast<double>(local) / clip.stretch)),
-        1, clip.sourceLength - 1);
-
-    Clip left = clip;
-    left.sourceLength = sourceOffset;
-    left.fadeOutSeconds = 0.0;
-    Clip right = clip;
-    right.sourceStart += sourceOffset;
-    right.sourceLength -= sourceOffset;
-    right.timelineStart =
-        clip.timelineStart + clipOutputFrames(left);
-    right.fadeInSeconds = 0.0;
-    if (!left.name.empty()) left.name += " A";
-    if (!right.name.empty()) right.name += " B";
-    clips[static_cast<size_t>(index)] = std::move(left);
-    clips.insert(clips.begin() + index + 1, std::move(right));
     return setClipArrangement(std::move(clips), "Split clip", error);
 }
 
 bool Document::deleteClip(size_t index, std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (index >= m_clips.size()) {
-        setError(error, "clip index is out of range");
-        return false;
-    }
-    if (m_clips.size() <= 1) {
-        setError(error, "cannot delete the last clip; flatten instead");
-        return false;
-    }
-    std::vector<Clip> clips = m_clips;
-    clips.erase(clips.begin() + static_cast<std::ptrdiff_t>(index));
+    std::vector<Clip> clips;
+    if (!m_clips.remove(index, clips, error)) return false;
     return setClipArrangement(std::move(clips), "Delete clip", error);
 }
 
@@ -772,16 +598,8 @@ bool Document::moveClip(size_t index, int64_t timelineStart,
                         std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (index >= m_clips.size()) {
-        setError(error, "clip index is out of range");
-        return false;
-    }
-    if (timelineStart < 0) {
-        setError(error, "clip position must be non-negative");
-        return false;
-    }
-    std::vector<Clip> clips = m_clips;
-    clips[index].timelineStart = timelineStart;
+    std::vector<Clip> clips;
+    if (!m_clips.move(index, timelineStart, clips, error)) return false;
     return setClipArrangement(std::move(clips), "Move clip", error);
 }
 
@@ -789,54 +607,16 @@ bool Document::stretchClip(size_t index, double ratio,
                            std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (index >= m_clips.size()) {
-        setError(error, "clip index is out of range");
-        return false;
-    }
-    if (!std::isfinite(ratio) || ratio <= 0.0) {
-        setError(error, "clip stretch ratio must be positive");
-        return false;
-    }
-    std::vector<Clip> clips = m_clips;
-    clips[index].stretch = std::clamp(ratio, 0.05, 20.0);
+    std::vector<Clip> clips;
+    if (!m_clips.stretch(index, ratio, clips, error)) return false;
     return setClipArrangement(std::move(clips), "Stretch clip", error);
 }
 
 bool Document::repeatClip(size_t index, int count, std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (index >= m_clips.size()) {
-        setError(error, "clip index is out of range");
-        return false;
-    }
-    if (count <= 0 || count > 1000) {
-        setError(error, "clip repeat count must be between 1 and 1000");
-        return false;
-    }
-    const Clip& source = m_clips[index];
-    const int64_t length = clipOutputFrames(source);
-    const int64_t end = source.timelineStart + length;
-    const int64_t added = length * static_cast<int64_t>(count);
     std::vector<Clip> clips;
-    clips.reserve(m_clips.size() + static_cast<size_t>(count));
-    for (size_t i = 0; i < m_clips.size(); ++i) {
-        Clip clip = m_clips[i];
-        if (i == index) {
-            clips.push_back(clip);
-            for (int repeat = 1; repeat <= count; ++repeat) {
-                Clip copy = clip;
-                copy.timelineStart =
-                    clip.timelineStart + static_cast<int64_t>(repeat) * length;
-                if (!copy.name.empty())
-                    copy.name += " copy " + std::to_string(repeat);
-                clips.push_back(std::move(copy));
-            }
-        } else {
-            if (clip.timelineStart >= end)
-                clip.timelineStart += added;
-            clips.push_back(std::move(clip));
-        }
-    }
+    if (!m_clips.repeat(index, count, clips, error)) return false;
     return setClipArrangement(std::move(clips), "Repeat clip", error);
 }
 
@@ -844,16 +624,8 @@ bool Document::setClipGain(size_t index, double gainDb,
                            std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (index >= m_clips.size()) {
-        setError(error, "clip index is out of range");
-        return false;
-    }
-    if (!std::isfinite(gainDb)) {
-        setError(error, "clip gain must be finite");
-        return false;
-    }
-    std::vector<Clip> clips = m_clips;
-    clips[index].gainDb = std::clamp(gainDb, -96.0, 24.0);
+    std::vector<Clip> clips;
+    if (!m_clips.setGain(index, gainDb, clips, error)) return false;
     return setClipArrangement(std::move(clips), "Set clip gain", error);
 }
 
@@ -861,18 +633,9 @@ bool Document::setClipFades(size_t index, double fadeInSeconds,
                             double fadeOutSeconds, std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
-    if (index >= m_clips.size()) {
-        setError(error, "clip index is out of range");
+    std::vector<Clip> clips;
+    if (!m_clips.setFades(index, fadeInSeconds, fadeOutSeconds, clips, error))
         return false;
-    }
-    if (!std::isfinite(fadeInSeconds) || !std::isfinite(fadeOutSeconds) ||
-        fadeInSeconds < 0.0 || fadeOutSeconds < 0.0) {
-        setError(error, "clip fades must be non-negative");
-        return false;
-    }
-    std::vector<Clip> clips = m_clips;
-    clips[index].fadeInSeconds = fadeInSeconds;
-    clips[index].fadeOutSeconds = fadeOutSeconds;
     return setClipArrangement(std::move(clips), "Set clip fades", error);
 }
 
@@ -1046,38 +809,6 @@ bool Document::validateRange(const Operation& operation,
     return false;
 }
 
-bool Document::validateClips(const std::vector<Clip>& clips,
-                             int64_t baseFrames,
-                             std::string* error) const {
-    for (const Clip& clip : clips) {
-        if (clip.sourceStart < 0 || clip.sourceLength <= 0 ||
-            clip.sourceStart + clip.sourceLength > baseFrames) {
-            setError(error, "clip source range is outside the document");
-            return false;
-        }
-        if (clip.timelineStart < 0) {
-            setError(error, "clip timeline position must be non-negative");
-            return false;
-        }
-        const int64_t outputFrames = clipOutputFrames(clip);
-        if (!std::isfinite(clip.stretch) || clip.stretch <= 0.0 ||
-            outputFrames <= 0 ||
-            clip.timelineStart >
-                std::numeric_limits<int64_t>::max() - outputFrames) {
-            setError(error, "clip has an invalid stretch ratio or position");
-            return false;
-        }
-        if (!std::isfinite(clip.gainDb) ||
-            !std::isfinite(clip.fadeInSeconds) ||
-            !std::isfinite(clip.fadeOutSeconds) ||
-            clip.fadeInSeconds < 0.0 || clip.fadeOutSeconds < 0.0) {
-            setError(error, "clip has invalid gain or fade values");
-            return false;
-        }
-    }
-    return true;
-}
-
 bool Document::applyHistoryOperation(const Operation& operation, Audio& base,
                                      std::vector<Clip>& clips,
                                      Selection& after,
@@ -1089,7 +820,7 @@ bool Document::applyHistoryOperation(const Operation& operation, Audio& base,
             setError(error, "clip arrangement is empty");
             return false;
         }
-        if (!validateClips(target, base.numFrames(), error)) return false;
+        if (!m_clips.validate(target, base.numFrames(), error)) return false;
         clips = std::move(target);
         return true;
     }
@@ -1098,7 +829,7 @@ bool Document::applyHistoryOperation(const Operation& operation, Audio& base,
             setError(error, "no clip arrangement to flatten");
             return false;
         }
-        base = renderClips(base, clips);
+        base = ClipArrangement::render(base, clips);
         clips.clear();
         after = {0, base.numFrames(), base.numFrames() > 0};
         return true;
@@ -1509,9 +1240,10 @@ bool Document::apply(const Operation& operation, std::string* error) {
             setError(error, "clip arrangement is empty");
             return false;
         }
-        if (!validateClips(clips, m_rendered.numFrames(), error)) return false;
+        if (!m_clips.validate(clips, m_rendered.numFrames(), error))
+            return false;
         const Selection before = m_selection;
-        m_clips = std::move(clips);
+        m_clips.assign(std::move(clips));
         refreshArranged();
         m_selection = clampSelection(m_selection, m_arranged.numFrames());
         m_history.push_back({operation, before, m_selection});
@@ -1525,7 +1257,7 @@ bool Document::apply(const Operation& operation, std::string* error) {
             return false;
         }
         const Selection before = m_selection;
-        m_rendered = renderClips(m_rendered, m_clips);
+        m_rendered = m_clips.render(m_rendered);
         m_clips.clear();
         m_arranged = m_rendered;
         m_arrangedValid = true;
@@ -1575,15 +1307,15 @@ bool Document::redo() {
     m_redo.pop_back();
 
     Audio base = m_rendered;
-    std::vector<Clip> clips = m_clips;
+    std::vector<Clip> clips = m_clips.clips();
     Selection after = entry.after;
     if (!applyHistoryOperation(entry.operation, base, clips, after, nullptr)) {
         m_redo.push_back(std::move(entry));
         return false;
     }
     m_rendered = std::move(base);
-    m_clips = std::move(clips);
-    m_arranged = renderClips(m_rendered, m_clips);
+    m_clips.assign(std::move(clips));
+    m_arranged = m_clips.render(m_rendered);
     m_arrangedValid = true;
     m_cacheValid = true;
     m_history.push_back(entry);
@@ -1601,8 +1333,7 @@ std::string Document::redoLabel() const {
 
 void Document::clearHistory() {
     if (!m_cacheValid) rebuild();
-    if (!m_clips.empty())
-        m_rendered = renderClips(m_rendered, m_clips);
+    if (!m_clips.empty()) m_rendered = m_clips.render(m_rendered);
     m_source = m_rendered;
     m_clips.clear();
     m_arranged = m_rendered;
@@ -1931,7 +1662,7 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
                                          error))
                     return false;
                 loaded.m_rendered = working;
-                loaded.m_clips = clips;
+                loaded.m_clips.assign(clips);
                 loaded.m_cacheValid = true;
                 if (!loaded.validateRange(operation, error)) return false;
 
@@ -1950,9 +1681,8 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
                     {std::move(operation), before, after});
             }
             loaded.m_rendered = std::move(working);
-            loaded.m_clips = std::move(clips);
-            loaded.m_arranged = loaded.renderClips(loaded.m_rendered,
-                                                   loaded.m_clips);
+            loaded.m_clips.assign(std::move(clips));
+            loaded.m_arranged = loaded.m_clips.render(loaded.m_rendered);
             loaded.m_arrangedValid = true;
             loaded.m_cacheValid = true;
             loaded.m_redo.clear();
@@ -2038,8 +1768,8 @@ bool Document::rebuild() {
         if (!applyHistoryOperation(entry.operation, working, clips, after,
                                    nullptr)) {
             m_rendered = std::move(working);
-            m_clips = std::move(clips);
-            m_arranged = renderClips(m_rendered, m_clips);
+            m_clips.assign(std::move(clips));
+            m_arranged = m_clips.render(m_rendered);
             m_arrangedValid = true;
             m_cacheValid = true;
             return false;
@@ -2047,8 +1777,8 @@ bool Document::rebuild() {
         selection = after;
     }
     m_rendered = std::move(working);
-    m_clips = std::move(clips);
-    m_arranged = renderClips(m_rendered, m_clips);
+    m_clips.assign(std::move(clips));
+    m_arranged = m_clips.render(m_rendered);
     m_arrangedValid = true;
     m_cacheValid = true;
     m_selection = clampSelection(m_selection, m_arranged.numFrames());

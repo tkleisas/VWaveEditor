@@ -511,4 +511,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   and per-track gain/pan control state.
 - Extracted `PlaybackController` for seek/play/stop/update and loop-aware
   playback ranges; loop state remains in `LoopController`.
-- Next: split `Session` and `Document` internals.
+- Extracted `ClipArrangement`; `Document` now delegates clip validation,
+  rendering, and edit transformations. `Document.cpp` is under 1.8k lines.
+- Next: split `Session` command handlers and remaining `Document` internals.
