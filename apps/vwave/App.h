@@ -8,6 +8,7 @@
 #include "controllers/ClipController.h"
 #include "controllers/LoopController.h"
 #include "controllers/StereoController.h"
+#include "controllers/TrackController.h"
 #include "services/AnalysisService.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
@@ -48,7 +49,6 @@ private:
 
     using Button = vwave::ui::Button;
     using SliderRef = vwave::ui::SliderRef;
-    using TrackControls = vwave::ui::TrackControls;
     using MenuItem = vwave::ui::MenuItem;
     using Menu = vwave::ui::Menu;
 
@@ -275,7 +275,6 @@ private:
     SDL_Rect m_settingsThemePrev{};
     SDL_Rect m_settingsThemeNext{};
     SDL_Rect m_settingsCloseRect{};
-    std::vector<TrackControls> m_trackControls;
     std::vector<SDL_Rect> m_trackHeaderRects;
     std::vector<SDL_Rect> m_trackLaneRects;
     SliderRef m_activeSlider;
@@ -375,6 +374,7 @@ private:
     Uint32 m_statusUntil = 0;
     bool m_running = true;
     int64_t m_playhead = 0;
+    vwave::app::TrackController m_tracks;
     vwave::app::LoopController m_loop;
     bool m_spectrumClickCandidate = false;
     int m_spectrumClickX = 0;

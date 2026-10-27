@@ -596,19 +596,19 @@ void App::drawTrackHeader(const SDL_Rect& header, int index) {
                                   : "Track disarmed");
               },
               false, track.armed);
-    addSlider("Vol", formatDb(m_trackControls[static_cast<size_t>(index)].gain.value),
+    addSlider("Vol", formatDb(m_tracks.gainControl(index).value),
               header.x + 8, header.y + 47, header.w - 16,
-              m_trackControls[static_cast<size_t>(index)].gain,
+              m_tracks.gainControl(index),
               [this, index](double value) {
                   m_timeline.setTrackGainDb(index, value);
                   updateMixer();
               });
     addSlider("Pan",
               std::to_string(static_cast<int>(std::lround(
-                  m_trackControls[static_cast<size_t>(index)].pan.value * 100))) +
+                  m_tracks.panControl(index).value * 100))) +
                   "%",
               header.x + 8, header.y + 74, header.w - 16,
-              m_trackControls[static_cast<size_t>(index)].pan,
+              m_tracks.panControl(index),
               [this, index](double value) {
                   m_timeline.setTrackPan(index, value);
                   updateMixer();

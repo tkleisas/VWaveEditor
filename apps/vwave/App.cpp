@@ -39,6 +39,31 @@ App::App()
               m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
           },
           [this](const std::string& status) { setStatus(status); }),
+      m_tracks(
+          m_timeline, m_player, m_playhead,
+          [this] {
+              m_clips.onTrackChanged(activeDocument().hasClips());
+              clearAnalysis();
+              m_wavetable = {};
+              m_frameWeights.clear();
+              m_wavetableView.selectedFrame = 0;
+              m_view.clamp(m_timeline.lengthFrames());
+          },
+          [this] {
+              m_clips.reset();
+              clearAnalysis();
+              m_wavetable = {};
+              m_frameWeights.clear();
+              m_wavetableView.selectedFrame = 0;
+              m_view.fit(m_timeline.lengthFrames());
+              m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+              m_loop.clamp(m_timeline.lengthFrames());
+              m_audioPath =
+                  hasTracks() ? activeDocument().sourcePath() : std::string{};
+              if (m_timeline.empty()) m_projectPath.clear();
+              updateWindowTitle();
+          },
+          [this](const std::string& status) { setStatus(status); }),
       m_clips(
           m_timeline, m_playhead, m_stretchRatio,
           [this](const std::function<bool(std::string*)>& edit,
@@ -437,19 +462,6 @@ const vwave::Document& App::activeDocument() const {
     return m_timeline.track(index).document;
 }
 
-void App::syncTrackControls() {
-    m_mastering = {};
-    const size_t count = static_cast<size_t>(m_timeline.trackCount());
-    m_trackControls.resize(count);
-    for (size_t i = 0; i < count; ++i) {
-        const auto& track = m_timeline.track(static_cast<int>(i));
-        m_trackControls[i].gain = {-60.0, 12.0, 0.0, false, 0.5};
-        m_trackControls[i].gain.setValue(track.gainDb);
-        m_trackControls[i].pan = {-1.0, 1.0, 0.0, false, 0.05};
-        m_trackControls[i].pan.setValue(track.pan);
-    }
-}
-
 void App::zoomTime(double factor) {
     const int width = m_tab == vwave::EditorTab::Spectrum
                           ? std::max(1, m_spectrumArea.w)
@@ -477,39 +489,19 @@ void App::fitFrequency() {
     m_spectrogramDirty = true;
 }
 
-void App::selectTrack(int index) {
-    if (index < 0 || index >= m_timeline.trackCount()) return;
-    if (m_timeline.activeTrack() == index) return;
-    m_timeline.setActiveTrack(index);
-    m_clips.onTrackChanged(activeDocument().hasClips());
-    clearAnalysis();
-    m_wavetable = {};
-    m_frameWeights.clear();
-    m_wavetableView.selectedFrame = 0;
-    m_view.clamp(m_timeline.lengthFrames());
-    setStatus("Track: " + m_timeline.track(index).name);
-}
+void App::selectTrack(int index) { m_tracks.select(index); }
 
 void App::removeTrack(int index) {
-    if (index < 0 || index >= m_timeline.trackCount()) return;
     if (m_recording) stopRecording();
-    m_player.stop();
-    const std::string name = m_timeline.track(index).name;
-    if (!m_timeline.removeTrack(index)) return;
-    m_clips.onTrackChanged(hasTracks() && activeDocument().hasClips());
-    syncTrackControls();
-    clearAnalysis();
-    m_wavetable = {};
-    m_frameWeights.clear();
-    m_wavetableView.selectedFrame = 0;
-    m_view.fit(m_timeline.lengthFrames());
-    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-    m_loop.clamp(m_timeline.lengthFrames());
-    m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
-    if (m_timeline.empty()) m_projectPath.clear();
-    updateWindowTitle();
-    setStatus("Removed track " + name);
+    m_tracks.remove(index);
 }
+
+void App::syncTrackControls() {
+    m_mastering = {};
+    m_tracks.syncControls();
+}
+
+void App::addEmptyTrack() { m_tracks.addEmpty(); }
 
 std::shared_ptr<const vwave::Audio> App::activeAudioSnapshot() {
     if (!hasTracks()) return {};
@@ -527,26 +519,6 @@ void App::cancelRenderJobs() {
     if (m_imageJob.valid()) m_imageJob.cancel();
     if (m_scopeJob.valid()) m_scopeJob.cancel();
     if (m_wavetableJob.valid()) m_wavetableJob.cancel();
-}
-
-void App::addEmptyTrack() {
-    m_player.stop();
-    const int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
-    std::string error;
-    if (!m_timeline.addEmptyTrack(
-            "Track " + std::to_string(m_timeline.trackCount() + 1), start,
-            &error)) {
-        setStatus("Cannot add track: " + error);
-        return;
-    }
-    m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
-    m_clips.reset();
-    for (int i = 0; i < m_timeline.trackCount(); ++i)
-        m_timeline.setTrackArmed(i, i == m_timeline.activeTrack());
-    syncTrackControls();
-    clearAnalysis();
-    m_view.fit(m_timeline.lengthFrames());
-    setStatus("Added empty track");
 }
 
 void App::toggleRecording() {
