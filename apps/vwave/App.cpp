@@ -113,7 +113,17 @@ App::App()
           m_timeline, m_player,
           [this](const std::function<bool(std::string*)>& edit,
                  const std::string& success) { runEdit(edit, success); },
-          [this](const std::string& status) { setStatus(status); }) {
+          [this](const std::string& status) { setStatus(status); }),
+      m_masteringController(
+          m_timeline, m_player,
+          [this](const std::string& status) { setStatus(status); },
+          [this] {
+              syncTrackControls();
+              m_view.fit(m_timeline.lengthFrames());
+              clearAnalysis();
+              setTab(vwave::EditorTab::Waveform);
+              updateWindowTitle();
+          }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
             applyDialog(mode, path);
@@ -541,7 +551,7 @@ void App::removeTrack(int index) {
 }
 
 void App::syncTrackControls() {
-    m_mastering = {};
+    m_masteringController.clear();
     m_tracks.syncControls();
 }
 
@@ -590,7 +600,7 @@ void App::syncSelectionFromActive() {
 }
 
 void App::updateMixer() {
-    m_mastering = {};
+    m_masteringController.clear();
     if (m_player.isPlaying()) m_player.updateMix(m_timeline);
 }
 
@@ -628,111 +638,18 @@ void App::drawSection(const std::string& title, int& y) {
 }
 
 void App::analyzeMasteringStems() {
-    if (m_timeline.empty()) {
-        setStatus("Load stems or add tracks first");
-        return;
-    }
-    vwave::MasteringOptions options;
-    options.profile = static_cast<vwave::MasteringProfile>(
-        std::clamp(m_masteringProfile, 0,
-                   static_cast<int>(sizeof(kMasteringProfileNames) /
-                                    sizeof(kMasteringProfileNames[0])) -
-                       1));
-    options.bandCount =
-        static_cast<int>(std::lround(m_masteringBands.value));
-    options.maxCutDb = m_masteringMaxCut.value;
-    options.maxBoostDb = m_masteringMaxBoost.value;
-    options.smoothingBands =
-        static_cast<int>(std::lround(m_masteringSmoothing.value));
-    options.includeMuted = m_masteringIncludeMuted;
-    std::string error;
-    m_mastering =
-        vwave::analyzeMastering(m_timeline, options, &error);
-    if (!m_mastering.valid) {
-        setStatus(error.empty() ? "Mastering analysis failed" : error, 6000);
-        return;
-    }
-    setStatus("Analyzed " + std::to_string(m_mastering.stems.size()) +
-              " stems across " + std::to_string(m_mastering.bandCount) +
-              " bands");
+    m_masteringController.analyze(
+        static_cast<int>(std::lround(m_masteringBands.value)),
+        m_masteringMaxCut.value, m_masteringMaxBoost.value,
+        static_cast<int>(std::lround(m_masteringSmoothing.value)));
 }
 
 void App::saveMasteringReport(const std::string& path) {
-    if (!m_mastering.valid) {
-        setStatus("Analyze stems first");
-        return;
-    }
-    std::string error;
-    if (!vwave::saveMasteringAnalysis(m_mastering, path, &error)) {
-        setStatus(error.empty() ? "Mastering report save failed" : error,
-                  6000);
-        return;
-    }
-    setStatus("Saved mastering report " + baseName(path));
+    m_masteringController.saveReport(path);
 }
 
 void App::renderMasteringStems() {
-    if (!m_mastering.valid) {
-        setStatus("Analyze stems first");
-        return;
-    }
-    vwave::MasteringProcessingOptions options;
-    options.fftSize = 2048;
-    options.hopSize = 512;
-    options.limitMix = true;
-    options.ceilingDb = m_masteringCeiling.value;
-    std::string error;
-    const vwave::MasteringRenderResult rendered =
-        vwave::renderMastering(m_timeline, m_mastering, options, &error);
-    if (!rendered.valid) {
-        setStatus(error.empty() ? "Mastering render failed" : error, 6000);
-        return;
-    }
-    struct OriginalInfo {
-        int64_t start = 0;
-        double gainDb = 0.0;
-        double pan = 0.0;
-        bool solo = false;
-        std::string name;
-        int index = -1;
-    };
-    std::vector<OriginalInfo> originals;
-    originals.reserve(rendered.stems.size());
-    for (const auto& stem : rendered.stems) {
-        const auto& original = m_timeline.track(stem.trackIndex);
-        originals.push_back({original.startFrame, original.gainDb,
-                             original.pan, original.solo, original.name,
-                             stem.trackIndex});
-    }
-    m_player.stop();
-    for (size_t i = 0; i < rendered.stems.size(); ++i) {
-        const auto& stem = rendered.stems[i];
-        const auto& info = originals[i];
-        if (!m_timeline.addAudioTrack(info.name + " (mastered)", stem.audio,
-                                      info.start, &error)) {
-            setStatus("Cannot add mastered stem: " + error);
-            return;
-        }
-        const int index = m_timeline.trackCount() - 1;
-        m_timeline.setTrackGainDb(index, info.gainDb);
-        m_timeline.setTrackPan(index, info.pan);
-        m_timeline.setTrackSolo(index, info.solo);
-        if (m_masteringMuteOriginals) {
-            m_timeline.setTrackMuted(info.index, true);
-            m_timeline.setTrackSolo(info.index, false);
-        }
-    }
-    m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
-    syncTrackControls();
-    m_view.fit(m_timeline.lengthFrames());
-    clearAnalysis();
-    setTab(vwave::EditorTab::Waveform);
-    updateWindowTitle();
-    std::ostringstream status;
-    status << "Added " << rendered.stems.size() << " mastered stems";
-    if (rendered.appliedGainDb != 0.0)
-        status << "  ceiling gain " << formatDb(rendered.appliedGainDb);
-    setStatus(status.str());
+    m_masteringController.render(m_masteringCeiling.value);
 }
 
 void App::regenerateActiveTrack() {
@@ -1179,7 +1096,7 @@ void App::runEdit(const std::function<bool(std::string*)>& edit,
 }
 
 void App::markEdited() {
-    m_mastering = {};
+    m_masteringController.clear();
     m_phaseSpectrogramDirty = true;
     m_audioSnapshot.reset();
     m_analysis.cancelAll();
@@ -1199,7 +1116,7 @@ void App::markEdited() {
 }
 
 void App::clearAnalysis() {
-    m_mastering = {};
+    m_masteringController.clear();
     m_phaseSpectrogramDirty = true;
     m_audioSnapshot.reset();
     m_analysis.cancelAll();

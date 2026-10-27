@@ -356,55 +356,45 @@ void App::drawSidebar() {
     } else if (m_tab == vwave::EditorTab::Mastering) {
         drawSection("MASTERING", y);
         addButton(std::string("Profile: ") +
-                      kMasteringProfileNames[m_masteringProfile],
-                  18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
-                      m_masteringProfile =
-                          (m_masteringProfile + 1) %
-                          static_cast<int>(sizeof(kMasteringProfileNames) /
-                                           sizeof(kMasteringProfileNames[0]));
-                      m_mastering = {};
-                      setStatus("Mastering profile: " +
-                                std::string(kMasteringProfileNames[
-                                    m_masteringProfile]));
-                  });
+                      kMasteringProfileNames[m_masteringController.profile()],
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { m_masteringController.cycleProfile(); });
         y += buttonHeight + 6;
         addButton("Analyze Stems", 18, y, buttonWidth * 2 + gap, 26,
                   [this] { analyzeMasteringStems(); }, true, false,
                   !m_timeline.empty());
         y += 32;
         addSlider("Bands", formatInt(m_masteringBands.value), 18, y, 256,
-                  m_masteringBands, [this](double) { m_mastering = {}; });
+                  m_masteringBands, [this](double) { m_masteringController.clear(); });
         y += 30;
         addSlider("Max cut", formatDb(-m_masteringMaxCut.value), 18, y, 256,
-                  m_masteringMaxCut, [this](double) { m_mastering = {}; });
+                  m_masteringMaxCut, [this](double) { m_masteringController.clear(); });
         y += 30;
         addSlider("Max boost", formatDb(m_masteringMaxBoost.value), 18, y,
                   256, m_masteringMaxBoost,
-                  [this](double) { m_mastering = {}; });
+                  [this](double) { m_masteringController.clear(); });
         y += 30;
         addSlider("Smoothing", formatInt(m_masteringSmoothing.value), 18, y,
                   256, m_masteringSmoothing,
-                  [this](double) { m_mastering = {}; });
+                  [this](double) { m_masteringController.clear(); });
         y += 30;
         addButton(std::string("Include Muted: ") +
-                      (m_masteringIncludeMuted ? "On" : "Off"),
-                  18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
-                      m_masteringIncludeMuted = !m_masteringIncludeMuted;
-                      m_mastering = {};
-                  });
+                      (m_masteringController.includeMuted() ? "On" : "Off"),
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { m_masteringController.toggleIncludeMuted(); });
         y += buttonHeight + 6;
         addSlider("Ceiling", formatDb(m_masteringCeiling.value), 18, y, 256,
-                  m_masteringCeiling, [this](double) { m_mastering = {}; });
+                  m_masteringCeiling, [this](double) { m_masteringController.clear(); });
         y += 30;
         addButton(std::string("Mute originals: ") +
-                      (m_masteringMuteOriginals ? "On" : "Off"),
+                      (m_masteringController.muteOriginals() ? "On" : "Off"),
                   18, y, buttonWidth * 2 + gap, buttonHeight,
-                  [this] { m_masteringMuteOriginals = !m_masteringMuteOriginals; });
+                  [this] { m_masteringController.toggleMuteOriginals(); });
         y += buttonHeight + 6;
         addButton("Render Processed Stems", 18, y,
                   buttonWidth * 2 + gap, 26,
                   [this] { renderMasteringStems(); }, true, false,
-                  m_mastering.valid);
+                  m_masteringController.valid());
         y += 32;
         addButton("Export Report", 18, y, buttonWidth * 2 + gap, buttonHeight,
                   [this] {
@@ -413,22 +403,22 @@ void App::drawSidebar() {
                                  (std::filesystem::current_path() /
                                   "mastering.json").string(),
                                  true);
-                  }, false, false, m_mastering.valid);
+                  }, false, false, m_masteringController.valid());
         y += buttonHeight + 6;
-        if (m_mastering.valid) {
+        if (m_masteringController.valid()) {
             std::ostringstream summary;
-            summary << m_mastering.stems.size() << " stems  "
-                    << m_mastering.bandCount << " bands";
+            summary << m_masteringController.analysis().stems.size() << " stems  "
+                    << m_masteringController.analysis().bandCount << " bands";
             drawText(summary.str(), 18, y, kTextDim, fontSmall());
             y += 18;
             std::ostringstream mix;
-            mix << "Mix RMS " << formatDb(m_mastering.mixRmsDb)
-                << "  TP " << formatDb(m_mastering.mixTruePeakDb);
+            mix << "Mix RMS " << formatDb(m_masteringController.analysis().mixRmsDb)
+                << "  TP " << formatDb(m_masteringController.analysis().mixTruePeakDb);
             drawText(mix.str(), 18, y, kTextDim, fontSmall());
             y += 18;
             std::ostringstream phase;
             phase << "Phase " << std::fixed << std::setprecision(2)
-                  << m_mastering.phaseCoherence;
+                  << m_masteringController.analysis().phaseCoherence;
             drawText(phase.str(), 18, y, kTextFaint, fontSmall());
             y += 18;
         }

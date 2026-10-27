@@ -226,7 +226,7 @@ void App::drawMenuBar() {
                               (std::filesystem::current_path() /
                                "mastering.json").string(),
                               true);
-               }, m_mastering.valid)};
+               }, m_masteringController.valid())};
     Menu view;
     view.title = "View";
     view.items = {

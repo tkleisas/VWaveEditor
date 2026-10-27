@@ -10,6 +10,7 @@
 #include "controllers/PlaybackController.h"
 #include "controllers/RecordingController.h"
 #include "controllers/SelectionController.h"
+#include "controllers/MasteringController.h"
 #include "controllers/SpectralController.h"
 #include "views/WaveformPeakCache.h"
 #include "controllers/StereoController.h"
@@ -307,7 +308,6 @@ private:
     vwave::SpectralViewport m_spectralView;
     vwave::Wavetable m_wavetable;
     vwave::WavetableViewport m_wavetableView;
-    vwave::MasteringAnalysis m_mastering;
     vwave::ImageData m_image;
     vwave::ScopePath m_scopePath;
     SDL_Rect m_scopeArea{};
@@ -328,9 +328,6 @@ private:
     bool m_imageNormalize = true;
     bool m_imageFlipHorizontal = false;
     bool m_imageFlipVertical = false;
-    int m_masteringProfile = 0;
-    bool m_masteringIncludeMuted = false;
-    bool m_masteringMuteOriginals = true;
     std::vector<double> m_frameWeights;
     bool m_freeBlend = false;
     vwave::Spectrogram m_spectrogram;
@@ -405,6 +402,7 @@ private:
     vwave::app::ClipController m_clips;
     vwave::app::SelectionController m_selection;
     vwave::app::SpectralController m_spectralController;
+    vwave::app::MasteringController m_masteringController;
     vwave::app::WaveformPeakCache m_peakCache;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;

@@ -12,7 +12,7 @@
 using namespace vwave::ui;
 
 void App::drawMastering(const SDL_Rect& area) {
-    if (!m_mastering.valid) {
+    if (!m_masteringController.valid()) {
         drawText("No mastering analysis", area.x + 40, area.y + 54,
                  kTextDim, fontTitle());
         drawText("Add aligned stems as tracks, then press Analyze Stems.",
@@ -24,17 +24,17 @@ void App::drawMastering(const SDL_Rect& area) {
     const int left = area.x + 18;
     const int right = area.x + area.w - 18;
     std::ostringstream summary;
-    summary << m_mastering.stems.size() << " stems  |  "
-            << kMasteringProfileNames[m_masteringProfile] << "  |  "
-            << "Mix RMS " << formatDb(m_mastering.mixRmsDb) << "  |  "
-            << "True peak " << formatDb(m_mastering.mixTruePeakDb) << "  |  "
+    summary << m_masteringController.analysis().stems.size() << " stems  |  "
+            << kMasteringProfileNames[m_masteringController.profile()] << "  |  "
+            << "Mix RMS " << formatDb(m_masteringController.analysis().mixRmsDb) << "  |  "
+            << "True peak " << formatDb(m_masteringController.analysis().mixTruePeakDb) << "  |  "
             << "Phase " << std::fixed << std::setprecision(2)
-            << m_mastering.phaseCoherence;
+            << m_masteringController.analysis().phaseCoherence;
     drawText(summary.str(), left, area.y + 10, kTextDim, fontSmall());
     drawText("red = suggested cut    green = suggested boost    top = mix band level",
              right - 520, area.y + 10, kTextFaint, fontSmall());
 
-    const int bandCount = std::max(1, m_mastering.bandCount);
+    const int bandCount = std::max(1, m_masteringController.analysis().bandCount);
     const int spectrumX = left;
     const int spectrumY = area.y + 36;
     const int spectrumW = right - left;
@@ -47,7 +47,7 @@ void App::drawMastering(const SDL_Rect& area) {
     const double cellWidth =
         static_cast<double>(spectrumW) / static_cast<double>(bandCount);
     for (int band = 0; band < bandCount; ++band) {
-        const auto& info = m_mastering.bands[static_cast<size_t>(band)];
+        const auto& info = m_masteringController.analysis().bands[static_cast<size_t>(band)];
         const double normalized =
             std::clamp((info.mixPowerDb + 72.0) / 72.0, 0.0, 1.0);
         const int barHeight = static_cast<int>(
@@ -71,7 +71,7 @@ void App::drawMastering(const SDL_Rect& area) {
         SDL_RenderFillRect(m_renderer, &maskBar);
     }
     for (int band = 0; band < bandCount; ++band) {
-        const auto& info = m_mastering.bands[static_cast<size_t>(band)];
+        const auto& info = m_masteringController.analysis().bands[static_cast<size_t>(band)];
         const int x = spectrumX +
                       static_cast<int>(std::floor(band * cellWidth));
         const int nextX = spectrumX + static_cast<int>(
@@ -86,7 +86,7 @@ void App::drawMastering(const SDL_Rect& area) {
     }
     for (double hz : {100.0, 1000.0, 10000.0}) {
         for (int band = 0; band < bandCount; ++band) {
-            const auto& info = m_mastering.bands[static_cast<size_t>(band)];
+            const auto& info = m_masteringController.analysis().bands[static_cast<size_t>(band)];
             if (hz >= info.lowHz && hz < info.highHz) {
                 const int x = spectrumX + static_cast<int>(
                                                (band + 0.5) * cellWidth);
@@ -100,7 +100,7 @@ void App::drawMastering(const SDL_Rect& area) {
     const int rowAreaY = spectrumY + spectrumH + 30;
     const int rowAreaH = area.y + area.h - rowAreaY - 12;
     const int labelWidth = 156;
-    const int rowCount = std::max(1, static_cast<int>(m_mastering.stems.size()));
+    const int rowCount = std::max(1, static_cast<int>(m_masteringController.analysis().stems.size()));
     const int rowHeight =
         std::max(20, std::min(38, rowAreaH / rowCount));
     const int cellX = left + labelWidth;
@@ -108,7 +108,7 @@ void App::drawMastering(const SDL_Rect& area) {
     const double gainCellWidth =
         static_cast<double>(cellAreaW) / static_cast<double>(bandCount);
     for (int stemIndex = 0; stemIndex < rowCount; ++stemIndex) {
-        const auto& stem = m_mastering.stems[static_cast<size_t>(stemIndex)];
+        const auto& stem = m_masteringController.analysis().stems[static_cast<size_t>(stemIndex)];
         const int y = rowAreaY + stemIndex * rowHeight;
         const SDL_Color color = stem.muted ? kTextFaint : kText;
         drawText(truncateText(stem.name, fontSmall(), labelWidth - 12),
