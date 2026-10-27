@@ -243,3 +243,25 @@ VWTEST("image spectrogram handles transparent and invalid input") {
     CHECK(badResult.audio.empty());
     CHECK(!error.empty());
 }
+
+VWTEST("image spectrogram reports progress and supports cancellation") {
+    ImageData image = makeImage(64, 64);
+    ImageSpectrogramOptions options;
+    options.sampleRate = 8000;
+    options.duration = 0.5;
+    options.fftSize = 256;
+    options.hopSize = 64;
+    options.phaseMode = ImagePhaseMode::FastGriffinLim;
+    options.iterations = 8;
+    std::vector<double> progress;
+    options.progress = [&](double value) { progress.push_back(value); };
+    options.cancelled = [&] { return progress.size() >= 2; };
+    std::string error;
+    const ImageSpectrogramResult result =
+        imageToSpectrogram(image, options, &error);
+    CHECK(result.audio.empty());
+    CHECK(!error.empty());
+    CHECK(progress.size() >= 2);
+    for (size_t i = 1; i < progress.size(); ++i)
+        CHECK(progress[i] >= progress[i - 1]);
+}

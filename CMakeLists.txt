@@ -51,6 +51,7 @@ option(VWAVE_BUILD_EXAMPLES "Build embedding examples" ON)
 option(VWAVE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
 if(VWAVE_BUILD_GUI)
     pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
@@ -91,7 +92,7 @@ target_include_directories(vwave_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
-target_link_libraries(vwave_core PUBLIC PkgConfig::SNDFILE)
+target_link_libraries(vwave_core PUBLIC PkgConfig::SNDFILE Threads::Threads)
 target_compile_definitions(vwave_core PUBLIC VWAVE_VERSION_MAJOR=${PROJECT_VERSION_MAJOR})
 if(VWAVE_BUILD_LUA)
     target_link_libraries(vwave_core PUBLIC ${VWAVE_LUA_TARGET})
@@ -124,6 +125,21 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/App.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/AudioPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/AudioRecorder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ChromeView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ContextMenu.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/FileService.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/DialogController.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/UiFormat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/UiRenderer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/UiTheme.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/ImageView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/MasteringView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/ScopeView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/SidebarView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/SpectrumView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/WaveformSidebar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/WaveformView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/WavetableView.cpp
     )
     vwave_set_warnings(vwave_editor)
     target_include_directories(vwave_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave)

@@ -24,6 +24,35 @@
 `vwave_editor` executable. Scripting and MCP live in the core because they
 operate on the same command layer as the GUI.
 
+## Background jobs
+
+`vwave::JobSystem` provides a bounded worker pool with job handles,
+cooperative cancellation, and progress reporting. Jobs receive a `JobControl`
+reference; long DSP loops can poll `cancelled()` and publish progress. Job
+completion uses a future, while UI-facing services will post results back to the
+main thread through a dispatcher instead of touching SDL or live documents from
+worker threads.
+
+The editor uses the pool for image-to-spectrogram, scope-path, and wavetable
+note rendering. Workers return results through `UiDispatcher`, and only the main
+thread mutates the timeline. Image rendering also supports cooperative progress
+and cancellation. Spectrogram/analysis caches and document edits still run
+synchronously until snapshot support is added.
+
+## Editor structure
+
+The desktop editor is being decomposed while preserving behavior:
+
+- `apps/vwave/ui`: theme, formatting, widgets, renderer, and dialog control.
+- `apps/vwave/chrome`: menu bar, toolbar, footer, settings, and context menu.
+- `apps/vwave/views`: waveform, spectrum, wavetable, mastering, image, scope,
+  and sidebar drawing units.
+- `apps/vwave/services`: file/path services and future UI-facing job services.
+
+`App.cpp` now acts primarily as the shell and event/action coordinator. The next
+extraction stage moves view state and actions into controller classes and then
+connects the worker pool through a main-thread dispatcher.
+
 ## Audio model
 
 `vwave::Audio` owns planar, non-interleaved 32-bit float channels:

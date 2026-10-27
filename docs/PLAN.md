@@ -486,3 +486,17 @@ automation presets; the cut-up arrangement model itself is implemented.
   the loop from the selection.
 - The loop region is session state and persists until cleared or a project or
   audio file is loaded.
+
+## Maintainability and async refactor (in progress)
+
+- Extracted `ui/UiTheme`, `ui/UiFormat`, `ui/Widgets`, `ui/UiRenderer`,
+  `ui/DialogController`, and `services/FileService` from the `App` monolith.
+- Split menu/toolbar/footer/settings, context menu, sidebar, waveform, spectrum,
+  wavetable, mastering, image, and scope drawing into `chrome/` and `views/`
+  translation units. `App.cpp` is now around 3.5k lines.
+- Added `vwave::JobSystem` with bounded workers, cancellation, progress, and
+  exception propagation.
+- Added `UiDispatcher` and moved image, scope, and wavetable-note rendering to
+  the worker pool. Image rendering supports progress and cancellation.
+- Next: move view state/actions into controllers, migrate cache/analysis jobs
+  with immutable snapshots, then split `Session` and `Document`.

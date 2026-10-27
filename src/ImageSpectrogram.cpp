@@ -301,6 +301,18 @@ ImageSpectrogramResult imageToSpectrogram(
     std::string* error) {
     if (error) error->clear();
     ImageSpectrogramResult result;
+    auto cancelled = [&] {
+        return options.cancelled && options.cancelled();
+    };
+    auto report = [&](double value) {
+        if (options.progress)
+            options.progress(std::clamp(value, 0.0, 1.0));
+    };
+    if (cancelled()) {
+        if (error) *error = "image render cancelled";
+        return result;
+    }
+    report(0.0);
     if (!image.valid()) {
         if (error) *error = "invalid image data";
         return result;
@@ -351,6 +363,14 @@ ImageSpectrogramResult imageToSpectrogram(
         -static_cast<float>(kPi), static_cast<float>(kPi));
     const double logRatio = std::log(maxHz / minHz);
     for (int frame = 0; frame < frameCount; ++frame) {
+        if ((frame & 15) == 0) {
+            if (cancelled()) {
+                if (error) *error = "image render cancelled";
+                return result;
+            }
+            report(0.05 + 0.15 * static_cast<double>(frame) /
+                              std::max(1, frameCount));
+        }
         const double t = frameCount > 1
                              ? static_cast<double>(frame) /
                                    static_cast<double>(frameCount - 1)
@@ -383,6 +403,14 @@ ImageSpectrogramResult imageToSpectrogram(
             kTwoPi * static_cast<double>(hop) /
             static_cast<double>(fftSize);
         for (int frame = 1; frame < frameCount; ++frame) {
+            if ((frame & 15) == 0) {
+                if (cancelled()) {
+                    if (error) *error = "image render cancelled";
+                    return result;
+                }
+                report(0.20 + 0.05 * static_cast<double>(frame) /
+                                  std::max(1, frameCount));
+            }
             for (int bin = 0; bin < bins; ++bin) {
                 const size_t index = static_cast<size_t>(frame) *
                                          static_cast<size_t>(bins) +
@@ -406,6 +434,13 @@ ImageSpectrogramResult imageToSpectrogram(
         options.phaseMode == ImagePhaseMode::FastGriffinLim ||
         options.phaseMode == ImagePhaseMode::PhaseLocked) {
         for (int iteration = 0; iteration < iterations; ++iteration) {
+            if (cancelled()) {
+                if (error) *error = "image render cancelled";
+                return result;
+            }
+            report(0.25 + 0.65 *
+                               static_cast<double>(iteration + 1) /
+                               std::max(1, iterations));
             const std::vector<double> signal = renderSignal(
                 magnitudes, phase, frameCount, bins, fftSize, hop,
                 renderLength, window);
@@ -430,6 +465,11 @@ ImageSpectrogramResult imageToSpectrogram(
         }
     }
 
+    if (cancelled()) {
+        if (error) *error = "image render cancelled";
+        return result;
+    }
+    report(0.95);
     std::vector<double> signal = renderSignal(
         magnitudes, phase, frameCount, bins, fftSize, hop, renderLength,
         window);
@@ -459,6 +499,7 @@ ImageSpectrogramResult imageToSpectrogram(
     result.binCount = bins;
     result.channels = channels;
     result.duration = static_cast<double>(totalFrames) / sampleRate;
+    report(1.0);
     return result;
 }
 

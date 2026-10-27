@@ -3,6 +3,7 @@
 #include "vwave/Audio.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -82,6 +83,8 @@ struct ImageSpectrogramOptions {
     int channels = 1;
     bool normalize = true;
     double peak = 0.9;
+    std::function<bool()> cancelled;
+    std::function<void(double)> progress;
 };
 
 struct ImageSpectrogramResult {

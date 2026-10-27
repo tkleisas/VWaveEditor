@@ -3,6 +3,13 @@
 #include "AudioPlayer.h"
 #include "AudioRecorder.h"
 
+#include "ui/UiRenderer.h"
+#include "services/UiDispatcher.h"
+#include "ui/DialogController.h"
+#include "ui/Widgets.h"
+
+#include "vwave/JobSystem.h"
+
 #include "vwave/Analysis.h"
 #include "vwave/Document.h"
 #include "vwave/ImageSpectrogram.h"
@@ -33,58 +40,13 @@ public:
 private:
     using Color = SDL_Color;
 
-    struct Button {
-        SDL_Rect rect{};
-        std::string label;
-        std::function<void()> action;
-        bool accent = false;
-        bool active = false;
-        bool enabled = true;
-        int area = 0;
-    };
+    using Button = vwave::ui::Button;
+    using SliderRef = vwave::ui::SliderRef;
+    using TrackControls = vwave::ui::TrackControls;
+    using MenuItem = vwave::ui::MenuItem;
+    using Menu = vwave::ui::Menu;
 
-    struct SliderRef {
-        vwave::ParameterSlider* slider = nullptr;
-        SDL_Rect track{};
-        std::string label;
-        int area = 1;
-        std::function<void(double)> onChanged;
-    };
-
-    struct TrackControls {
-        vwave::ParameterSlider gain;
-        vwave::ParameterSlider pan;
-    };
-
-    struct MenuItem {
-        std::string label;
-        std::string shortcut;
-        std::function<void()> action;
-        bool enabled = true;
-        bool separator = false;
-    };
-
-    struct Menu {
-        std::string title;
-        SDL_Rect titleRect{};
-        std::vector<MenuItem> items;
-    };
-
-    enum class DialogMode {
-        None,
-        Open,
-        AddTrack,
-        SaveAudio,
-        SaveProject,
-        SaveWavetable,
-        LoadWavetable,
-        SaveMasteringReport,
-        LoadImage,
-        SaveScopePath,
-        LoadScopePath,
-        SeekTime,
-        ExportSlices
-    };
+    using DialogMode = vwave::ui::DialogController::Mode;
 
     enum class WaveDragMode {
         None,
@@ -107,6 +69,7 @@ private:
     void drawSettingsDialog();
     void drawToolbar();
     void drawSidebar();
+    void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);
     void drawSpectrum(const SDL_Rect& area);
     void drawSpectrum3D(const SDL_Rect& area);
@@ -115,7 +78,6 @@ private:
     void drawImage(const SDL_Rect& area);
     void drawOscilloscope(const SDL_Rect& area);
     void drawFooter();
-    void drawDialog();
     void drawButton(const Button& button);
     void drawSection(const std::string& title, int& y);
     void addButton(const std::string& label, int x, int y, int w, int h,
@@ -173,8 +135,7 @@ private:
     void detectPitch();
     void openDialog(DialogMode mode, const std::string& title,
                     const std::string& initialPath, bool save);
-    void confirmDialog();
-    void cancelDialog();
+    void applyDialog(DialogMode mode, const std::string& path);
     void exportSlices(const std::string& directory);
     void extractWavetable();
     void loadWavetable(const std::string& path);
@@ -184,6 +145,7 @@ private:
     void saveMasteringReport(const std::string& path);
     void renderMasteringStems();
     void regenerateActiveTrack();
+    void cancelRenderJobs();
     void toggleSelectionScope();
     bool seekToTime(double seconds, std::string* error = nullptr);
     void goToStart();
@@ -269,6 +231,7 @@ private:
 
     SDL_Window* m_window = nullptr;
     SDL_Renderer* m_renderer = nullptr;
+    vwave::ui::UiRenderer m_ui;
     TTF_Font* m_fontSmall = nullptr;
     TTF_Font* m_font = nullptr;
     TTF_Font* m_fontBold = nullptr;
@@ -287,8 +250,6 @@ private:
     SDL_Rect m_frameStripArea{};
     SDL_Rect m_tracksArea{};
     SDL_Rect m_trackHeaderColumn{};
-    std::vector<Button> m_buttons;
-    std::vector<SliderRef> m_sliders;
     std::vector<Menu> m_menus;
     int m_openMenu = -1;
     SDL_Rect m_openMenuRect{};
@@ -310,7 +271,6 @@ private:
     std::vector<TrackControls> m_trackControls;
     std::vector<SDL_Rect> m_trackHeaderRects;
     std::vector<SDL_Rect> m_trackLaneRects;
-    int m_controlArea = 0;
     SliderRef m_activeSlider;
     bool m_sliderDragging = false;
     double m_sidebarScroll = 0.0;
@@ -318,6 +278,14 @@ private:
 
     vwave::Timeline m_timeline;
     vwave::Document m_emptyDocument;
+    vwave::app::UiDispatcher m_dispatcher;
+    vwave::JobSystem m_jobs;
+    vwave::JobHandle m_imageJob;
+    vwave::JobHandle m_scopeJob;
+    vwave::JobHandle m_wavetableJob;
+    uint64_t m_imageRequest = 0;
+    uint64_t m_scopeRequest = 0;
+    uint64_t m_wavetableRequest = 0;
     AudioPlayer m_player;
     AudioRecorder m_recorder;
     bool m_recording = false;
@@ -430,12 +398,7 @@ private:
     bool m_drawingWavetable = false;
     int m_lastWavetableSample = -1;
 
-    DialogMode m_dialogMode = DialogMode::None;
-    std::string m_dialogPath;
-    std::string m_dialogTitle;
-    bool m_dialogSave = false;
-    SDL_Rect m_dialogConfirmRect{};
-    SDL_Rect m_dialogCancelRect{};
+    vwave::ui::DialogController m_dialog;
 
     vwave::ParameterSlider m_gainDb;
     vwave::ParameterSlider m_normalizePeak;
