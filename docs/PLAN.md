@@ -521,4 +521,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   is down to 1,438 lines.
 - Split selection/edit/processing commands into `SessionEditCommands`;
   `Session.cpp` is down to 1,185 lines.
-- Next: split remaining generator/IO Session domains and `Document` internals.
+- Split generator/analyzer command handling into `SessionGeneratorCommands`;
+  `Session.cpp` is down to 448 lines.
+- Next: split remaining Session IO/stereo commands and `Document` internals.
