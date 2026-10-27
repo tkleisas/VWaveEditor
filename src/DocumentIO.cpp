@@ -31,6 +31,7 @@ bool Document::loadAudio(const std::string& path, std::string* error) {
     m_clipboard = Audio{};
     m_markers.clear();
     m_slices.clear();
+    ++m_revision;
     return true;
 }
 
@@ -176,6 +177,7 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
                            }),
             loaded.m_slices.end());
 
+        ++loaded.m_revision;
         out = std::move(loaded);
         out.m_selection =
             clampSelection(out.m_selection, out.m_arranged.numFrames());

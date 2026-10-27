@@ -616,6 +616,7 @@ bool Document::apply(const Operation& operation, std::string* error) {
         const Selection before = m_selection;
         m_clips.assign(std::move(clips));
         refreshArranged();
+        ++m_revision;
         m_selection = clampSelection(m_selection, m_arranged.numFrames());
         m_history.push_back({operation, before, m_selection});
         m_redo.clear();
@@ -633,6 +634,7 @@ bool Document::apply(const Operation& operation, std::string* error) {
         m_arranged = m_rendered;
         m_arrangedValid = true;
         m_cacheValid = true;
+        ++m_revision;
         m_selection = clampSelection(m_selection, m_arranged.numFrames());
         m_history.push_back({operation, before, m_selection});
         m_redo.clear();
@@ -654,6 +656,7 @@ bool Document::apply(const Operation& operation, std::string* error) {
     m_arranged = m_rendered;
     m_cacheValid = true;
     m_arrangedValid = true;
+    ++m_revision;
     m_selection = clampSelection(after, m_rendered.numFrames());
     m_history.push_back({operation, before, m_selection});
     m_redo.clear();

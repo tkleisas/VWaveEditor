@@ -23,6 +23,7 @@ bool Document::undo() {
     m_history.pop_back();
     m_redo.push_back(entry);
     if (!rebuild()) return false;
+    ++m_revision;
     m_selection = clampSelection(entry.before, m_rendered.numFrames());
     return true;
 }
@@ -46,6 +47,7 @@ bool Document::redo() {
     m_arrangedValid = true;
     m_cacheValid = true;
     m_history.push_back(entry);
+    ++m_revision;
     m_selection = clampSelection(entry.after, m_arranged.numFrames());
     return true;
 }
@@ -68,6 +70,7 @@ void Document::clearHistory() {
     m_redo.clear();
     m_cacheValid = true;
     m_arrangedValid = true;
+    ++m_revision;
     m_selection = clampSelection(m_selection, m_source.numFrames());
 }
 

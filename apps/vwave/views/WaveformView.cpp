@@ -249,8 +249,9 @@ void App::drawWaveform(const SDL_Rect& area) {
                                channelLane.y + channelHeight / 2,
                                channelLane.x + channelLane.w,
                                channelLane.y + channelHeight / 2);
-            const std::vector<vwave::PeakBin> peaks =
-                vwave::computePeaks(audio, ch, {localStart, localEnd}, width);
+            const std::vector<vwave::PeakBin>& peaks = m_peakCache.get(
+                index, audio, track.document.revision(), ch,
+                {localStart, localEnd}, width);
             const int center = channelLane.y + channelHeight / 2;
             SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
                                    kAccent.b,

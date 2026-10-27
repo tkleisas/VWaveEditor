@@ -559,3 +559,22 @@ VWTEST("document rejects invalid clip arrangements") {
     CHECK(!doc.deleteClip(0, &error));
     CHECK(!error.empty());
 }
+
+VWTEST("document revision changes with audio edits") {
+    Document doc = Document::fromAudio(makeRamp(100));
+    const uint64_t initial = doc.revision();
+    REQUIRE(doc.gainDb(-6.0));
+    CHECK(doc.revision() > initial);
+    const uint64_t edited = doc.revision();
+    REQUIRE(doc.undo());
+    CHECK(doc.revision() > edited);
+    const uint64_t undone = doc.revision();
+    REQUIRE(doc.redo());
+    CHECK(doc.revision() > undone);
+    const uint64_t redone = doc.revision();
+    REQUIRE(doc.createClipArrangement());
+    CHECK(doc.revision() > redone);
+    const uint64_t clips = doc.revision();
+    REQUIRE(doc.flattenClips());
+    CHECK(doc.revision() > clips);
+}

@@ -47,6 +47,9 @@ storage until either side writes, then the writer detaches. This keeps async
 analysis snapshots cheap even for long tracks without allowing workers to race
 with UI edits.
 
+Document revisions let UI caches detect audio changes; waveform peaks are cached
+per track/channel/view range instead of being recomputed every frame.
+
 ## Editor structure
 
 The desktop editor is being decomposed while preserving behavior:

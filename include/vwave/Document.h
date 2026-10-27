@@ -132,6 +132,7 @@ public:
     int numChannels() const;
     int64_t numFrames() const;
     double duration() const;
+    uint64_t revision() const { return m_revision; }
 
     const std::string& sourcePath() const { return m_sourcePath; }
     void setSourcePath(std::string path) { m_sourcePath = std::move(path); }
@@ -250,6 +251,7 @@ private:
     mutable Audio m_arranged;
     mutable bool m_cacheValid = false;
     mutable bool m_arrangedValid = false;
+    uint64_t m_revision = 0;
     ClipArrangement m_clips;
     Selection m_selection;
     Audio m_clipboard;
