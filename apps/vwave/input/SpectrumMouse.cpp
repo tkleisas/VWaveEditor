@@ -101,3 +101,26 @@ if (m_draggingSpectrum) {
     }
 }
 }
+
+void App::handleSpectrumMouseUp(const SDL_MouseButtonEvent& event) {
+if (m_draggingSpectrum) {
+    m_draggingSpectrum = false;
+    if (m_spectrumClickCandidate) {
+        m_player.stop();
+        m_playhead = clampFrame(m_spectrumClickFrame,
+                                m_timeline.lengthFrames());
+        m_timeline.clearSelection();
+        m_spectralController.clear();
+        setStatus("Playhead " +
+                  formatSeconds(static_cast<double>(m_playhead) /
+                                std::max(1, m_timeline.sampleRate())));
+    } else if (m_spectralController.region().frames.length() < 2 ||
+               m_spectralController.region().highHz <= m_spectralController.region().lowHz) {
+        m_spectralController.region().active = false;
+    } else {
+        m_spectralLow.setValue(m_spectralController.region().lowHz);
+        m_spectralHigh.setValue(m_spectralController.region().highHz);
+    }
+    m_spectrumClickCandidate = false;
+}
+}
