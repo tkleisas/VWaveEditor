@@ -285,6 +285,36 @@ nlohmann::json Session::executeEditCommands(const std::string& command,
             return okResult();
         }
 
+        if (command == "add_marker") {
+            const double time = params.value("time", -1.0);
+            if (!std::isfinite(time) || time < 0.0 ||
+                time > document().duration()) {
+                setError(error, "invalid marker time");
+                return nullptr;
+            }
+            const int64_t frame = static_cast<int64_t>(
+                std::llround(time * document().sampleRate()));
+            if (!document().addMarker(
+                    frame, params.value("name", std::string{}))) {
+                setError(error, "cannot add marker");
+                return nullptr;
+            }
+            return okResult();
+        }
+        if (command == "remove_marker") {
+            const int index = params.value("index", -1);
+            if (index < 0 ||
+                !document().removeMarker(static_cast<size_t>(index))) {
+                setError(error, "invalid marker index");
+                return nullptr;
+            }
+            return okResult();
+        }
+        if (command == "clear_markers") {
+            document().clearMarkers();
+            return okResult();
+        }
+
     setError(error, "unknown edit command: " + command);
     return nullptr;
 }

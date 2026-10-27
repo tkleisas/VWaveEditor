@@ -205,6 +205,73 @@ nlohmann::json Session::executeTrackCommands(const std::string& command,
                     {"start_frame", m_timeline.track(index).startFrame}};
         }
 
+        if (command == "stretch_track") {
+            if (m_timeline.empty()) {
+                setError(error, "no active track");
+                return nullptr;
+            }
+            int index = m_timeline.activeTrack();
+            if (params.contains("index"))
+                index = params["index"].get<int>();
+            if (index < 0 || index >= m_timeline.trackCount()) {
+                setError(error, "track index is out of range");
+                return nullptr;
+            }
+            const double ratio = optionalDouble(params, "ratio", 1.0);
+            const StretchAlgorithm algorithm =
+                stretchAlgorithm(params, error);
+            if (error && !error->empty()) return nullptr;
+            if (!m_timeline.track(index).document.timeStretchTrack(
+                    ratio, algorithm, error))
+                return nullptr;
+            m_timeline.setActiveTrack(index);
+            syncSelectionFromActive();
+            return info();
+        }
+        if (command == "split_stereo_track") {
+            if (m_timeline.empty()) {
+                setError(error, "no active track");
+                return nullptr;
+            }
+            int index = m_timeline.activeTrack();
+            if (params.contains("index"))
+                index = params["index"].get<int>();
+            const bool keepOriginal =
+                optionalBool(params, "keep_original", true);
+            if (!m_timeline.splitStereoTrack(index, keepOriginal, error))
+                return nullptr;
+            return info();
+        }
+        if (command == "combine_mono_tracks") {
+            int leftIndex = -1;
+            int rightIndex = -1;
+            if (params.contains("left"))
+                leftIndex = params["left"].get<int>();
+            else if (params.contains("left_index"))
+                leftIndex = params["left_index"].get<int>();
+            if (params.contains("right"))
+                rightIndex = params["right"].get<int>();
+            else if (params.contains("right_index"))
+                rightIndex = params["right_index"].get<int>();
+            if (leftIndex < 0 || rightIndex < 0) {
+                setError(error, "combine_mono_tracks requires left and right");
+                return nullptr;
+            }
+            StereoCombineOptions options;
+            options.keepOriginals =
+                optionalBool(params, "keep_originals", true);
+            const std::string paddingName =
+                params.value("padding", std::string{"back"});
+            if (!stereoPaddingFromName(paddingName, options.padding)) {
+                setError(error, "unknown padding mode: " + paddingName);
+                return nullptr;
+            }
+            if (!m_timeline.combineMonoTracks(leftIndex, rightIndex, options,
+                                              error))
+                return nullptr;
+            return info();
+        }
+
     setError(error, "unknown track command: " + command);
     return nullptr;
 }
