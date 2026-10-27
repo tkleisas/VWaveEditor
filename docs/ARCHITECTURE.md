@@ -47,9 +47,17 @@ Playback mixes all audible tracks live. `Timeline::mixdown()` renders a stereo
 mix for export, applying mute/solo, gain, pan, offsets, and per-track sample-rate
 conversion.
 
+Track-level operations can create derived tracks. Stereo split creates
+hard-panned mono tracks and compensates gain for the original stereo balance;
+the source is muted or removed. Mono combine creates a stereo track from two
+mono sources, applies source gain, preserves track offsets, and pads the shorter
+channel at the front, back, or both ends. `Timeline` owns these structural track
+changes; they are not part of `Document` history.
+
 Time and pitch processing support two targets: in-place splicing (preserving the
 unselected prefix/suffix) or rendering the processed selection to a new track at
-its timeline position.
+its timeline position. Whole-track stretch always edits the active track in
+place.
 
 ## Non-destructive document
 
@@ -73,14 +81,42 @@ Supported operation classes:
 | Class | Operations |
 | --- | --- |
 | Process | gain, normalize, fades, reverse, invert, silence, DC removal, stretch, pitch, spectral, convolution |
-| Timeline | delete, insert, replace range, crop |
+| Timeline | delete, insert, replace range, move range, repeat range, crop |
+| Arrangement | set clips, flatten clips |
 | Format | resample, replace all |
+
+Move, copy, and repeat are deterministic operations stored by range and
+destination/count, so project history remains compact. Repeat is a ripple
+insert. Whole-track stretch is a normal time-stretch process over the full
+document range.
 
 This design makes undo exact, keeps the original file reference intact, and
 allows project files to preserve editing history. It is intentionally
 operation-replay rather than copy-on-write snapshots. Very long histories will
 eventually benefit from checkpoints; the current implementation prioritises
 correctness and simple project serialization.
+
+## Clip arrangement
+
+A document can own a clip arrangement in addition to its base audio:
+
+```text
+base audio = source + non-clip document history
+arrangement = ordered clips over base ranges
+audio() = rendered arrangement (or base audio when no clips)
+```
+
+`Document::Clip` stores a source range, local timeline start, stretch ratio,
+gain, fades, and name. Rendering slices the base audio, time-stretches when
+needed with WSOLA, applies gain/fades, and mixes clips into the output. Gaps are
+silence; overlapping clips are summed.
+
+Clip operations are represented by `SetClips` operations whose payload is the
+target clip list. `FlattenClips` renders the arrangement into the base audio and
+clears the list. Both replay deterministically, so clip edits share the normal
+document undo/redo stack and are stored in the same project history. Destructive
+sample operations are rejected while clips exist; flatten first. This keeps
+clip source ranges stable and avoids ambiguous edits across the arrangement.
 
 ## Persistence
 
@@ -271,8 +307,10 @@ track, processing, view, and settings actions.
 Time zoom is shared by waveform and spectrum views; frequency zoom is
 independent for the spectrum. Playback streams directly from immutable track
 buffers with live routing and on-the-fly linear rate conversion, so pressing
-Play does not render or copy the project first. All edits stop playback and
-invalidate analysis/spectrogram caches.
+Play does not render or copy the project first. The playback callback supports
+a loop range and wraps sample-accurately at the loop end. Click-to-seek is a GUI
+concern; the playhead, selection, and loop region remain independent. All edits
+stop playback and invalidate analysis/spectrogram caches.
 
 ### Recording and settings
 
@@ -315,8 +353,9 @@ The suite covers:
 - mastering stem masking, profiles, phase coherence, gain limits, reports, and
   offline processed-stem rendering;
 - sweep/deconvolution reciprocity, normalization, capture manifests;
-- timeline track controls, offsets, selection translation, mixdown, project
-  persistence (including empty/legacy tracks), and track recipe round-trips;
+- timeline track controls, offsets, selection scope/translation, per-track crop
+  and shift, mixdown, project persistence (including empty/legacy tracks), and
+  track recipe round-trips;
 - settings persistence and safe defaults;
 - ring-buffer wrap/full/discard behavior;
 - parameter-slider linear/log/stepped mapping and spectral zoom;

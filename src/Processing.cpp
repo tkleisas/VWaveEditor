@@ -544,4 +544,56 @@ Audio normalize(const Audio& audio, double peakDb) {
     return result;
 }
 
+int64_t findNearestZeroCrossing(const Audio& audio, int64_t frame,
+                                int64_t radiusFrames) {
+    const int64_t frames = audio.numFrames();
+    if (audio.empty() || frames <= 1) return std::clamp<int64_t>(frame, 0, frames);
+    frame = std::clamp<int64_t>(frame, 0, frames);
+    radiusFrames = std::max<int64_t>(0, radiusFrames);
+    const int64_t first = std::max<int64_t>(1, frame - radiusFrames);
+    const int64_t last = std::min<int64_t>(frames - 1, frame + radiusFrames);
+
+    int64_t best = frame;
+    double bestScore = std::numeric_limits<double>::infinity();
+    int64_t bestDistance = std::numeric_limits<int64_t>::max();
+    for (int64_t position = first; position <= last; ++position) {
+        bool crossing = false;
+        float worst = 0.0f;
+        for (int ch = 0; ch < audio.numChannels(); ++ch) {
+            const float before = audio.sample(ch, position - 1);
+            const float after = audio.sample(ch, position);
+            if ((before <= 0.0f && after >= 0.0f) ||
+                (before >= 0.0f && after <= 0.0f)) {
+                crossing = true;
+                worst = std::max(worst, std::min(std::abs(before),
+                                                 std::abs(after)));
+            }
+        }
+        if (!crossing) continue;
+        const int64_t distance = std::llabs(position - frame);
+        if (static_cast<double>(worst) < bestScore ||
+            (static_cast<double>(worst) == bestScore &&
+             distance < bestDistance)) {
+            best = position;
+            bestScore = static_cast<double>(worst);
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+Range snapRangeToZeroCrossings(const Audio& audio, Range range,
+                               int64_t radiusFrames) {
+    const Range clamped = range.clamped(audio.numFrames());
+    if (clamped.length() <= 0) return clamped;
+    const int64_t start =
+        findNearestZeroCrossing(audio, clamped.start, radiusFrames);
+    int64_t end = findNearestZeroCrossing(audio, clamped.end, radiusFrames);
+    if (end <= start) {
+        end = std::min<int64_t>(audio.numFrames(),
+                                start + clamped.length());
+    }
+    return {start, end};
+}
+
 } // namespace vwave

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(VWAVE_VERSION_DEFAULT "0.0.6")
+set(VWAVE_VERSION_DEFAULT "0.0.7")
 set(VWAVE_VERSION "${VWAVE_VERSION_DEFAULT}")
 set(VWAVE_GIT_TAG "untagged")
 execute_process(

@@ -76,6 +76,8 @@ struct PeakBin {
 std::vector<PeakBin> computePeaks(const Audio& audio, int channel, Range range,
                                   int width);
 
+bool parseTimecode(const std::string& text, double& seconds);
+
 struct WavetableViewport {
     int selectedFrame = 0;
     void clamp(int frameCount);

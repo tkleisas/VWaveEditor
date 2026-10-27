@@ -204,3 +204,19 @@ VWTEST("wavetable viewport clamps selection") {
     viewport.clamp(0);
     CHECK_EQ(viewport.selectedFrame, 0);
 }
+
+VWTEST("timecode parser accepts seconds and colon forms") {
+    double seconds = 0.0;
+    CHECK(parseTimecode("12.5", seconds));
+    CHECK_NEAR(seconds, 12.5, 1e-9);
+    CHECK(parseTimecode("1:02.5", seconds));
+    CHECK_NEAR(seconds, 62.5, 1e-9);
+    CHECK(parseTimecode("1:02:03.5", seconds));
+    CHECK_NEAR(seconds, 3723.5, 1e-9);
+    CHECK(parseTimecode("12 s", seconds));
+    CHECK_NEAR(seconds, 12.0, 1e-9);
+    CHECK(!parseTimecode("", seconds));
+    CHECK(!parseTimecode("-1", seconds));
+    CHECK(!parseTimecode("1:bad", seconds));
+    CHECK(!parseTimecode("1:2:3:4", seconds));
+}

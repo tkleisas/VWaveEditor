@@ -270,12 +270,69 @@ vwave project remove-track take.vwdoc 1
 vwave project select-track take.vwdoc 0
 vwave project set take.vwdoc 1 --gain -6 --pan -0.2 --mute
 vwave project set take.vwdoc 1 --solo --arm --start 0.25
+vwave project split-stereo take.vwdoc 0
+vwave project split-stereo take.vwdoc 0 --remove-original
+vwave project combine-mono take.vwdoc 1 2 --padding both
+vwave project make-clips take.vwdoc 0
+vwave project split-clip take.vwdoc 0 --at 1.5
+vwave project move-clip take.vwdoc 0 --clip 1 --at 4.0
+vwave project stretch-clip take.vwdoc 0 --clip 1 --ratio 1.5
+vwave project repeat-clip take.vwdoc 0 --clip 1 --count 2
+vwave project clip-set take.vwdoc 0 --clip 1 --gain -3 \
+    --fade-in 0.01 --fade-out 0.05
+vwave project delete-clip take.vwdoc 0 --clip 2
+vwave project flatten-clips take.vwdoc 0
 vwave project mixdown take.vwdoc mix.wav
 ```
 
 Track indices are zero-based. `project set` accepts `--name`, `--gain`,
 `--pan`, `--start`, `--mute`/`--unmute`, `--solo`/`--unsolo`, and
 `--arm`/`--disarm`. Changes are saved back to the project.
+
+`project crop` uses the project's saved selection. `project shift` accepts
+either a relative `--delta` in seconds or an absolute `--start` in seconds.
+`project selection-scope` sets whether the timeline selection applies to all
+tracks or only the active track.
+
+`project split-stereo` creates hard-panned mono tracks and mutes the original
+by default. `--remove-original` deletes it instead. `project combine-mono`
+creates a stereo track from two mono tracks; `--padding` accepts `back`
+(default), `front`, or `both`. `--remove-originals` deletes the sources instead
+of muting them.
+
+Clip commands operate on a track's local arrangement time unless a track index
+is supplied. `--clip` is the zero-based clip index. `make-clips` creates one
+clip from the track's current edited audio; `flatten-clips` bakes the
+arrangement into the track and clears the clip list. All clip operations are
+stored in the track's document undo history and saved in the project.
+
+## Range editing commands
+
+The generic command bridge exposes undoable range edits:
+
+```sh
+vwave command move_selection \
+    '{"start":0.5,"end":1.0,"at":2.0,"copy":false}' \
+    --input take.wav --output moved.wav
+vwave command repeat_selection \
+    '{"start":0.5,"end":1.0,"repeats":2}' \
+    --input loop.wav --output loop4.wav
+vwave command snap_selection \
+    '{"start":0.5,"end":1.0,"radius_ms":10}' --input take.wav
+vwave command stretch_track '{"ratio":1.5,"algorithm":"wsola"}' \
+    --input take.wav --output stretched.wav
+```
+
+`move_selection` and `repeat_selection` use the current selection unless an
+explicit start/end range is supplied. `repeat_selection` inserts copies after
+the range and shifts subsequent audio. `stretch_track` ignores the selection
+and stretches the entire active track. `split_stereo_track` and
+`combine_mono_tracks` are also available through `vwave command`.
+
+Clip commands (`make_clips`, `flatten_clips`, `split_clip`, `delete_clip`,
+`move_clip`, `stretch_clip`, `repeat_clip`, `set_clip_gain`,
+`set_clip_fades`) operate on a loaded Session or `.vwdoc` project. Use the
+`vwave project` subcommands above for persistent multi-step clip editing.
 
 ## lua
 

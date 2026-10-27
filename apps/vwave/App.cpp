@@ -166,6 +166,13 @@ std::string formatSeconds(double seconds) {
     return out.str();
 }
 
+std::string formatTimeInput(double seconds) {
+    if (!std::isfinite(seconds) || seconds < 0.0) return "0.000";
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(3) << seconds;
+    return out.str();
+}
+
 std::string formatRate(int sampleRate) {
     std::ostringstream out;
     out << std::fixed << std::setprecision(1)
@@ -687,6 +694,7 @@ void App::draw() {
 
     drawFooter();
     drawMenuDropdown();
+    drawContextMenu();
     if (m_settingsOpen) drawSettingsDialog();
     if (m_dialogMode != DialogMode::None) drawDialog();
     SDL_RenderPresent(m_renderer);
@@ -797,6 +805,8 @@ void App::selectTrack(int index) {
     if (index < 0 || index >= m_timeline.trackCount()) return;
     if (m_timeline.activeTrack() == index) return;
     m_timeline.setActiveTrack(index);
+    m_selectedClip = -1;
+    if (!activeDocument().hasClips()) m_clipTool = false;
     clearAnalysis();
     m_wavetable = {};
     m_frameWeights.clear();
@@ -811,6 +821,8 @@ void App::removeTrack(int index) {
     m_player.stop();
     const std::string name = m_timeline.track(index).name;
     if (!m_timeline.removeTrack(index)) return;
+    m_selectedClip = -1;
+    if (!hasTracks() || !activeDocument().hasClips()) m_clipTool = false;
     syncTrackControls();
     clearAnalysis();
     m_wavetable = {};
@@ -818,6 +830,16 @@ void App::removeTrack(int index) {
     m_wavetableView.selectedFrame = 0;
     m_view.fit(m_timeline.lengthFrames());
     m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+    if (m_loopEnabled) {
+        const int64_t total = m_timeline.lengthFrames();
+        m_loopStart = std::clamp<int64_t>(m_loopStart, 0, total);
+        m_loopEnd = std::clamp<int64_t>(m_loopEnd, 0, total);
+        if (m_loopEnd <= m_loopStart) {
+            m_loopEnabled = false;
+            m_loopStart = 0;
+            m_loopEnd = 0;
+        }
+    }
     m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
     if (m_timeline.empty()) m_projectPath.clear();
     updateWindowTitle();
@@ -835,6 +857,8 @@ void App::addEmptyTrack() {
         return;
     }
     m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
+    m_selectedClip = -1;
+    m_clipTool = false;
     for (int i = 0; i < m_timeline.trackCount(); ++i)
         m_timeline.setTrackArmed(i, i == m_timeline.activeTrack());
     syncTrackControls();
@@ -1427,6 +1451,24 @@ void App::drawToolbar() {
     x += 30;
     addButton("Fit", x, tabY, 40, 29, [this] { fitTime(); }, false, false,
               !m_timeline.empty());
+    x += 46;
+    addButton("|<", x, tabY, 30, 29, [this] { goToStart(); }, false, false,
+              !m_timeline.empty());
+    x += 34;
+    addButton(">|", x, tabY, 30, 29, [this] { goToEnd(); }, false, false,
+              !m_timeline.empty());
+    x += 34;
+    std::ostringstream timeLabel;
+    timeLabel << formatSeconds(
+        static_cast<double>(m_playhead) /
+        std::max(1, m_timeline.sampleRate()));
+    addButton(timeLabel.str(), x, tabY, 100, 29, [this] {
+        openDialog(
+            DialogMode::SeekTime, "Go to time",
+            formatTimeInput(static_cast<double>(m_playhead) /
+                            std::max(1, m_timeline.sampleRate())),
+            false);
+    }, false, false, !m_timeline.empty());
 }
 
 void App::drawSidebar() {
@@ -2047,6 +2089,119 @@ void App::drawSidebar() {
         }
     }
 
+    drawSection("TRACK", y);
+    addButton(std::string("Selection: ") +
+                  (m_timeline.selectionScope() ==
+                           vwave::SelectionScope::ActiveTrack
+                       ? "Active Track"
+                       : "All Tracks"),
+              18, y, buttonWidth, buttonHeight,
+              [this] { toggleSelectionScope(); }, false, false,
+              !m_timeline.empty());
+    addButton("Crop Track", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { cropActiveTrack(); }, false, false,
+              !m_timeline.empty() && m_timeline.selection().active);
+    y += buttonHeight + 6;
+    addButton("Shift -1 s", 18, y, buttonWidth, buttonHeight,
+              [this] { shiftActiveTrack(-1.0); }, false, false,
+              !m_timeline.empty());
+    addButton("Shift +1 s", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { shiftActiveTrack(1.0); }, false, false,
+              !m_timeline.empty());
+    y += buttonHeight + 6;
+    const bool hasSelection =
+        !m_timeline.empty() && m_timeline.selection().active;
+    addButton("Zero-X Cut", 18, y, buttonWidth, buttonHeight,
+              [this] { zeroCrossCut(); }, false, false, hasSelection);
+    addButton("Snap Zero-X", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { snapActiveSelection(); }, false, false,
+              hasSelection);
+    y += buttonHeight + 6;
+    addButton("Copy to Head", 18, y, buttonWidth, buttonHeight,
+              [this] { moveActiveSelectionToPlayhead(true); }, false, false,
+              hasSelection);
+    addButton("Move to Head", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { moveActiveSelectionToPlayhead(false); },
+              false, false, hasSelection);
+    y += buttonHeight + 6;
+    addButton("Repeat x2", 18, y, buttonWidth, buttonHeight,
+              [this] { repeatActiveSelection(2); }, false, false,
+              hasSelection);
+    addButton("Stretch Track", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { stretchActiveTrack(); }, false, false,
+              !m_timeline.empty());
+    y += buttonHeight + 6;
+
+    drawSection("LOOP", y);
+    addButton(std::string("Loop: ") + (m_loopEnabled ? "On" : "Off"), 18, y,
+              buttonWidth, buttonHeight, [this] { toggleLoop(); }, false,
+              m_loopEnabled, !m_timeline.empty());
+    addButton("Loop Selection", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { setLoopToSelection(); }, false, false,
+              hasSelection);
+    y += buttonHeight + 6;
+    addButton("Clear Loop", 18, y, buttonWidth, buttonHeight,
+              [this] { clearLoop(); }, false, false,
+              m_loopEnd > m_loopStart);
+    y += buttonHeight + 6;
+
+    const int activeIndex = m_timeline.activeTrack();
+    const bool activeStereo =
+        !m_timeline.empty() && activeDocument().numChannels() == 2;
+    const bool activeMono = !m_timeline.empty() &&
+                            activeDocument().numChannels() == 1;
+    const bool previousMono =
+        activeMono && activeIndex > 0 &&
+        m_timeline.track(activeIndex - 1).document.numChannels() == 1;
+    const bool nextMono =
+        activeMono && activeIndex + 1 < m_timeline.trackCount() &&
+        m_timeline.track(activeIndex + 1).document.numChannels() == 1;
+    drawSection("STEREO", y);
+    addButton("Split Stereo", 18, y, buttonWidth, buttonHeight,
+              [this] { splitActiveStereoTrack(); }, false, false,
+              activeStereo);
+    addButton("Pad: " +
+                  std::string(vwave::stereoPaddingName(m_stereoPadding)),
+              18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+              [this] { cycleStereoPadding(); }, false, false,
+              !m_timeline.empty());
+    y += buttonHeight + 6;
+    addButton("Merge Previous", 18, y, buttonWidth, buttonHeight,
+              [this] { combineActiveMono(-1); }, false, false, previousMono);
+    addButton("Merge Next", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { combineActiveMono(1); }, false, false,
+              nextMono);
+    y += buttonHeight + 6;
+
+    const bool hasClips = !m_timeline.empty() && activeDocument().hasClips();
+    drawSection("CLIPS", y);
+    addButton(hasClips ? "Flatten Clips" : "Make Clips", 18, y, buttonWidth,
+              buttonHeight, [this] {
+                  if (activeDocument().hasClips())
+                      flattenClips();
+                  else
+                      makeClips();
+              }, false, false, !m_timeline.empty());
+    addButton(std::string("Clip Tool: ") + (m_clipTool ? "On" : "Off"),
+              18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+              [this] { toggleClipTool(); }, false, m_clipTool, hasClips);
+    y += buttonHeight + 6;
+    addButton("Split Clip", 18, y, buttonWidth, buttonHeight,
+              [this] { splitClipAtPlayhead(); }, false, false, hasClips);
+    addButton("Delete Clip", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { deleteSelectedClip(); }, false, false,
+              hasClips);
+    y += buttonHeight + 6;
+    addButton("Repeat Clip x2", 18, y, buttonWidth, buttonHeight,
+              [this] { repeatSelectedClip(2); }, false, false, hasClips);
+    addButton("Move to Head", 18 + buttonWidth + gap, y, buttonWidth,
+              buttonHeight, [this] { moveSelectedClipToPlayhead(); }, false,
+              false, hasClips);
+    y += buttonHeight + 6;
+    addButton("Stretch Clip", 18, y, buttonWidth, buttonHeight,
+              [this] { stretchSelectedClip(); }, false, false, hasClips);
+    y += buttonHeight + 6;
+
     drawSection("EDIT", y);
     grid({{"Undo", [this] {
                m_player.stop();
@@ -2220,7 +2375,7 @@ void App::drawFooter() {
     const std::string left = statusActive
                                  ? m_status
                                  : "Space play | Wheel zoom | Drag select | "
-                                   "1/2/3 views | Ctrl+Z undo";
+                                   "Alt+drag shift | 1-6 views | Ctrl+Z undo";
     drawText(truncateText(left, fontSmall(), m_footerRect.w - 380),
              m_footerRect.x + 14, m_footerRect.y + 7,
              statusActive ? kAccent : kTextFaint, fontSmall());
@@ -2236,10 +2391,39 @@ void App::drawFooter() {
                  m_footerRect.y + 7, kRed, fontSmall());
     } else {
         const std::string right =
-            "F9 record | B beats | T slice | Wheel zoom | 1/2/3 views";
+            "F9 record | B beats | T slice | L loop | Wheel zoom | 1/2/3 views";
         drawText(right, m_footerRect.w - textWidth(right, fontSmall()) - 14,
                  m_footerRect.y + 7, kTextFaint, fontSmall());
     }
+}
+
+int App::laneXForFrame(const SDL_Rect& lane, int64_t frame) const {
+    return lane.x + static_cast<int>(std::lround(
+                        m_view.pixelAt(frame, std::max(1, lane.w))));
+}
+
+int64_t App::laneFrameAtX(const SDL_Rect& lane, int x) const {
+    return m_view.frameAt(x - lane.x, std::max(1, lane.w),
+                          m_timeline.lengthFrames());
+}
+
+SDL_Rect App::selectionScreenRect() const {
+    const auto& selection = m_timeline.selection();
+    if (!selection.active || m_waveArea.w <= 0) return {};
+    SDL_Rect bounds = m_waveArea;
+    if (m_timeline.selectionScope() == vwave::SelectionScope::ActiveTrack &&
+        m_timeline.activeTrack() >= 0 &&
+        m_timeline.activeTrack() <
+            static_cast<int>(m_trackLaneRects.size())) {
+        const auto& lane =
+            m_trackLaneRects[static_cast<size_t>(m_timeline.activeTrack())];
+        if (lane.w > 0) bounds = lane;
+    }
+    const int left = std::clamp(laneXForFrame(bounds, selection.start),
+                                bounds.x, bounds.x + bounds.w);
+    const int right = std::clamp(laneXForFrame(bounds, selection.end),
+                                 bounds.x, bounds.x + bounds.w);
+    return {left, bounds.y, std::max(1, right - left), bounds.h};
 }
 
 void App::drawWaveform(const SDL_Rect& area) {
@@ -2247,6 +2431,10 @@ void App::drawWaveform(const SDL_Rect& area) {
     m_trackLaneRects.clear();
     m_trackHeaderRects.resize(static_cast<size_t>(m_timeline.trackCount()));
     m_trackLaneRects.resize(static_cast<size_t>(m_timeline.trackCount()));
+    if (!hasTracks() || !activeDocument().hasClips()) {
+        m_clipTool = false;
+        m_selectedClip = -1;
+    }
 
     const int margin = 10;
     const int headerWidth = 232;
@@ -2259,6 +2447,7 @@ void App::drawWaveform(const SDL_Rect& area) {
     m_trackHeaderColumn = {area.x + margin, rowsTop, headerWidth - 8, laneHeight};
     m_tracksArea = {laneX, rowsTop, laneWidth, laneHeight};
     m_waveArea = m_tracksArea;
+    m_rulerArea = {laneX, area.y, laneWidth, rulerHeight};
     m_overviewArea = {laneX, area.y + rulerHeight + 2, laneWidth,
                       overviewHeight - 8};
 
@@ -2277,6 +2466,20 @@ void App::drawWaveform(const SDL_Rect& area) {
         SDL_RenderDrawLine(m_renderer, x, rowsTop, x, rowsTop + laneHeight);
         drawText(formatSeconds(frame / std::max(1, m_timeline.sampleRate())),
                  x + 3, area.y + 7, kTextFaint, fontSmall());
+    }
+    if (m_loopEnd > m_loopStart) {
+        const int loopLeft = std::clamp(
+            laneXForFrame(m_rulerArea, m_loopStart), m_rulerArea.x,
+            m_rulerArea.x + m_rulerArea.w);
+        const int loopRight = std::clamp(
+            laneXForFrame(m_rulerArea, m_loopEnd), m_rulerArea.x,
+            m_rulerArea.x + m_rulerArea.w);
+        SDL_Rect bar{loopLeft, area.y + rulerHeight - 5,
+                     std::max(1, loopRight - loopLeft), 4};
+        SDL_SetRenderDrawColor(
+            m_renderer, kOrange.r, kOrange.g, kOrange.b,
+            m_loopEnabled ? 230 : 90);
+        SDL_RenderFillRect(m_renderer, &bar);
     }
 
     SDL_SetRenderDrawColor(m_renderer, kPanelRaised.r, kPanelRaised.g,
@@ -2462,6 +2665,97 @@ void App::drawWaveform(const SDL_Rect& area) {
     m_controlArea = 1;
 
     SDL_RenderSetClipRect(m_renderer, &m_tracksArea);
+    for (int index = 0; index < m_timeline.trackCount(); ++index) {
+        const auto& lane =
+            m_trackLaneRects[static_cast<size_t>(index)];
+        if (lane.w <= 0) continue;
+        const auto& track = m_timeline.track(index);
+        if (!track.document.hasClips()) continue;
+        const auto& clips = track.document.clips();
+        for (size_t clipIndex = 0; clipIndex < clips.size(); ++clipIndex) {
+            const auto& clip = clips[clipIndex];
+            const int64_t clipStart = track.startFrame + clip.timelineStart;
+            const int64_t clipEnd =
+                clipStart + vwave::clipOutputFrames(clip);
+            const int x0 = laneXForFrame(lane, clipStart);
+            const int x1 = laneXForFrame(lane, clipEnd);
+            if (x1 < lane.x || x0 > lane.x + lane.w) continue;
+            const int left = std::clamp(x0, lane.x, lane.x + lane.w);
+            const int right = std::clamp(x1, lane.x, lane.x + lane.w);
+            SDL_Rect box{left, lane.y + 4, std::max(1, right - left),
+                         lane.h - 8};
+            const bool selected =
+                index == m_timeline.activeTrack() &&
+                static_cast<int>(clipIndex) == m_selectedClip;
+            SDL_SetRenderDrawColor(
+                m_renderer, selected ? kAccent.r : kTextDim.r,
+                selected ? kAccent.g : kTextDim.g,
+                selected ? kAccent.b : kTextDim.b,
+                selected ? 45 : 22);
+            SDL_RenderFillRect(m_renderer, &box);
+            SDL_SetRenderDrawColor(
+                m_renderer, selected ? kAccent.r : kBorder.r,
+                selected ? kAccent.g : kBorder.g,
+                selected ? kAccent.b : kBorder.b,
+                selected ? 220 : 120);
+            SDL_RenderDrawRect(m_renderer, &box);
+            SDL_Rect bar{box.x, box.y, box.w, 3};
+            SDL_SetRenderDrawColor(
+                m_renderer, selected ? kAccent.r : kTextDim.r,
+                selected ? kAccent.g : kTextDim.g,
+                selected ? kAccent.b : kTextDim.b,
+                selected ? 230 : 90);
+            SDL_RenderFillRect(m_renderer, &bar);
+            if (box.w > 48) {
+                const std::string name =
+                    clip.name.empty()
+                        ? "Clip " + std::to_string(clipIndex + 1)
+                        : clip.name;
+                drawText(truncateText(name, fontSmall(), box.w - 8), box.x + 4,
+                         box.y + 5, selected ? kText : kTextDim, fontSmall());
+            }
+        }
+        if (index == m_timeline.activeTrack() && m_clipTool &&
+            m_selectedClip >= 0 &&
+            static_cast<size_t>(m_selectedClip) < clips.size()) {
+            const auto& clip = clips[static_cast<size_t>(m_selectedClip)];
+            const int64_t clipEnd =
+                track.startFrame + clip.timelineStart +
+                vwave::clipOutputFrames(clip);
+            const int endX = laneXForFrame(lane, clipEnd);
+            if (endX >= lane.x && endX <= lane.x + lane.w) {
+                SDL_Rect handle{endX - 8, lane.y + 9, 7, 7};
+                SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                       kOrange.b, 240);
+                SDL_RenderFillRect(m_renderer, &handle);
+            }
+        }
+    }
+
+    if (m_loopEnd > m_loopStart) {
+        const int loopLeft = std::clamp(
+            laneXForFrame(m_waveArea, m_loopStart), m_waveArea.x,
+            m_waveArea.x + m_waveArea.w);
+        const int loopRight = std::clamp(
+            laneXForFrame(m_waveArea, m_loopEnd), m_waveArea.x,
+            m_waveArea.x + m_waveArea.w);
+        SDL_Rect loop{loopLeft, m_waveArea.y,
+                      std::max(1, loopRight - loopLeft), m_waveArea.h};
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               m_loopEnabled ? 20 : 8);
+        SDL_RenderFillRect(m_renderer, &loop);
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               m_loopEnabled ? 190 : 80);
+        SDL_RenderDrawLine(m_renderer, loopLeft, m_waveArea.y, loopLeft,
+                           m_waveArea.y + m_waveArea.h);
+        SDL_RenderDrawLine(m_renderer, loopRight, m_waveArea.y, loopRight,
+                           m_waveArea.y + m_waveArea.h);
+        if (m_loopEnabled) {
+            drawText("LOOP", loopLeft + 4, m_waveArea.y + 4, kOrange,
+                     fontSmall());
+        }
+    }
+
     if (m_hasBeats && hasTracks()) {
         const auto& active = m_timeline.track(m_timeline.activeTrack());
         for (size_t i = 0; i < m_beats.beats.size(); ++i) {
@@ -2520,28 +2814,97 @@ void App::drawWaveform(const SDL_Rect& area) {
         }
     }
 
+    for (int index = 0; index < m_timeline.trackCount(); ++index) {
+        const auto& lane =
+            m_trackLaneRects[static_cast<size_t>(index)];
+        if (lane.w <= 0) continue;
+        const auto& track = m_timeline.track(index);
+        const int64_t frames = track.document.numFrames();
+        if (frames <= 0) continue;
+        const int startX = laneXForFrame(lane, track.startFrame);
+        const int endX = laneXForFrame(lane, track.startFrame + frames);
+        const bool active = index == m_timeline.activeTrack();
+        if (startX >= lane.x && startX <= lane.x + lane.w) {
+            SDL_Rect handle{startX - 4, lane.y + 2, 8, 14};
+            SDL_SetRenderDrawColor(m_renderer, kBlue.r, kBlue.g, kBlue.b,
+                                   active ? 220 : 120);
+            SDL_RenderFillRect(m_renderer, &handle);
+        }
+        if (endX >= lane.x && endX <= lane.x + lane.w) {
+            SDL_Rect trim{endX - 4, lane.y + lane.h - 16, 8, 14};
+            SDL_SetRenderDrawColor(m_renderer, kBlue.r, kBlue.g, kBlue.b,
+                                   active ? 220 : 120);
+            SDL_RenderFillRect(m_renderer, &trim);
+            SDL_Rect stretch{endX - 13, lane.y + 2, 11, 11};
+            SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                   kOrange.b, active ? 230 : 120);
+            SDL_RenderFillRect(m_renderer, &stretch);
+        }
+    }
+
     if (m_timeline.selection().active) {
-        const double start = static_cast<double>(m_timeline.selection().start);
-        const double end = static_cast<double>(m_timeline.selection().end);
-        const int x0 = laneX + static_cast<int>(
-            (start - m_view.startFrame) / std::max(1.0, m_view.visibleFrames) *
-            laneWidth);
-        const int x1 = laneX + static_cast<int>(
-            (end - m_view.startFrame) / std::max(1.0, m_view.visibleFrames) *
-            laneWidth);
-        const int left = std::clamp(std::min(x0, x1), laneX, laneX + laneWidth);
-        const int right = std::clamp(std::max(x0, x1), laneX, laneX + laneWidth);
-        SDL_Rect selection{left, rowsTop, std::max(1, right - left), laneHeight};
+        const SDL_Rect selection = selectionScreenRect();
         SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 50);
         SDL_RenderFillRect(m_renderer, &selection);
         SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 220);
-        SDL_RenderDrawLine(m_renderer, left, rowsTop, left,
-                           rowsTop + laneHeight);
-        SDL_RenderDrawLine(m_renderer, right, rowsTop, right,
-                           rowsTop + laneHeight);
+        SDL_RenderDrawLine(m_renderer, selection.x, selection.y, selection.x,
+                           selection.y + selection.h);
+        SDL_RenderDrawLine(m_renderer, selection.x + selection.w - 1,
+                           selection.y, selection.x + selection.w - 1,
+                           selection.y + selection.h);
+        SDL_Rect startHandle{selection.x - 3, selection.y, 7, selection.h};
+        SDL_Rect endHandle{selection.x + selection.w - 4, selection.y, 7,
+                           selection.h};
+        SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 150);
+        SDL_RenderFillRect(m_renderer, &startHandle);
+        SDL_RenderFillRect(m_renderer, &endHandle);
+        SDL_Rect repeatHandle{selection.x + selection.w - 6,
+                              selection.y + selection.h - 12, 12, 12};
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               230);
+        SDL_RenderFillRect(m_renderer, &repeatHandle);
         SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 150);
-        SDL_RenderDrawLine(m_renderer, laneX, rowsTop + laneHeight, laneX + laneWidth,
-                           rowsTop + laneHeight);
+        SDL_RenderDrawLine(m_renderer, selection.x,
+                           selection.y + selection.h - 1,
+                           selection.x + selection.w,
+                           selection.y + selection.h - 1);
+    }
+
+    if (m_waveDrag != WaveDragMode::None && m_waveDragTrack >= 0 &&
+        m_waveDragTrack < static_cast<int>(m_trackLaneRects.size())) {
+        const auto& lane =
+            m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)];
+        if (lane.w > 0) {
+            const int x = laneXForFrame(lane, m_waveDragPreviewFrame);
+            if (m_waveDrag == WaveDragMode::TrackTrimStart ||
+                m_waveDrag == WaveDragMode::TrackTrimEnd) {
+                SDL_SetRenderDrawColor(m_renderer, kBlue.r, kBlue.g, kBlue.b,
+                                       255);
+                SDL_RenderDrawLine(m_renderer, x, lane.y, x,
+                                   lane.y + lane.h);
+            } else if (m_waveDrag == WaveDragMode::TrackStretch ||
+                       m_waveDrag == WaveDragMode::ClipMove ||
+                       m_waveDrag == WaveDragMode::ClipStretch) {
+                SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                       kOrange.b, 255);
+                SDL_RenderDrawLine(m_renderer, x, lane.y, x,
+                                   lane.y + lane.h);
+            }
+        }
+        if (m_waveDrag == WaveDragMode::SelectionRepeat &&
+            m_timeline.selection().active && m_repeatDragCount > 0) {
+            const SDL_Rect selection = selectionScreenRect();
+            for (int repeat = 0; repeat < m_repeatDragCount; ++repeat) {
+                SDL_Rect block{selection.x + (repeat + 1) * selection.w,
+                               selection.y, selection.w, selection.h};
+                SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                       kOrange.b, 70);
+                SDL_RenderFillRect(m_renderer, &block);
+                SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                       kOrange.b, 180);
+                SDL_RenderDrawRect(m_renderer, &block);
+            }
+        }
     }
 
     if (m_playhead >= m_view.startFrame &&
@@ -2797,6 +3160,32 @@ void App::drawSpectrum(const SDL_Rect& area) {
               << (frequency >= 1000.0 ? "k" : "");
         drawText(label.str(), rect.x + 4,
                  rect.y + static_cast<int>(y) - 13, kTextDim, fontSmall());
+    }
+
+    if (m_loopEnd > m_loopStart) {
+        const int loopLeft = std::clamp(
+            rect.x + static_cast<int>(
+                         (static_cast<double>(m_loopStart) -
+                          m_view.startFrame) /
+                         std::max(1.0, m_view.visibleFrames) * rect.w),
+            rect.x, rect.x + rect.w);
+        const int loopRight = std::clamp(
+            rect.x + static_cast<int>(
+                         (static_cast<double>(m_loopEnd) -
+                          m_view.startFrame) /
+                         std::max(1.0, m_view.visibleFrames) * rect.w),
+            rect.x, rect.x + rect.w);
+        SDL_Rect loop{loopLeft, rect.y, std::max(1, loopRight - loopLeft),
+                      rect.h};
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               m_loopEnabled ? 20 : 8);
+        SDL_RenderFillRect(m_renderer, &loop);
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               m_loopEnabled ? 190 : 80);
+        SDL_RenderDrawLine(m_renderer, loopLeft, rect.y, loopLeft,
+                           rect.y + rect.h);
+        SDL_RenderDrawLine(m_renderer, loopRight, rect.y, loopRight,
+                           rect.y + rect.h);
     }
 
     if (m_spectralRegion.active && !m_spectralRegion.frames.empty()) {
@@ -3387,6 +3776,653 @@ void App::regenerateActiveTrack() {
     setStatus("Regenerated track " + m_timeline.track(index).name);
 }
 
+void App::toggleSelectionScope() {
+    m_timeline.setSelectionScope(
+        m_timeline.selectionScope() == vwave::SelectionScope::AllTracks
+            ? vwave::SelectionScope::ActiveTrack
+            : vwave::SelectionScope::AllTracks);
+    setStatus(m_timeline.selectionScope() ==
+                      vwave::SelectionScope::ActiveTrack
+                  ? "Selection: active track"
+                  : "Selection: all tracks");
+}
+
+void App::cropActiveTrack() {
+    if (m_timeline.empty()) return;
+    const int index = m_timeline.activeTrack();
+    if (!m_timeline.selection().active) {
+        setStatus("Select a range first");
+        return;
+    }
+    m_player.stop();
+    std::string error;
+    if (!m_timeline.cropTrack(index, m_timeline.selectedRange(), &error)) {
+        setStatus(error.empty() ? "Crop failed" : error, 6000);
+        return;
+    }
+    markEdited();
+    m_view.clamp(m_timeline.lengthFrames());
+    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+    setStatus("Cropped track " + m_timeline.track(index).name);
+}
+
+void App::shiftActiveTrack(double seconds) {
+    if (m_timeline.empty() || m_timeline.sampleRate() <= 0) return;
+    const int64_t delta = static_cast<int64_t>(
+        std::llround(seconds * static_cast<double>(m_timeline.sampleRate())));
+    std::string error;
+    if (!m_timeline.shiftTrack(m_timeline.activeTrack(), delta, &error)) {
+        setStatus(error.empty() ? "Shift failed" : error, 6000);
+        return;
+    }
+    clearAnalysis();
+    m_view.clamp(m_timeline.lengthFrames());
+    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+    setStatus("Shifted track by " +
+              formatSeconds(seconds));
+}
+
+void App::repeatActiveSelection(int count) {
+    if (!hasTracks() || !activeDocument().selection().active) {
+        setStatus("Select a range first");
+        return;
+    }
+    count = std::clamp(count, 1, 64);
+    runEdit([this, count](std::string* error) {
+        return activeDocument().repeatSelection(count, error);
+    }, "Repeated selection " + std::to_string(count) + "x");
+}
+
+void App::moveActiveSelectionToPlayhead(bool copy) {
+    if (!hasTracks() || !activeDocument().selection().active) {
+        setStatus("Select a range first");
+        return;
+    }
+    const auto& track = m_timeline.track(m_timeline.activeTrack());
+    const int64_t destination = std::clamp<int64_t>(
+        m_playhead - track.startFrame, 0, activeDocument().numFrames());
+    runEdit([this, destination, copy](std::string* error) {
+        return activeDocument().moveSelectionTo(destination, copy, error);
+    }, copy ? "Copied selection to playhead"
+            : "Moved selection to playhead");
+}
+
+void App::zeroCrossCut() {
+    if (!hasTracks() || !activeDocument().selection().active) {
+        setStatus("Select a range first");
+        return;
+    }
+    const int64_t radius = std::max<int64_t>(
+        1, activeDocument().sampleRate() / 100);
+    const vwave::Range snapped = vwave::snapRangeToZeroCrossings(
+        activeDocument().audio(), activeDocument().selectedRange(), radius);
+    if (snapped.length() <= 0) {
+        setStatus("Cannot snap selection");
+        return;
+    }
+    activeDocument().setSelection(snapped.start, snapped.end);
+    runEdit([this](std::string* error) {
+        return activeDocument().deleteSelection(error);
+    }, "Zero-cross cut");
+}
+
+void App::snapActiveSelection() {
+    if (!hasTracks() || !activeDocument().selection().active) {
+        setStatus("Select a range first");
+        return;
+    }
+    const int64_t radius = std::max<int64_t>(
+        1, activeDocument().sampleRate() / 100);
+    const vwave::Range snapped = vwave::snapRangeToZeroCrossings(
+        activeDocument().audio(), activeDocument().selectedRange(), radius);
+    activeDocument().setSelection(snapped.start, snapped.end);
+    syncSelectionFromActive();
+    setStatus("Selection snapped to zero crossings");
+}
+
+void App::stretchActiveTrack() {
+    if (!hasTracks() || activeDocument().audio().empty()) {
+        setStatus("Open an audio file first");
+        return;
+    }
+    runEdit([this](std::string* error) {
+        return activeDocument().timeStretchTrack(
+            m_stretchRatio.value, selectedStretchAlgorithm(), error);
+    }, "Track stretched");
+}
+
+void App::splitActiveStereoTrack() {
+    if (!hasTracks()) return;
+    const int index = m_timeline.activeTrack();
+    if (m_timeline.track(index).document.numChannels() != 2) {
+        setStatus("Active track is not stereo");
+        return;
+    }
+    m_player.stop();
+    std::string error;
+    if (!m_timeline.splitStereoTrack(index, true, &error)) {
+        setStatus(error.empty() ? "Split failed" : error, 6000);
+        return;
+    }
+    m_selectedClip = -1;
+    m_clipTool = false;
+    syncTrackControls();
+    clearAnalysis();
+    m_view.fit(m_timeline.lengthFrames());
+    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+    setStatus("Split stereo track into mono tracks");
+}
+
+void App::combineActiveMono(int direction) {
+    if (!hasTracks()) return;
+    const int active = m_timeline.activeTrack();
+    const int other = active + direction;
+    if (active < 0 || other < 0 || other >= m_timeline.trackCount()) {
+        setStatus("No adjacent track to combine");
+        return;
+    }
+    if (m_timeline.track(active).document.numChannels() != 1 ||
+        m_timeline.track(other).document.numChannels() != 1) {
+        setStatus("Both tracks must be mono");
+        return;
+    }
+    m_player.stop();
+    std::string error;
+    vwave::StereoCombineOptions options;
+    options.padding = m_stereoPadding;
+    options.keepOriginals = true;
+    if (!m_timeline.combineMonoTracks(
+            direction < 0 ? other : active,
+            direction < 0 ? active : other, options, &error)) {
+        setStatus(error.empty() ? "Combine failed" : error, 6000);
+        return;
+    }
+    m_selectedClip = -1;
+    m_clipTool = false;
+    syncTrackControls();
+    clearAnalysis();
+    m_view.fit(m_timeline.lengthFrames());
+    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+    setStatus("Combined mono tracks with " +
+              std::string(vwave::stereoPaddingName(m_stereoPadding)) +
+              " padding");
+}
+
+void App::cycleStereoPadding() {
+    switch (m_stereoPadding) {
+    case vwave::StereoPadding::Back:
+        m_stereoPadding = vwave::StereoPadding::Front;
+        break;
+    case vwave::StereoPadding::Front:
+        m_stereoPadding = vwave::StereoPadding::Both;
+        break;
+    case vwave::StereoPadding::Both:
+        m_stereoPadding = vwave::StereoPadding::Back;
+        break;
+    }
+    setStatus("Stereo padding: " +
+              std::string(vwave::stereoPaddingName(m_stereoPadding)));
+}
+
+void App::toggleClipTool() {
+    if (!hasTracks() || !activeDocument().hasClips()) {
+        setStatus("Make clips first");
+        return;
+    }
+    m_clipTool = !m_clipTool;
+    if (m_clipTool) {
+        m_timeline.clearSelection();
+        m_selectedClip = -1;
+        m_selectedClip = currentClipIndex();
+    }
+    setStatus(m_clipTool ? "Clip tool enabled" : "Clip tool disabled");
+}
+
+void App::makeClips() {
+    if (!hasTracks() || activeDocument().audio().empty()) {
+        setStatus("Open a track first");
+        return;
+    }
+    if (activeDocument().hasClips()) {
+        setStatus("Track already has clips");
+        return;
+    }
+    runEdit([this](std::string* error) {
+        return activeDocument().createClipArrangement(error);
+    }, "Created clip arrangement");
+    if (activeDocument().hasClips()) {
+        m_selectedClip = 0;
+        m_clipTool = true;
+        m_timeline.clearSelection();
+    }
+}
+
+void App::flattenClips() {
+    if (!hasTracks() || !activeDocument().hasClips()) {
+        setStatus("Track has no clips");
+        return;
+    }
+    runEdit([this](std::string* error) {
+        return activeDocument().flattenClips(error);
+    }, "Flattened clip arrangement");
+    m_selectedClip = -1;
+    m_clipTool = false;
+}
+
+void App::splitClipAtPlayhead() {
+    if (!hasTracks() || !activeDocument().hasClips()) {
+        setStatus("Make clips first");
+        return;
+    }
+    const auto& track = m_timeline.track(m_timeline.activeTrack());
+    const int64_t frame = std::max<int64_t>(0, m_playhead - track.startFrame);
+    runEdit([this, frame](std::string* error) {
+        return activeDocument().splitClipAt(frame, error);
+    }, "Split clip");
+    m_selectedClip = activeDocument().clipIndexAt(frame);
+}
+
+void App::deleteSelectedClip() {
+    const int index = currentClipIndex();
+    if (index < 0) {
+        setStatus("Select a clip first");
+        return;
+    }
+    runEdit([this, index](std::string* error) {
+        return activeDocument().deleteClip(static_cast<size_t>(index), error);
+    }, "Deleted clip");
+    if (m_selectedClip < 0 ||
+        static_cast<size_t>(m_selectedClip) >=
+            activeDocument().clips().size())
+        m_selectedClip = static_cast<int>(activeDocument().clips().size()) - 1;
+}
+
+void App::repeatSelectedClip(int count) {
+    const int index = currentClipIndex();
+    if (index < 0) {
+        setStatus("Select a clip first");
+        return;
+    }
+    count = std::clamp(count, 1, 64);
+    runEdit([this, index, count](std::string* error) {
+        return activeDocument().repeatClip(static_cast<size_t>(index), count,
+                                           error);
+    }, "Repeated clip");
+    m_selectedClip = index;
+}
+
+void App::moveSelectedClipToPlayhead() {
+    const int index = currentClipIndex();
+    if (index < 0) {
+        setStatus("Select a clip first");
+        return;
+    }
+    const auto& track = m_timeline.track(m_timeline.activeTrack());
+    const int64_t frame = std::max<int64_t>(0, m_playhead - track.startFrame);
+    runEdit([this, index, frame](std::string* error) {
+        return activeDocument().moveClip(static_cast<size_t>(index), frame,
+                                         error);
+    }, "Moved clip to playhead");
+    m_selectedClip = index;
+}
+
+void App::stretchSelectedClip() {
+    const int index = currentClipIndex();
+    if (index < 0) {
+        setStatus("Select a clip first");
+        return;
+    }
+    runEdit([this, index](std::string* error) {
+        return activeDocument().stretchClip(
+            static_cast<size_t>(index), m_stretchRatio.value, error);
+    }, "Stretched clip");
+    m_selectedClip = index;
+}
+
+int App::currentClipIndex() const {
+    if (m_timeline.empty()) return -1;
+    const auto& document = activeDocument();
+    const auto& clips = document.clips();
+    if (clips.empty()) return -1;
+    if (m_selectedClip >= 0 &&
+        m_selectedClip < static_cast<int>(clips.size()))
+        return m_selectedClip;
+    const auto& track = m_timeline.track(m_timeline.activeTrack());
+    int index = document.clipIndexAt(m_playhead - track.startFrame);
+    if (index < 0 && m_timeline.selection().active) {
+        index = document.clipIndexAt(m_timeline.selection().start -
+                                     track.startFrame);
+    }
+    return index;
+}
+
+bool App::seekToTime(double seconds, std::string* error) {
+    if (error) error->clear();
+    if (m_timeline.empty() || m_timeline.sampleRate() <= 0) {
+        if (error) *error = "No timeline audio";
+        return false;
+    }
+    if (!std::isfinite(seconds) || seconds < 0.0) {
+        if (error) *error = "Invalid time";
+        return false;
+    }
+    m_player.stop();
+    m_playhead = clampFrame(
+        static_cast<int64_t>(std::llround(
+            seconds * static_cast<double>(m_timeline.sampleRate()))),
+        m_timeline.lengthFrames());
+    const double viewEnd = m_view.startFrame + m_view.visibleFrames;
+    if (m_playhead < m_view.startFrame || m_playhead > viewEnd) {
+        m_view.startFrame =
+            static_cast<double>(m_playhead) - m_view.visibleFrames * 0.15;
+        m_view.clamp(m_timeline.lengthFrames());
+    }
+    setStatus("Playhead " +
+              formatSeconds(static_cast<double>(m_playhead) /
+                            m_timeline.sampleRate()));
+    return true;
+}
+
+void App::goToStart() {
+    seekToTime(0.0);
+}
+
+void App::goToEnd() {
+    if (m_timeline.sampleRate() > 0) {
+        seekToTime(static_cast<double>(m_timeline.lengthFrames()) /
+                   static_cast<double>(m_timeline.sampleRate()));
+    }
+}
+
+void App::setLoopToSelection() {
+    if (!m_timeline.selection().active) {
+        setStatus("Select a range first");
+        return;
+    }
+    const auto selection = m_timeline.selectedRange();
+    setLoopRegion(selection.start, selection.end);
+    setStatus("Loop set to selection");
+}
+
+void App::clearLoop() {
+    const bool wasPlaying = m_player.isPlaying();
+    m_loopEnabled = false;
+    m_loopStart = 0;
+    m_loopEnd = 0;
+    if (wasPlaying) {
+        m_player.stop();
+        togglePlay();
+    }
+    setStatus("Loop cleared");
+}
+
+void App::toggleLoop() {
+    if (m_loopEnabled) {
+        clearLoop();
+        return;
+    }
+    const int64_t total = m_timeline.lengthFrames();
+    const int64_t start = std::clamp<int64_t>(m_loopStart, 0, total);
+    const int64_t end = std::clamp<int64_t>(m_loopEnd, 0, total);
+    if (end > start) {
+        const bool wasPlaying = m_player.isPlaying();
+        m_loopEnabled = true;
+        if (wasPlaying) {
+            m_player.stop();
+            togglePlay();
+        }
+        setStatus("Loop enabled");
+        return;
+    }
+    if (m_timeline.selection().active) {
+        setLoopToSelection();
+        setStatus("Loop enabled");
+        return;
+    }
+    setStatus("Select a range or shift-drag the timeline first");
+}
+
+bool App::loopPlaybackActive() const {
+    if (!m_loopEnabled) return false;
+    const int64_t total = m_timeline.lengthFrames();
+    const int64_t start = std::clamp<int64_t>(m_loopStart, 0, total);
+    const int64_t end = std::clamp<int64_t>(m_loopEnd, 0, total);
+    return end > start;
+}
+
+void App::setLoopRegion(int64_t start, int64_t end) {
+    const int64_t total = m_timeline.lengthFrames();
+    start = std::clamp<int64_t>(start, 0, total);
+    end = std::clamp<int64_t>(end, 0, total);
+    if (end <= start) {
+        clearLoop();
+        return;
+    }
+    const bool wasPlaying = m_player.isPlaying();
+    m_loopStart = start;
+    m_loopEnd = end;
+    m_loopEnabled = true;
+    if (wasPlaying) {
+        m_player.stop();
+        togglePlay();
+    }
+    setStatus("Loop " +
+              formatSeconds(static_cast<double>(start) /
+                            std::max(1, m_timeline.sampleRate())) +
+              " - " +
+              formatSeconds(static_cast<double>(end) /
+                            std::max(1, m_timeline.sampleRate())));
+}
+
+void App::openTrackContextMenu(int trackIndex, int x, int y) {
+    if (trackIndex < 0 || trackIndex >= m_timeline.trackCount()) return;
+    selectTrack(trackIndex);
+    if (trackIndex < static_cast<int>(m_trackLaneRects.size()) &&
+        m_trackLaneRects[static_cast<size_t>(trackIndex)].w > 0) {
+        const auto& lane = m_trackLaneRects[static_cast<size_t>(trackIndex)];
+        const auto& track = m_timeline.track(trackIndex);
+        if (x >= lane.x && x <= lane.x + lane.w &&
+            track.document.hasClips()) {
+            const int64_t local = std::clamp<int64_t>(
+                laneFrameAtX(lane, x) - track.startFrame, 0,
+                track.document.numFrames());
+            m_selectedClip = track.document.clipIndexAt(local);
+        }
+    }
+    m_contextMenuTrack = trackIndex;
+    m_contextMenuPosition = {x, y};
+    m_contextMenuItems.clear();
+    auto add = [this](std::string label, std::function<void()> action,
+                      bool enabled = true) {
+        MenuItem item;
+        item.label = std::move(label);
+        item.action = std::move(action);
+        item.enabled = enabled;
+        m_contextMenuItems.push_back(std::move(item));
+    };
+    auto separator = [this] {
+        MenuItem item;
+        item.separator = true;
+        m_contextMenuItems.push_back(std::move(item));
+    };
+    add(m_timeline.selectionScope() ==
+                vwave::SelectionScope::AllTracks
+            ? "Select Active Track Only"
+            : "Select All Tracks",
+        [this] { toggleSelectionScope(); });
+    separator();
+    const bool hasSelection = m_timeline.selection().active;
+    add("Zero-Cross Cut", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        zeroCrossCut();
+    }, hasSelection);
+    add("Snap Selection to Zero Crossings", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        snapActiveSelection();
+    }, hasSelection);
+    add("Copy Selection to Playhead", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        moveActiveSelectionToPlayhead(true);
+    }, hasSelection);
+    add("Move Selection to Playhead", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        moveActiveSelectionToPlayhead(false);
+    }, hasSelection);
+    add("Repeat Selection x2", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        repeatActiveSelection(2);
+    }, hasSelection);
+    separator();
+    add("Crop Track to Selection", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        cropActiveTrack();
+    }, hasSelection);
+    add("Shift to Playhead", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        const int64_t start =
+            clampFrame(m_playhead, m_timeline.lengthFrames());
+        if (m_timeline.setTrackStartFrame(trackIndex, start)) {
+            clearAnalysis();
+            m_view.clamp(m_timeline.lengthFrames());
+            setStatus("Shifted track to playhead");
+        }
+    });
+    add("Shift Left 1 s", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        shiftActiveTrack(-1.0);
+    });
+    add("Shift Right 1 s", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        shiftActiveTrack(1.0);
+    });
+    add("Stretch Track In Place", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        stretchActiveTrack();
+    }, m_timeline.track(trackIndex).document.numFrames() > 0);
+    separator();
+    const bool stereo =
+        m_timeline.track(trackIndex).document.numChannels() == 2;
+    const bool mono =
+        m_timeline.track(trackIndex).document.numChannels() == 1;
+    add("Split Stereo to Mono Tracks", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        splitActiveStereoTrack();
+    }, stereo);
+    add("Combine with Previous Mono", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        combineActiveMono(-1);
+    }, mono && trackIndex > 0 &&
+           m_timeline.track(trackIndex - 1).document.numChannels() == 1);
+    add("Combine with Next Mono", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        combineActiveMono(1);
+    }, mono && trackIndex + 1 < m_timeline.trackCount() &&
+           m_timeline.track(trackIndex + 1).document.numChannels() == 1);
+    add("Stereo Padding: " +
+            std::string(vwave::stereoPaddingName(m_stereoPadding)),
+        [this] { cycleStereoPadding(); });
+    separator();
+    const bool clipMode =
+        m_timeline.track(trackIndex).document.hasClips();
+    add(clipMode ? "Flatten Clips" : "Make Clips", [this, trackIndex, clipMode] {
+        m_timeline.setActiveTrack(trackIndex);
+        if (clipMode)
+            flattenClips();
+        else
+            makeClips();
+    }, true);
+    add("Clip Tool: On/Off", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        toggleClipTool();
+    }, clipMode);
+    add("Split Clip at Playhead", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        splitClipAtPlayhead();
+    }, clipMode);
+    add("Delete Clip", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        deleteSelectedClip();
+    }, clipMode);
+    add("Repeat Clip x2", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        repeatSelectedClip(2);
+    }, clipMode);
+    add("Move Clip to Playhead", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        moveSelectedClipToPlayhead();
+    }, clipMode);
+    add("Stretch Clip", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        stretchSelectedClip();
+    }, clipMode);
+    separator();
+    add("Delete Track", [this, trackIndex] { removeTrack(trackIndex); });
+    m_contextMenuOpen = true;
+}
+
+void App::closeContextMenu() {
+    m_contextMenuOpen = false;
+    m_contextMenuItems.clear();
+    m_contextMenuItemRects.clear();
+    m_contextMenuTrack = -1;
+}
+
+void App::drawContextMenu() {
+    m_contextMenuItemRects.clear();
+    if (!m_contextMenuOpen || m_contextMenuItems.empty()) return;
+    int width = 190;
+    for (const auto& item : m_contextMenuItems) {
+        if (item.separator) continue;
+        width = std::max(width, textWidth(item.label, fontNormal()) + 34);
+    }
+    int height = 8;
+    for (const auto& item : m_contextMenuItems)
+        height += item.separator ? 7 : 24;
+    height += 8;
+    int x = m_contextMenuPosition.x;
+    int y = m_contextMenuPosition.y;
+    int windowW = 0;
+    int windowH = 0;
+    SDL_GetWindowSize(m_window, &windowW, &windowH);
+    if (x + width > windowW) x = windowW - width;
+    if (y + height > windowH) y = windowH - height;
+    x = std::max(0, x);
+    y = std::max(0, y);
+    m_contextMenuRect = {x, y, width, height};
+    SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
+    SDL_RenderFillRect(m_renderer, &m_contextMenuRect);
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
+    SDL_RenderDrawRect(m_renderer, &m_contextMenuRect);
+    int mouseX = 0;
+    int mouseY = 0;
+    SDL_GetMouseState(&mouseX, &mouseY);
+    SDL_Point mouse{mouseX, mouseY};
+    int rowY = y + 8;
+    m_contextMenuItemRects.resize(m_contextMenuItems.size());
+    for (size_t index = 0; index < m_contextMenuItems.size(); ++index) {
+        const MenuItem& item = m_contextMenuItems[index];
+        if (item.separator) {
+            SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g,
+                                   kBorder.b, 100);
+            SDL_RenderDrawLine(m_renderer, x + 8, rowY + 3,
+                               x + width - 8, rowY + 3);
+            m_contextMenuItemRects[index] = {};
+            rowY += 7;
+            continue;
+        }
+        SDL_Rect row{x + 1, rowY, width - 2, 24};
+        m_contextMenuItemRects[index] = row;
+        if (item.enabled && SDL_PointInRect(&mouse, &row)) {
+            SDL_SetRenderDrawColor(m_renderer, kAccentDark.r, kAccentDark.g,
+                                   kAccentDark.b, 255);
+            SDL_RenderFillRect(m_renderer, &row);
+        }
+        drawText(item.label, row.x + 12, row.y + 4,
+                 item.enabled ? kText : kTextFaint, fontNormal());
+        rowY += 24;
+    }
+}
+
 void App::drawMastering(const SDL_Rect& area) {
     if (!m_mastering.valid) {
         drawText("No mastering analysis", area.x + 40, area.y + 54,
@@ -3937,7 +4973,9 @@ void App::drawDialog() {
     SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 255);
     SDL_RenderDrawRect(m_renderer, &box);
     drawText(m_dialogTitle, box.x + 20, box.y + 18, kText, fontBold());
-    drawText("Path", box.x + 20, box.y + 58, kTextDim, fontSmall());
+    const bool seekTime = m_dialogMode == DialogMode::SeekTime;
+    drawText(seekTime ? "Time (seconds or MM:SS.mmm)" : "Path",
+             box.x + 20, box.y + 58, kTextDim, fontSmall());
     SDL_Rect field{box.x + 20, box.y + 78, box.w - 40, 34};
     SDL_SetRenderDrawColor(m_renderer, kContent.r, kContent.g, kContent.b, 255);
     SDL_RenderFillRect(m_renderer, &field);
@@ -3946,7 +4984,9 @@ void App::drawDialog() {
     const std::string visiblePath =
         truncateText(m_dialogPath, fontNormal(), field.w - 20);
     drawText(visiblePath, field.x + 8, field.y + 9, kText, fontNormal());
-    drawText("Enter to confirm | Esc to cancel | Ctrl+A clears path",
+    drawText(seekTime
+                 ? "Enter to go | Esc to cancel | Ctrl+A clears input"
+                 : "Enter to confirm | Esc to cancel | Ctrl+A clears path",
              box.x + 20, box.y + 122, kTextFaint, fontSmall());
 
     Button confirm;
@@ -3954,6 +4994,7 @@ void App::drawDialog() {
     confirm.label = m_dialogSave ? "Save" : "Open";
     if (m_dialogMode == DialogMode::AddTrack) confirm.label = "Add";
     if (m_dialogMode == DialogMode::ExportSlices) confirm.label = "Export";
+    if (seekTime) confirm.label = "Go";
     confirm.accent = true;
     m_dialogConfirmRect = confirm.rect;
     drawButton(confirm);
@@ -3966,6 +5007,7 @@ void App::drawDialog() {
 
 void App::setTab(vwave::EditorTab tab) {
     if (m_tab != tab) m_sidebarScroll = 0.0;
+    closeContextMenu();
     m_tab = tab;
     m_spectrum3DHoverX = -1;
     m_spectrum3DHoverY = -1;
@@ -3982,16 +5024,30 @@ void App::togglePlay() {
         setStatus("Add or open an audio file first");
         return;
     }
-    vwave::Range range = m_timeline.selection().active
-                             ? m_timeline.selectedRange()
-                             : vwave::Range{0, m_timeline.lengthFrames()};
+    vwave::Range range;
+    const bool loop = loopPlaybackActive();
+    if (loop) {
+        const int64_t loopEnd = std::clamp<int64_t>(
+            m_loopEnd, 0, m_timeline.lengthFrames());
+        const int64_t loopStart = std::clamp<int64_t>(
+            m_loopStart, 0, m_timeline.lengthFrames());
+        int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
+        if (start < loopStart || start >= loopEnd) start = loopStart;
+        range = {start, loopEnd};
+    } else if (m_timeline.selection().active) {
+        range = m_timeline.selectedRange();
+    } else {
+        int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
+        if (start >= m_timeline.lengthFrames()) start = 0;
+        range = {start, m_timeline.lengthFrames()};
+    }
     if (range.empty()) {
         setStatus("Nothing to play");
         return;
     }
-    if (m_player.play(m_timeline, range.start, range.end)) {
+    if (m_player.play(m_timeline, range.start, range.end, loop)) {
         m_playhead = range.start;
-        setStatus("Playing mix");
+        setStatus(loop ? "Playing loop" : "Playing mix");
     } else {
         setStatus("Audio playback is unavailable");
     }
@@ -4030,6 +5086,24 @@ void App::runEdit(const std::function<bool(std::string*)>& edit,
 void App::markEdited() {
     m_mastering = {};
     m_phaseSpectrogramDirty = true;
+    if (m_loopEnabled) {
+        const int64_t total = m_timeline.lengthFrames();
+        m_loopStart = std::clamp<int64_t>(m_loopStart, 0, total);
+        m_loopEnd = std::clamp<int64_t>(m_loopEnd, 0, total);
+        if (m_loopEnd <= m_loopStart) {
+            m_loopEnabled = false;
+            m_loopStart = 0;
+            m_loopEnd = 0;
+        }
+    }
+    if (!hasTracks() || !activeDocument().hasClips()) {
+        m_clipTool = false;
+        m_selectedClip = -1;
+    } else if (m_selectedClip >=
+               static_cast<int>(activeDocument().clips().size())) {
+        m_selectedClip =
+            static_cast<int>(activeDocument().clips().size()) - 1;
+    }
     syncSelectionFromActive();
     m_view.clamp(m_timeline.lengthFrames());
     m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
@@ -4302,6 +5376,11 @@ bool App::loadAudio(const std::string& path) {
     m_timeline = std::move(timeline);
     m_audioPath = path;
     m_projectPath.clear();
+    m_selectedClip = -1;
+    m_clipTool = false;
+    m_loopEnabled = false;
+    m_loopStart = 0;
+    m_loopEnd = 0;
     syncTrackControls();
     m_wavetable = {};
     m_frameWeights.clear();
@@ -4334,6 +5413,8 @@ bool App::addTrackFile(const std::string& path) {
         return false;
     }
     m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
+    m_selectedClip = -1;
+    m_clipTool = false;
     syncTrackControls();
     clearAnalysis();
     m_view.fit(m_timeline.lengthFrames());
@@ -4355,6 +5436,11 @@ bool App::loadProject(const std::string& path) {
     m_timeline = std::move(timeline);
     m_projectPath = path;
     m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
+    m_selectedClip = -1;
+    m_clipTool = false;
+    m_loopEnabled = false;
+    m_loopStart = 0;
+    m_loopEnd = 0;
     m_wavetable = {};
     m_frameWeights.clear();
     m_wavetableView.selectedFrame = 0;
@@ -4784,6 +5870,18 @@ void App::confirmDialog() {
     case DialogMode::LoadScopePath:
         loadScopePathFile(path);
         break;
+    case DialogMode::SeekTime: {
+        double seconds = 0.0;
+        if (!vwave::parseTimecode(path, seconds)) {
+            setStatus("Invalid time: " + path);
+            break;
+        }
+        std::string error;
+        if (!seekToTime(seconds, &error)) {
+            setStatus(error.empty() ? "Cannot seek" : error);
+        }
+        break;
+    }
     case DialogMode::ExportSlices:
         exportSlices(path);
         break;
@@ -4863,6 +5961,10 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         if (key == SDLK_ESCAPE) closeSettings();
         return;
     }
+    if (key == SDLK_ESCAPE && m_contextMenuOpen) {
+        closeContextMenu();
+        return;
+    }
     if (key == SDLK_ESCAPE && m_openMenu >= 0) {
         m_openMenu = -1;
         return;
@@ -4912,6 +6014,16 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         runEdit([this](std::string* error) {
             return activeDocument().paste(error);
         }, "Pasted");
+    } else if (key == SDLK_HOME) {
+        goToStart();
+    } else if (key == SDLK_END) {
+        goToEnd();
+    } else if (key == SDLK_g) {
+        openDialog(
+            DialogMode::SeekTime, "Go to time",
+            formatTimeInput(static_cast<double>(m_playhead) /
+                            std::max(1, m_timeline.sampleRate())),
+            false);
     } else if (key == SDLK_SPACE) {
         togglePlay();
     } else if (key == SDLK_ESCAPE) {
@@ -4926,6 +6038,11 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         runEdit([this](std::string* error) {
             return activeDocument().deleteSelection(error);
         }, "Selection deleted");
+    } else if (key == SDLK_l) {
+        if (shift)
+            setLoopToSelection();
+        else
+            toggleLoop();
     } else if (key == SDLK_1) {
         setTab(vwave::EditorTab::Waveform);
     } else if (key == SDLK_2) {
@@ -5007,6 +6124,55 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
             setTheme(m_settings.theme == "dark" ? "light" : "dark");
         return;
     }
+    if (event.button == SDL_BUTTON_RIGHT) {
+        m_openMenu = -1;
+        if (m_contextMenuOpen) {
+            closeContextMenu();
+            return;
+        }
+        if (m_tab == vwave::EditorTab::Waveform) {
+            SDL_Point point{event.x, event.y};
+            for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
+                if (m_trackHeaderRects[i].w > 0 &&
+                    SDL_PointInRect(&point, &m_trackHeaderRects[i])) {
+                    openTrackContextMenu(static_cast<int>(i), event.x,
+                                         event.y);
+                    return;
+                }
+            }
+            for (size_t i = 0; i < m_trackLaneRects.size(); ++i) {
+                if (m_trackLaneRects[i].w > 0 &&
+                    SDL_PointInRect(&point, &m_trackLaneRects[i])) {
+                    openTrackContextMenu(static_cast<int>(i), event.x,
+                                         event.y);
+                    return;
+                }
+            }
+        }
+        return;
+    }
+    if (m_contextMenuOpen) {
+        if (event.button == SDL_BUTTON_LEFT) {
+            SDL_Point point{event.x, event.y};
+            if (SDL_PointInRect(&point, &m_contextMenuRect)) {
+                for (size_t i = 0; i < m_contextMenuItemRects.size(); ++i) {
+                    if (m_contextMenuItemRects[i].w > 0 &&
+                        SDL_PointInRect(&point, &m_contextMenuItemRects[i]) &&
+                        i < m_contextMenuItems.size() &&
+                        m_contextMenuItems[i].enabled &&
+                        !m_contextMenuItems[i].separator) {
+                        auto action = m_contextMenuItems[i].action;
+                        closeContextMenu();
+                        if (action) action();
+                        return;
+                    }
+                }
+                return;
+            }
+            closeContextMenu();
+        }
+    }
+
     SDL_Point menuPoint{event.x, event.y};
     for (int index = 0; index < static_cast<int>(m_menus.size()); ++index) {
         if (SDL_PointInRect(&menuPoint, &m_menus[static_cast<size_t>(index)]
@@ -5071,7 +6237,56 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
     }
     if (event.button != SDL_BUTTON_LEFT) return;
     if (m_tab == vwave::EditorTab::Waveform) {
+        if (m_clipTool && !activeDocument().hasClips()) {
+            m_clipTool = false;
+            m_selectedClip = -1;
+        }
+        m_clickCandidate = false;
         SDL_Point point{event.x, event.y};
+        if (SDL_PointInRect(&point, &m_rulerArea)) {
+            const int64_t frame =
+                laneFrameAtX(m_rulerArea, event.x);
+            m_player.stop();
+            m_playhead = clampFrame(frame, m_timeline.lengthFrames());
+            m_timeline.clearSelection();
+            if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
+                m_waveDrag = WaveDragMode::LoopSelection;
+                m_waveDragTrack = -1;
+                m_waveDragMouseX = event.x;
+                m_loopDragArea = m_rulerArea;
+                m_loopAnchor = m_playhead;
+                m_loopStart = m_playhead;
+                m_loopEnd = m_playhead;
+                m_loopEnabled = true;
+            }
+            return;
+        }
+        if ((SDL_GetModState() & KMOD_ALT) != 0) {
+            for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
+                if (m_trackHeaderRects[i].w > 0 &&
+                    SDL_PointInRect(&point, &m_trackHeaderRects[i])) {
+                    selectTrack(static_cast<int>(i));
+                    m_shiftingTrack = true;
+                    m_shiftingTrackIndex = static_cast<int>(i);
+                    m_shiftStartMouseX = event.x;
+                    m_shiftStartFrame = m_timeline.track(
+                        m_shiftingTrackIndex).startFrame;
+                    return;
+                }
+            }
+            for (size_t i = 0; i < m_trackLaneRects.size(); ++i) {
+                if (m_trackLaneRects[i].w > 0 &&
+                    SDL_PointInRect(&point, &m_trackLaneRects[i])) {
+                    selectTrack(static_cast<int>(i));
+                    m_shiftingTrack = true;
+                    m_shiftingTrackIndex = static_cast<int>(i);
+                    m_shiftStartMouseX = event.x;
+                    m_shiftStartFrame = m_timeline.track(
+                        m_shiftingTrackIndex).startFrame;
+                    return;
+                }
+            }
+        }
         for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
             if (m_trackHeaderRects[i].w > 0 &&
                 SDL_PointInRect(&point, &m_trackHeaderRects[i])) {
@@ -5079,12 +6294,164 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 return;
             }
         }
+        int laneIndex = -1;
         for (size_t i = 0; i < m_trackLaneRects.size(); ++i) {
             if (m_trackLaneRects[i].w > 0 &&
                 SDL_PointInRect(&point, &m_trackLaneRects[i])) {
-                selectTrack(static_cast<int>(i));
+                laneIndex = static_cast<int>(i);
                 break;
             }
+        }
+        if (laneIndex >= 0) {
+            selectTrack(laneIndex);
+            const SDL_Rect& clipLane =
+                m_trackLaneRects[static_cast<size_t>(laneIndex)];
+            const auto& clipTrack = m_timeline.track(laneIndex);
+            if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
+                const int64_t frame =
+                    clampFrame(laneFrameAtX(clipLane, event.x),
+                               m_timeline.lengthFrames());
+                m_player.stop();
+                m_playhead = frame;
+                m_timeline.clearSelection();
+                m_waveDrag = WaveDragMode::LoopSelection;
+                m_waveDragTrack = laneIndex;
+                m_waveDragMouseX = event.x;
+                m_loopDragArea = clipLane;
+                m_loopAnchor = frame;
+                m_loopStart = frame;
+                m_loopEnd = frame;
+                m_loopEnabled = true;
+                return;
+            }
+            if (m_clipTool) {
+                m_player.stop();
+                m_playhead = clampFrame(laneFrameAtX(clipLane, event.x),
+                                        m_timeline.lengthFrames());
+                m_timeline.clearSelection();
+                if (!clipTrack.document.hasClips()) {
+                    setStatus("Make clips first");
+                    return;
+                }
+                const int64_t local = std::clamp<int64_t>(
+                    laneFrameAtX(clipLane, event.x) - clipTrack.startFrame,
+                    0, clipTrack.document.numFrames());
+                const int clipIndex =
+                    clipTrack.document.clipIndexAt(local);
+                if (clipIndex < 0) {
+                    m_selectedClip = -1;
+                    setStatus("Click inside a clip");
+                    return;
+                }
+                m_selectedClip = clipIndex;
+                const auto& clip =
+                    clipTrack.document.clips()[static_cast<size_t>(clipIndex)];
+                const int64_t frames = vwave::clipOutputFrames(clip);
+                const int64_t startGlobal =
+                    clipTrack.startFrame + clip.timelineStart;
+                const int64_t endGlobal = startGlobal + frames;
+                const int endX = laneXForFrame(clipLane, endGlobal);
+                m_waveDragTrack = laneIndex;
+                m_waveDragMouseX = event.x;
+                m_waveDragOriginalStart = clip.timelineStart;
+                m_waveDragOriginalEnd = clip.timelineStart + frames;
+                m_clipDragOriginalFrames = frames;
+                m_waveDragPreviewFrame = startGlobal;
+                if (std::abs(event.x - endX) <= 8) {
+                    m_waveDrag = WaveDragMode::ClipStretch;
+                    m_waveDragPreviewFrame = endGlobal;
+                } else {
+                    m_waveDrag = WaveDragMode::ClipMove;
+                }
+                setStatus("Selected " +
+                          (clip.name.empty()
+                               ? "clip " + std::to_string(clipIndex + 1)
+                               : clip.name));
+                return;
+            }
+            const SDL_Rect selection = selectionScreenRect();
+            if (selection.w > 0) {
+                SDL_Rect repeatHandle{selection.x + selection.w - 6,
+                                      selection.y + selection.h - 12, 12, 12};
+                if (SDL_PointInRect(&point, &repeatHandle)) {
+                    m_waveDrag = WaveDragMode::SelectionRepeat;
+                    m_waveDragTrack = m_timeline.activeTrack();
+                    m_waveDragMouseX = event.x;
+                    m_waveDragPreviewFrame = m_timeline.selection().end;
+                    m_repeatDragCount = 0;
+                    return;
+                }
+                SDL_Rect startHandle{selection.x - 4, selection.y, 9,
+                                     selection.h};
+                SDL_Rect endHandle{selection.x + selection.w - 5, selection.y,
+                                   9, selection.h};
+                if (SDL_PointInRect(&point, &startHandle)) {
+                    m_waveDrag = WaveDragMode::SelectionStart;
+                    m_waveDragFixedFrame = m_timeline.selection().end;
+                    m_waveDragMouseX = event.x;
+                    return;
+                }
+                if (SDL_PointInRect(&point, &endHandle)) {
+                    m_waveDrag = WaveDragMode::SelectionEnd;
+                    m_waveDragFixedFrame = m_timeline.selection().start;
+                    m_waveDragMouseX = event.x;
+                    return;
+                }
+            }
+
+            const SDL_Rect& lane =
+                m_trackLaneRects[static_cast<size_t>(laneIndex)];
+            const auto& track = m_timeline.track(laneIndex);
+            const int64_t frames = track.document.numFrames();
+            if (frames > 0) {
+                const int startX = laneXForFrame(lane, track.startFrame);
+                const int endX =
+                    laneXForFrame(lane, track.startFrame + frames);
+                SDL_Rect stretchHandle{endX - 13, lane.y + 2, 11, 11};
+                SDL_Rect trimStart{startX - 4, lane.y + 2, 8, 14};
+                SDL_Rect trimEnd{endX - 4, lane.y + lane.h - 16, 8, 14};
+                if (endX >= lane.x && endX <= lane.x + lane.w &&
+                    SDL_PointInRect(&point, &stretchHandle)) {
+                    m_waveDrag = WaveDragMode::TrackStretch;
+                    m_waveDragTrack = laneIndex;
+                    m_waveDragMouseX = event.x;
+                    m_waveDragOriginalStart = track.startFrame;
+                    m_waveDragOriginalEnd = track.startFrame + frames;
+                    m_waveDragPreviewFrame = m_waveDragOriginalEnd;
+                    return;
+                }
+                if (startX >= lane.x && startX <= lane.x + lane.w &&
+                    SDL_PointInRect(&point, &trimStart)) {
+                    m_waveDrag = WaveDragMode::TrackTrimStart;
+                    m_waveDragTrack = laneIndex;
+                    m_waveDragMouseX = event.x;
+                    m_waveDragOriginalStart = track.startFrame;
+                    m_waveDragOriginalEnd = track.startFrame + frames;
+                    m_waveDragPreviewFrame = m_waveDragOriginalStart;
+                    return;
+                }
+                if (endX >= lane.x && endX <= lane.x + lane.w &&
+                    SDL_PointInRect(&point, &trimEnd)) {
+                    m_waveDrag = WaveDragMode::TrackTrimEnd;
+                    m_waveDragTrack = laneIndex;
+                    m_waveDragMouseX = event.x;
+                    m_waveDragOriginalStart = track.startFrame;
+                    m_waveDragOriginalEnd = track.startFrame + frames;
+                    m_waveDragPreviewFrame = m_waveDragOriginalEnd;
+                    return;
+                }
+            }
+
+            m_selectionAnchor = laneFrameAtX(lane, event.x);
+            m_timeline.setSelection(m_selectionAnchor, m_selectionAnchor);
+            m_selectedClip = -1;
+            m_waveDrag = WaveDragMode::NewSelection;
+            m_waveDragTrack = laneIndex;
+            m_waveDragMouseX = event.x;
+            m_clickCandidate = true;
+            m_clickFrame = m_selectionAnchor;
+            m_clickMouseX = event.x;
+            return;
         }
         if (SDL_PointInRect(&point, &m_overviewArea)) {
             const double fraction =
@@ -5094,6 +6461,12 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 fraction * m_timeline.lengthFrames() -
                 m_view.visibleFrames / 2.0;
             m_view.clamp(m_timeline.lengthFrames());
+            m_player.stop();
+            m_playhead = clampFrame(
+                static_cast<int64_t>(std::llround(
+                    fraction * static_cast<double>(
+                                   m_timeline.lengthFrames()))),
+                m_timeline.lengthFrames());
             m_panningOverview = true;
             m_lastMouseX = event.x;
             return;
@@ -5103,12 +6476,40 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 m_view.frameAt(event.x - m_waveArea.x, m_waveArea.w,
                                m_timeline.lengthFrames());
             m_timeline.setSelection(m_selectionAnchor, m_selectionAnchor);
-            m_draggingSelection = true;
+            m_selectedClip = -1;
+            m_waveDrag = WaveDragMode::NewSelection;
+            m_waveDragTrack = m_timeline.activeTrack();
+            m_waveDragMouseX = event.x;
+            m_clickCandidate = true;
+            m_clickFrame = m_selectionAnchor;
+            m_clickMouseX = event.x;
         }
     } else if (m_tab == vwave::EditorTab::Spectrum) {
         if (m_spectrum3D) return;
         SDL_Point point{event.x, event.y};
         if (SDL_PointInRect(&point, &m_spectrumArea)) {
+            m_spectrumClickCandidate = false;
+            const int64_t frame =
+                laneFrameAtX(m_spectrumArea, event.x);
+            if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
+                m_player.stop();
+                m_playhead = clampFrame(frame, m_timeline.lengthFrames());
+                m_timeline.clearSelection();
+                m_spectralRegion.clear();
+                m_waveDrag = WaveDragMode::LoopSelection;
+                m_waveDragTrack = -1;
+                m_waveDragMouseX = event.x;
+                m_loopDragArea = m_spectrumArea;
+                m_loopAnchor = m_playhead;
+                m_loopStart = m_playhead;
+                m_loopEnd = m_playhead;
+                m_loopEnabled = true;
+                return;
+            }
+            m_spectrumClickCandidate = true;
+            m_spectrumClickX = event.x;
+            m_spectrumClickY = event.y;
+            m_spectrumClickFrame = frame;
             m_draggingSpectrum = true;
             m_spectrumStartX = event.x;
             m_spectrumStartY = event.y;
@@ -5166,26 +6567,177 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
 
 void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
     if (event.button == SDL_BUTTON_MIDDLE) m_panning = false;
-    m_draggingSelection = false;
     m_panningOverview = false;
     m_drawingWavetable = false;
     m_lastWavetableSample = -1;
     m_sliderDragging = false;
+    if (m_waveDrag != WaveDragMode::None) {
+        const WaveDragMode drag = m_waveDrag;
+        const int index = m_waveDragTrack;
+        const int64_t preview = m_waveDragPreviewFrame;
+        const int repeatCount = m_repeatDragCount;
+        const int64_t originalStart = m_waveDragOriginalStart;
+        const int64_t originalEnd = m_waveDragOriginalEnd;
+        const int64_t clipOriginalFrames = m_clipDragOriginalFrames;
+        m_waveDrag = WaveDragMode::None;
+        m_waveDragTrack = -1;
+        m_repeatDragCount = 0;
+        m_clipDragOriginalFrames = 0;
+        if (drag == WaveDragMode::TrackTrimStart ||
+            drag == WaveDragMode::TrackTrimEnd) {
+            if (index >= 0 && index < m_timeline.trackCount() &&
+                preview != (drag == WaveDragMode::TrackTrimStart
+                                ? originalStart
+                                : originalEnd)) {
+                const vwave::Range range =
+                    drag == WaveDragMode::TrackTrimStart
+                        ? vwave::Range{preview, originalEnd}
+                        : vwave::Range{originalStart, preview};
+                m_player.stop();
+                std::string error;
+                if (m_timeline.cropTrack(index, range, &error)) {
+                    markEdited();
+                    setStatus("Trimmed track");
+                } else {
+                    setStatus(error.empty() ? "Trim failed" : error, 6000);
+                }
+            }
+        } else if (drag == WaveDragMode::TrackStretch) {
+            if (index >= 0 && index < m_timeline.trackCount() &&
+                originalEnd > originalStart) {
+                const double ratio =
+                    static_cast<double>(preview - originalStart) /
+                    static_cast<double>(originalEnd - originalStart);
+                if (std::isfinite(ratio) && ratio > 0.0 &&
+                    std::abs(ratio - 1.0) > 1e-3) {
+                    m_player.stop();
+                    std::string error;
+                    if (m_timeline.track(index).document.timeStretchTrack(
+                            ratio, selectedStretchAlgorithm(), &error)) {
+                        markEdited();
+                        setStatus("Stretched track to " +
+                                  formatRatio(ratio));
+                    } else {
+                        setStatus(error.empty() ? "Stretch failed" : error,
+                                  6000);
+                    }
+                }
+            }
+        } else if (drag == WaveDragMode::ClipMove) {
+            if (index >= 0 && index < m_timeline.trackCount() &&
+                m_selectedClip >= 0) {
+                auto& track = m_timeline.track(index);
+                const int64_t localStart =
+                    std::max<int64_t>(0, preview - track.startFrame);
+                if (localStart != originalStart) {
+                    m_player.stop();
+                    std::string error;
+                    if (track.document.moveClip(
+                            static_cast<size_t>(m_selectedClip), localStart,
+                            &error)) {
+                        markEdited();
+                        setStatus("Moved clip");
+                    } else {
+                        setStatus(error.empty() ? "Move failed" : error, 6000);
+                    }
+                }
+            }
+        } else if (drag == WaveDragMode::ClipStretch) {
+            if (index >= 0 && index < m_timeline.trackCount() &&
+                m_selectedClip >= 0 && clipOriginalFrames > 0) {
+                auto& track = m_timeline.track(index);
+                const int64_t clipStartGlobal =
+                    track.startFrame + originalStart;
+                const int64_t newFrames = preview - clipStartGlobal;
+                const double ratio =
+                    static_cast<double>(newFrames) /
+                    static_cast<double>(clipOriginalFrames);
+                if (std::isfinite(ratio) && ratio > 0.0 &&
+                    std::abs(ratio - 1.0) > 1e-3) {
+                    m_player.stop();
+                    std::string error;
+                    if (track.document.stretchClip(
+                            static_cast<size_t>(m_selectedClip), ratio,
+                            &error)) {
+                        markEdited();
+                        setStatus("Stretched clip");
+                    } else {
+                        setStatus(error.empty() ? "Stretch failed" : error,
+                                  6000);
+                    }
+                }
+            }
+        } else if (drag == WaveDragMode::SelectionRepeat) {
+            if (repeatCount > 0) repeatActiveSelection(repeatCount);
+        } else if (drag == WaveDragMode::LoopSelection) {
+            if (m_loopEnd <= m_loopStart) {
+                clearLoop();
+            } else {
+                m_loopEnabled = true;
+                setStatus("Loop " +
+                          formatSeconds(static_cast<double>(m_loopStart) /
+                                        std::max(1, m_timeline.sampleRate())) +
+                          " - " +
+                          formatSeconds(static_cast<double>(m_loopEnd) /
+                                        std::max(1, m_timeline.sampleRate())));
+            }
+        } else if (drag == WaveDragMode::NewSelection &&
+                   m_clickCandidate) {
+            m_player.stop();
+            m_playhead = clampFrame(m_clickFrame,
+                                    m_timeline.lengthFrames());
+            m_timeline.clearSelection();
+            setStatus("Playhead " +
+                      formatSeconds(static_cast<double>(m_playhead) /
+                                    std::max(1, m_timeline.sampleRate())));
+        }
+        m_clickCandidate = false;
+    }
+    if (m_shiftingTrack) {
+        m_shiftingTrack = false;
+        m_shiftingTrackIndex = -1;
+        clearAnalysis();
+        m_view.clamp(m_timeline.lengthFrames());
+        m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+        setStatus("Shifted track");
+    }
     if (m_draggingSpectrum) {
         m_draggingSpectrum = false;
-        if (m_spectralRegion.frames.length() < 2 ||
-            m_spectralRegion.highHz <= m_spectralRegion.lowHz) {
+        if (m_spectrumClickCandidate) {
+            m_player.stop();
+            m_playhead = clampFrame(m_spectrumClickFrame,
+                                    m_timeline.lengthFrames());
+            m_timeline.clearSelection();
+            m_spectralRegion.clear();
+            setStatus("Playhead " +
+                      formatSeconds(static_cast<double>(m_playhead) /
+                                    std::max(1, m_timeline.sampleRate())));
+        } else if (m_spectralRegion.frames.length() < 2 ||
+                   m_spectralRegion.highHz <= m_spectralRegion.lowHz) {
             m_spectralRegion.active = false;
         } else {
             m_spectralLow.setValue(m_spectralRegion.lowHz);
             m_spectralHigh.setValue(m_spectralRegion.highHz);
         }
+        m_spectrumClickCandidate = false;
     }
 }
 
 void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
     if (m_sliderDragging) {
         setSliderFromX(m_activeSlider, event.x);
+        return;
+    }
+    if (m_shiftingTrack && m_shiftingTrackIndex >= 0 &&
+        m_shiftingTrackIndex < m_timeline.trackCount()) {
+        const double framesPerPixel =
+            m_view.samplesPerPixel(std::max(1, m_waveArea.w));
+        int64_t newStart = m_shiftStartFrame + static_cast<int64_t>(
+            std::llround(static_cast<double>(event.x - m_shiftStartMouseX) *
+                         framesPerPixel));
+        newStart = std::max<int64_t>(0, newStart);
+        m_timeline.setTrackStartFrame(m_shiftingTrackIndex, newStart);
+        m_view.clamp(m_timeline.lengthFrames());
         return;
     }
     if (m_tab == vwave::EditorTab::Spectrum && m_spectrum3D) {
@@ -5198,12 +6750,120 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
             m_spectrum3DHoverY = -1;
         }
     }
-    if (m_draggingSelection) {
-        const int64_t frame =
-            m_view.frameAt(event.x - m_waveArea.x, m_waveArea.w,
-                           m_timeline.lengthFrames());
-        m_timeline.setSelection(std::min(m_selectionAnchor, frame),
-                                std::max(m_selectionAnchor, frame));
+    if (m_waveDrag != WaveDragMode::None) {
+        const SDL_Rect& lane =
+            m_waveDragTrack >= 0 &&
+                    m_waveDragTrack < static_cast<int>(m_trackLaneRects.size()) &&
+                    m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)].w > 0
+                ? m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)]
+                : m_waveArea;
+        const int64_t frame = laneFrameAtX(lane, event.x);
+        const int64_t looseFrame = std::max<int64_t>(
+            0, static_cast<int64_t>(std::llround(
+                   m_view.startFrame +
+                   static_cast<double>(event.x - lane.x) *
+                       m_view.samplesPerPixel(std::max(1, lane.w)))));
+        switch (m_waveDrag) {
+        case WaveDragMode::NewSelection:
+            if (m_clickCandidate &&
+                std::abs(event.x - m_clickMouseX) > 2)
+                m_clickCandidate = false;
+            m_timeline.setSelection(std::min(m_selectionAnchor, frame),
+                                    std::max(m_selectionAnchor, frame));
+            break;
+        case WaveDragMode::LoopSelection: {
+            const int64_t loopFrame =
+                m_loopDragArea.w > 0
+                    ? laneFrameAtX(m_loopDragArea, event.x)
+                    : frame;
+            m_loopStart = std::min(m_loopAnchor, loopFrame);
+            m_loopEnd = std::max(m_loopAnchor, loopFrame);
+            m_loopEnabled = true;
+            m_clickCandidate = false;
+            break;
+        }
+        case WaveDragMode::SelectionStart:
+            m_timeline.setSelection(
+                std::min(frame, m_waveDragFixedFrame),
+                std::max(frame, m_waveDragFixedFrame));
+            break;
+        case WaveDragMode::SelectionEnd:
+            m_timeline.setSelection(
+                std::min(frame, m_waveDragFixedFrame),
+                std::max(frame, m_waveDragFixedFrame));
+            break;
+        case WaveDragMode::TrackTrimStart:
+            m_waveDragPreviewFrame =
+                std::clamp<int64_t>(frame, m_waveDragOriginalStart,
+                                    m_waveDragOriginalEnd - 1);
+            break;
+        case WaveDragMode::TrackTrimEnd:
+            m_waveDragPreviewFrame =
+                std::clamp<int64_t>(frame, m_waveDragOriginalStart + 1,
+                                    m_waveDragOriginalEnd);
+            break;
+        case WaveDragMode::TrackStretch: {
+            const int64_t originalLength =
+                m_waveDragOriginalEnd - m_waveDragOriginalStart;
+            m_waveDragPreviewFrame = std::clamp<int64_t>(
+                looseFrame, m_waveDragOriginalStart + 1,
+                m_waveDragOriginalStart + originalLength * 20);
+            break;
+        }
+        case WaveDragMode::SelectionRepeat: {
+            const auto& selection = m_timeline.selection();
+            if (selection.active && selection.length() > 0) {
+                const double repeats =
+                    static_cast<double>(looseFrame - selection.end) /
+                    static_cast<double>(selection.length());
+                m_repeatDragCount = std::clamp(
+                    static_cast<int>(std::floor(repeats)), 0, 64);
+                m_waveDragPreviewFrame = selection.end + m_repeatDragCount *
+                                                          selection.length();
+            }
+            break;
+        }
+        case WaveDragMode::ClipMove: {
+            if (m_waveDragTrack >= 0 &&
+                m_waveDragTrack < m_timeline.trackCount()) {
+                const auto& track =
+                    m_timeline.track(m_waveDragTrack);
+                const double framesPerPixel =
+                    m_view.samplesPerPixel(std::max(1, lane.w));
+                const int64_t delta = static_cast<int64_t>(std::llround(
+                    static_cast<double>(event.x - m_waveDragMouseX) *
+                    framesPerPixel));
+                const int64_t localStart =
+                    std::max<int64_t>(0, m_waveDragOriginalStart + delta);
+                m_waveDragPreviewFrame =
+                    track.startFrame + localStart;
+            }
+            break;
+        }
+        case WaveDragMode::ClipStretch: {
+            if (m_waveDragTrack >= 0 &&
+                m_waveDragTrack < m_timeline.trackCount() &&
+                m_clipDragOriginalFrames > 0) {
+                const auto& track =
+                    m_timeline.track(m_waveDragTrack);
+                const double framesPerPixel =
+                    m_view.samplesPerPixel(std::max(1, lane.w));
+                const int64_t delta = static_cast<int64_t>(std::llround(
+                    static_cast<double>(event.x - m_waveDragMouseX) *
+                    framesPerPixel));
+                const int64_t maximum =
+                    std::max<int64_t>(1, m_clipDragOriginalFrames * 20);
+                const int64_t frames = std::clamp<int64_t>(
+                    m_clipDragOriginalFrames + delta, 1, maximum);
+                m_waveDragPreviewFrame =
+                    track.startFrame + m_waveDragOriginalStart + frames;
+            }
+            break;
+        }
+        case WaveDragMode::None:
+            break;
+        }
+        return;
     }
     if (m_panning) {
         const int delta = event.x - m_lastMouseX;
@@ -5220,6 +6880,11 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
         m_lastMouseX = event.x;
     }
     if (m_draggingSpectrum) {
+        if (m_spectrumClickCandidate &&
+            (std::abs(event.x - m_spectrumClickX) > 2 ||
+             std::abs(event.y - m_spectrumClickY) > 2)) {
+            m_spectrumClickCandidate = false;
+        }
         const int x0 = std::clamp(m_spectrumStartX, m_spectrumArea.x,
                                   m_spectrumArea.x + m_spectrumArea.w);
         const int x1 = std::clamp(event.x, m_spectrumArea.x,

@@ -23,7 +23,7 @@ public:
     void setOutputDevice(std::string device);
 
     bool play(const vwave::Timeline& timeline, int64_t startFrame,
-              int64_t endFrame);
+              int64_t endFrame, bool loop = false);
     void updateMix(const vwave::Timeline& timeline);
     void stop();
 
@@ -53,6 +53,7 @@ private:
     std::atomic<int64_t> m_sourcePosition{0};
     int64_t m_sourceStart = 0;
     int64_t m_sourceEnd = 0;
+    bool m_loop = false;
     int m_projectRate = 48000;
     double m_readPosition = 0.0;
     double m_timelineStep = 1.0;

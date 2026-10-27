@@ -48,6 +48,7 @@ void AudioPlayer::close() {
     m_sourcePosition.store(0);
     m_sourceStart = 0;
     m_sourceEnd = 0;
+    m_loop = false;
     m_readPosition = 0.0;
 }
 
@@ -63,7 +64,7 @@ void AudioPlayer::buildTracks(const vwave::Timeline& timeline) {
         playback.audio = &audio;
         playback.startFrame = track.startFrame;
         playback.sourceStep = static_cast<double>(audio.sampleRate()) /
-                              static_cast<double>(m_spec.freq);
+                              static_cast<double>(m_projectRate);
         const double gain = std::pow(10.0, track.gainDb / 20.0);
         double left = 1.0;
         double right = 1.0;
@@ -83,7 +84,7 @@ void AudioPlayer::buildTracks(const vwave::Timeline& timeline) {
 }
 
 bool AudioPlayer::play(const vwave::Timeline& timeline, int64_t startFrame,
-                       int64_t endFrame) {
+                       int64_t endFrame, bool loop) {
     if (m_device == 0 || timeline.empty()) return false;
     const vwave::Range range = vwave::Range{startFrame, endFrame}.clamped(
         timeline.lengthFrames());
@@ -95,6 +96,7 @@ bool AudioPlayer::play(const vwave::Timeline& timeline, int64_t startFrame,
                      static_cast<double>(m_spec.freq);
     m_sourceStart = range.start;
     m_sourceEnd = range.end;
+    m_loop = loop;
     m_readPosition = static_cast<double>(range.start);
     m_sourcePosition.store(range.start);
     buildTracks(timeline);
@@ -133,20 +135,21 @@ void AudioPlayer::render(Uint8* stream, int length) {
     std::fill_n(output, requested * 2, 0.0f);
     if (!m_playing.load(std::memory_order_acquire)) return;
 
-    const double timelinePosition = m_readPosition;
-    for (const PlaybackTrack& track : m_tracks) {
-        const vwave::Audio* audio = track.audio;
-        if (!audio) continue;
-        const int channels = audio->numChannels();
-        if (channels <= 0) continue;
-        const int64_t frames = audio->numFrames();
-        const float* left = audio->channel(0);
-        const float* right = channels > 1 ? audio->channel(1) : left;
-        double position =
-            (timelinePosition - static_cast<double>(track.startFrame)) *
-            static_cast<double>(audio->sampleRate()) / m_projectRate;
-        const double step = track.sourceStep;
-        for (int64_t frame = 0; frame < requested; ++frame) {
+    const double endPosition = static_cast<double>(m_sourceEnd);
+    const double startPosition = static_cast<double>(m_sourceStart);
+    for (int64_t frame = 0; frame < requested; ++frame) {
+        const double timelinePosition = m_readPosition;
+        for (const PlaybackTrack& track : m_tracks) {
+            const vwave::Audio* audio = track.audio;
+            if (!audio) continue;
+            const int channels = audio->numChannels();
+            if (channels <= 0) continue;
+            const int64_t frames = audio->numFrames();
+            const float* left = audio->channel(0);
+            const float* right = channels > 1 ? audio->channel(1) : left;
+            const double position =
+                (timelinePosition - static_cast<double>(track.startFrame)) *
+                track.sourceStep;
             if (position >= 0.0 && position < static_cast<double>(frames)) {
                 const int64_t index =
                     static_cast<int64_t>(std::floor(position));
@@ -162,14 +165,26 @@ void AudioPlayer::render(Uint8* stream, int length) {
                 output[frame * 2 + 1] +=
                     (c + (d - c) * fraction) * track.rightGain;
             }
-            position += step;
+        }
+        m_readPosition += m_timelineStep;
+        if (m_readPosition >= endPosition) {
+            if (m_loop) {
+                const double length = endPosition - startPosition;
+                const double overflow = m_readPosition - endPosition;
+                m_readPosition =
+                    length > 0.0
+                        ? startPosition + std::fmod(overflow, length)
+                        : endPosition;
+            } else {
+                m_readPosition = endPosition;
+                m_playing.store(false, std::memory_order_release);
+                break;
+            }
         }
     }
 
-    m_readPosition += static_cast<double>(requested) * m_timelineStep;
-    const int64_t position = std::min<int64_t>(
-        static_cast<int64_t>(m_readPosition), m_sourceEnd);
+    const int64_t position = std::clamp<int64_t>(
+        static_cast<int64_t>(std::floor(m_readPosition)),
+        m_sourceStart, m_sourceEnd);
     m_sourcePosition.store(position);
-    if (m_readPosition >= static_cast<double>(m_sourceEnd))
-        m_playing.store(false);
 }

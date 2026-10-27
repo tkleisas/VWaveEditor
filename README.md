@@ -12,14 +12,25 @@ desktop editor and as an embeddable editing core for
 ## What works today
 
 - **Multi-track editing**: layered waves with per-track mute, solo, record-arm,
-  volume, pan, start offset, selection, and remove controls. Playback mixes all
+  volume, pan, start offset, selection, trim, crop, shift, stretch, and remove
+  controls. Selection is either timeline-wide or scoped to the active track.
+  Drag selection edges, repeat a range by dragging its orange handle, and use
+  zero-cross snapping for cuts. Clip mode splits a track into draggable parts
+  with gaps, per-clip stretch/repeat, and undo shared with the track document.
+  Stereo tracks can be split into mono tracks; two mono tracks can be combined
+  with back/front/center padding. Click the waveform, 2D spectrum, ruler, or
+  overview to position the playhead; Shift+drag selects a loop region and loop
+  playback wraps inside it. Right-click a track for editing, stereo, clip, crop, shift,
+  and delete actions; Alt+drag shifts a track horizontally. Playback mixes all
   audible tracks, with solo and mute handled live.
 - **Non-destructive editing**: immutable track sources, replayed edit history,
-  exact undo/redo, clipboard, timeline project persistence, and reproducible
+  exact undo/redo, clipboard, timeline project persistence, a document-owned
+  clip arrangement with gaps and per-part stretch/repeat, and reproducible
   track recipes for generated image/scope/synth tracks. See
-  [Track recipes](docs/RECIPES.md).
+  [Track recipes](docs/RECIPES.md) and [Multi-track timeline](docs/MULTITRACK.md).
 - **Waveform operations**: cut, copy, paste, insert, delete, crop, gain,
-  normalize, fade in/out, reverse, invert, silence, DC removal, resample.
+  normalize, fade in/out, reverse, invert, silence, DC removal, resample,
+  undoable range move/copy, ripple repeat, and zero-cross cuts.
 - **Time and pitch**: WSOLA and phase-vocoder time stretching, pitch shifting,
   and PaulStretch. Apply in place, preserving unselected audio around the
   selection, or render the processed selection to a new track at the same
@@ -112,7 +123,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-release is `v0.0.6`; untagged build trees fall back to `0.0.6`.
+release is `v0.0.7`; untagged build trees fall back to `0.0.7`.
 
 Artifacts land in `build/bin`:
 
@@ -148,7 +159,13 @@ Important controls:
 
 | Key / control | Action |
 | --- | --- |
-| `Space` | Play/stop the mix |
+| `Space` | Play/stop the mix from the playhead |
+| `Home` / `End` | Go to the beginning / end |
+| `G` | Go to an exact time |
+| Click waveform/2D spectrum/ruler/overview | Position the playhead |
+| Shift+drag timeline/2D spectrum | Set a loop region |
+| `L` / `Shift+L` | Toggle loop / loop the current selection |
+| Click the time display | Open the exact-time entry dialog |
 | `1` / `2` / `3` / `4` / `5` / `6` | Waveform / spectrum / wavetable / mastering / image / scope view |
 | Spectrum `View: 2D/3D` | Toggle the phase-aware waterfall; hover for phase readout |
 | Wheel | Zoom time (waveform/spectrum) |
@@ -167,6 +184,14 @@ Important controls:
 | `F` / `Shift+F` | Fade in / fade out |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+S` / `Ctrl+Shift+S` | Export mixdown / save project |
+| Drag selection edge | Resize the selection |
+| Drag orange selection handle | Repeat the selection |
+| Drag track trim handle | Trim the track at its start or end |
+| Drag orange track handle | Stretch the whole track |
+| Clip Tool + drag clip | Move or stretch an independent clip |
+| Clip Tool + orange clip handle | Stretch the selected clip |
+| Right-click track | Editing, clip, stereo, crop, shift, and delete menu |
+| `Alt`+drag track | Move the track in time |
 
 ### Processing selections
 
@@ -364,11 +389,15 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.6** includes the multi-track editing core, track-aware desktop
+Version **0.0.7** includes the multi-track editing core, track-aware desktop
 editor, recording, settings, CLI, Lua, MCP, C ABI, the wavetable designer,
 YAWN wavetable import, mastering analysis and processing, the phase-aware 3D
 spectrum, image-to-spectrogram synthesis, oscilloscope music, reproducible
-track recipes, and the standalone editor described above.
+track recipes, and the standalone editor described above. The current editing
+stage also adds undoable range move/copy/repeat, selection and track handles,
+whole-track stretch, zero-cross cutting, stereo/mono track conversion, and
+non-destructive clip arrangements with gaps, independent part moves, clip
+stretch/repeat, gain/fades, and document-shared undo.
 
 All planned feature phases are implemented: wavetable design and YAWN interop,
 mastering analysis and processing, the phase-aware 3D spectrum,

@@ -61,6 +61,23 @@ vwave.paste()
 vwave.crop()
 ```
 
+Track-level range edits use the generic command bridge:
+
+```lua
+vwave.apply("move_selection",
+            { start = 0.5, ["end"] = 1.0, at = 2.0, copy = false })
+vwave.apply("repeat_selection",
+            { start = 0.5, ["end"] = 1.0, repeats = 2 })
+vwave.apply("snap_selection",
+            { start = 0.5, ["end"] = 1.0, radius_ms = 10 })
+vwave.apply("stretch_track", { ratio = 1.5, algorithm = "wsola" })
+```
+
+`move_selection`, `repeat_selection`, and `snap_selection` use the current
+selection or an explicit start/end range. `repeat_selection` inserts copies
+after the range and shifts later audio. `stretch_track` affects the whole active
+track.
+
 ## Time and pitch
 
 ```lua
@@ -97,6 +114,14 @@ vwave.set_track_pan(1, 0.1)
 vwave.set_track_arm(1, true)
 vwave.remove_track(2)
 
+vwave.apply("split_stereo_track", { index = 0, keep_original = true })
+vwave.apply("combine_mono_tracks", {
+    left = 1,
+    right = 2,
+    padding = "back",
+    keep_originals = true
+})
+
 local info = vwave.info()
 local tracks = vwave.tracks()
 vwave.save_mixdown("/samples/mix.wav")
@@ -105,6 +130,31 @@ vwave.save_mixdown("/samples/mix.wav")
 Track indices are zero-based. `vwave.info()` includes `track_count`,
 `active_track`, `project_frames`, `project_duration`, `timeline_selection`, and
 a `tracks` array. `vwave.tracks()` returns the track list directly.
+
+`split_stereo_track` creates hard-panned mono tracks and mutes the original by
+default. `combine_mono_tracks` creates a new stereo track and mutes the sources;
+`padding` accepts `back`, `front`, or `both`.
+
+## Clips
+
+Clip arrangements share the active track document's undo stack:
+
+```lua
+vwave.apply("make_clips")
+vwave.apply("split_clip", { at = 1.5 })
+vwave.apply("move_clip", { clip = 1, at = 4.0 })
+vwave.apply("stretch_clip", { clip = 1, ratio = 1.5 })
+vwave.apply("repeat_clip", { clip = 1, count = 2 })
+vwave.apply("set_clip_gain", { clip = 1, gain_db = -3 })
+vwave.apply("set_clip_fades",
+            { clip = 1, fade_in = 0.01, fade_out = 0.05 })
+vwave.apply("flatten_clips")
+```
+
+Clip times are local to the track arrangement. `make_clips` creates one clip
+from the current edited audio. Destructive sample edits are rejected until the
+clip arrangement is flattened. Track info includes `clip_count` and a `clips`
+array with source range, timeline position, stretch, gain, and fade values.
 
 ## Analysis and slicing
 
@@ -235,6 +285,16 @@ end)
 channel per frame and commits the result as one undoable replacement operation.
 If the callback raises an error or returns a non-number, the document is not
 changed.
+
+## Track selection, crop, and shift
+
+```lua
+vwave.apply("selection_scope", { scope = "active_track" })
+vwave.select(0.5, 1.5)
+vwave.apply("crop_track", { index = 0 })
+vwave.apply("shift_track", { index = 0, delta = 0.25 })
+vwave.apply("shift_track", { index = 1, start = 0.0 })
+```
 
 ## Generic command examples
 

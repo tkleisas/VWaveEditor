@@ -521,6 +521,28 @@ VWTEST("session command list is stable") {
                     "oscilloscope_render") != commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "mastering_render") !=
           commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "selection_scope") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "crop_track") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "shift_track") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "move_selection") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "repeat_selection") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "stretch_track") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(),
+                    "split_stereo_track") != commands.end());
+    CHECK(std::find(commands.begin(), commands.end(),
+                    "combine_mono_tracks") != commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "make_clips") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "split_clip") !=
+          commands.end());
+    CHECK(std::find(commands.begin(), commands.end(), "flatten_clips") !=
+          commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "regenerate_track") !=
           commands.end());
     CHECK(std::find(commands.begin(), commands.end(), "add_track") !=
@@ -782,4 +804,172 @@ VWTEST("session mastering render writes stems and derived tracks") {
     REQUIRE(readAudio(result["mix_path"].get<std::string>(), mix));
     CHECK(mix.numChannels() == 2);
     CHECK(mix.peak() <= 0.98f);
+}
+
+VWTEST("session track selection scope crop and shift commands") {
+    Session session;
+    std::string error;
+    REQUIRE(session.timeline().addAudioTrack(
+        "a", tone(220.0, 0.3, 48000, 1), 100, &error));
+    REQUIRE(session.timeline().addAudioTrack(
+        "b", tone(440.0, 0.3, 48000, 1), 0, &error));
+    const json scope = session.execute(
+        "selection_scope", {{"scope", "active_track"}}, &error);
+    REQUIRE(!scope.is_null());
+    CHECK_EQ(scope["scope"].get<std::string>(), "active_track");
+    session.timeline().setActiveTrack(0);
+    session.timeline().setSelection(500, 900);
+    const json cropped = session.execute("crop_track", {{"index", 0}}, &error);
+    REQUIRE(!cropped.is_null());
+    CHECK_EQ(session.timeline().track(0).startFrame, int64_t{500});
+    CHECK_EQ(session.timeline().track(0).document.numFrames(), int64_t{400});
+    const json shifted = session.execute(
+        "shift_track", {{"index", 1}, {"delta", 0.25}}, &error);
+    REQUIRE(!shifted.is_null());
+    CHECK_EQ(session.timeline().track(1).startFrame, int64_t{12000});
+    const json absolute = session.execute(
+        "shift_track", {{"index", 1}, {"start", 0.5}}, &error);
+    REQUIRE(!absolute.is_null());
+    CHECK_EQ(session.timeline().track(1).startFrame, int64_t{24000});
+    CHECK(session.execute("shift_track", {{"index", 0}, {"delta", -100.0}},
+                          &error).is_null());
+}
+
+VWTEST("session move repeat snap and stretch track commands") {
+    const Audio source = tone(440.0, 0.1);
+    Session session(Document::fromAudio(source));
+    std::string error;
+    REQUIRE(!session.execute("select", {{"start", 0.01}, {"end", 0.02}},
+                             &error)
+                 .is_null());
+    const json copied = session.execute(
+        "move_selection", {{"at", 0.05}, {"copy", true}}, &error);
+    REQUIRE(!copied.is_null());
+    CHECK_EQ(session.document().undoLabel(), std::string("Copy range"));
+    CHECK_EQ(session.document().numFrames(), int64_t{5280});
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+
+    REQUIRE(!session.execute("select", {{"start", 0.01}, {"end", 0.02}},
+                             &error)
+                 .is_null());
+    REQUIRE(!session.execute("repeat_selection", {{"repeats", 2}}, &error)
+                 .is_null());
+    CHECK_EQ(session.document().undoLabel(), std::string("Repeat range"));
+    CHECK_EQ(session.document().numFrames(), int64_t{5760});
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+
+    REQUIRE(!session.execute("select", {{"start", 0.001}, {"end", 0.002}},
+                             &error)
+                 .is_null());
+    const json snapped = session.execute("snap_selection",
+                                         {{"radius_ms", 10.0}}, &error);
+    REQUIRE(!snapped.is_null());
+    CHECK(snapped["end"].get<int64_t>() > snapped["start"].get<int64_t>());
+
+    const json stretched = session.execute(
+        "stretch_track", {{"ratio", 0.5}, {"algorithm", "wsola"}}, &error);
+    REQUIRE(!stretched.is_null());
+    CHECK_EQ(session.document().numFrames(), int64_t{2400});
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    CHECK_EQ(session.document().numFrames(), int64_t{4800});
+}
+
+VWTEST("session stereo split and combine commands") {
+    Audio stereo(2, 480, 48000);
+    for (int64_t i = 0; i < stereo.numFrames(); ++i) {
+        stereo.sample(0, i) = 0.25f;
+        stereo.sample(1, i) = 0.5f;
+    }
+    Session session(Document::fromAudio(stereo));
+    std::string error;
+    const json split =
+        session.execute("split_stereo_track", {{"keep_original", true}},
+                        &error);
+    REQUIRE(!split.is_null());
+    CHECK_EQ(session.timeline().trackCount(), 3);
+    CHECK_EQ(session.timeline().activeTrack(), 1);
+    CHECK_EQ(session.timeline().track(1).document.numChannels(), 1);
+    CHECK_EQ(session.timeline().track(2).document.numChannels(), 1);
+    CHECK(session.timeline().track(0).muted);
+
+    const json combined = session.execute(
+        "combine_mono_tracks",
+        {{"left", 1},
+         {"right", 2},
+         {"padding", "front"},
+         {"keep_originals", false}},
+        &error);
+    REQUIRE(!combined.is_null());
+    CHECK_EQ(session.timeline().trackCount(), 2);
+    CHECK_EQ(session.timeline().activeTrack(), 1);
+    CHECK_EQ(session.timeline().track(1).document.numChannels(), 2);
+    CHECK_NEAR(session.timeline().track(1).document.audio().sample(0, 10),
+               0.25, 1e-6);
+    CHECK_NEAR(session.timeline().track(1).document.audio().sample(1, 10),
+               0.5, 1e-6);
+
+    CHECK(session.execute("combine_mono_tracks", {{"left", 0}, {"right", 1}},
+                          &error).is_null());
+    CHECK(!error.empty());
+}
+
+VWTEST("session clip arrangement commands are undoable") {
+    const Audio source = tone(440.0, 0.1);
+    Session session(Document::fromAudio(source));
+    std::string error;
+    const json made = session.execute("make_clips", json::object(), &error);
+    REQUIRE(!made.is_null());
+    CHECK_EQ(session.timeline().track(0).document.clips().size(), size_t{1});
+    CHECK_EQ(session.document().undoLabel(), std::string("Create clips"));
+
+    const json split =
+        session.execute("split_clip", {{"at", 0.05}}, &error);
+    REQUIRE(!split.is_null());
+    CHECK_EQ(session.timeline().track(0).document.clips().size(), size_t{2});
+    CHECK_EQ(session.document().undoLabel(), std::string("Split clip"));
+
+    const json moved = session.execute(
+        "move_clip", {{"clip", 1}, {"at", 0.08}}, &error);
+    REQUIRE(!moved.is_null());
+    CHECK_EQ(session.timeline().track(0).document.clips()[1].timelineStart,
+             int64_t{3840});
+    CHECK_EQ(session.timeline().track(0).document.numFrames(), int64_t{6240});
+
+    REQUIRE(!session.execute("stretch_clip",
+                             {{"clip", 0}, {"ratio", 2.0}}, &error)
+                 .is_null());
+    REQUIRE(!session.execute("repeat_clip",
+                             {{"clip", 1}, {"count", 1}}, &error)
+                 .is_null());
+    REQUIRE(!session.execute("set_clip_gain",
+                             {{"clip", 0}, {"gain_db", -3.0}}, &error)
+                 .is_null());
+    REQUIRE(!session.execute("set_clip_fades",
+                             {{"clip", 0},
+                              {"fade_in", 0.01},
+                              {"fade_out", 0.02}},
+                             &error)
+                 .is_null());
+
+    const json info = session.info();
+    REQUIRE(info.contains("tracks"));
+    CHECK_EQ(info["tracks"][0]["clip_count"], 3);
+    CHECK_EQ(info["tracks"][0]["clips"].size(), size_t{3});
+
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    CHECK(session.document().undoLabel().empty());
+    CHECK(!session.document().hasClips());
+
+    const json flattened = session.execute(
+        "make_clips", json::object(), &error);
+    REQUIRE(!flattened.is_null());
+    REQUIRE(!session.execute("flatten_clips", json::object(), &error).is_null());
+    CHECK(!session.document().hasClips());
+    CHECK_EQ(session.document().undoLabel(), std::string("Flatten clips"));
 }

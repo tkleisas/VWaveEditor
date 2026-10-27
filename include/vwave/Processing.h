@@ -33,5 +33,9 @@ Audio convolve(const Audio& audio, const Audio& impulseResponse,
                bool normalizeIr = false);
 Audio applyGain(const Audio& audio, double db);
 Audio normalize(const Audio& audio, double peakDb = -1.0);
+int64_t findNearestZeroCrossing(const Audio& audio, int64_t frame,
+                                int64_t radiusFrames);
+Range snapRangeToZeroCrossings(const Audio& audio, Range range,
+                               int64_t radiusFrames);
 
 } // namespace vwave

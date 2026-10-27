@@ -11,6 +11,22 @@
 
 namespace vwave {
 
+enum class SelectionScope {
+    AllTracks,
+    ActiveTrack,
+};
+
+enum class StereoPadding {
+    Back,
+    Front,
+    Both,
+};
+
+struct StereoCombineOptions {
+    StereoPadding padding = StereoPadding::Back;
+    bool keepOriginals = true;
+};
+
 struct TimelineTrack {
     std::string name;
     Document document;
@@ -35,6 +51,8 @@ public:
     double duration() const;
     int activeTrack() const { return m_active; }
     void setActiveTrack(int index);
+    SelectionScope selectionScope() const { return m_selectionScope; }
+    void setSelectionScope(SelectionScope scope);
 
     TimelineTrack& track(int index);
     const TimelineTrack& track(int index) const;
@@ -66,6 +84,16 @@ public:
     Range selectedRange() const;
     Range activeRange() const;
 
+    bool cropTrack(int index, Range range = {},
+                   std::string* error = nullptr);
+    bool shiftTrack(int index, int64_t deltaFrames,
+                    std::string* error = nullptr);
+    bool splitStereoTrack(int index, bool keepOriginal = true,
+                          std::string* error = nullptr);
+    bool combineMonoTracks(int leftIndex, int rightIndex,
+                           StereoCombineOptions options = {},
+                           std::string* error = nullptr);
+
     Audio mixdown(Range range = {}) const;
 
     nlohmann::json toJson() const;
@@ -82,6 +110,10 @@ private:
     int m_sampleRate = 0;
     int m_active = -1;
     Selection m_selection;
+    SelectionScope m_selectionScope = SelectionScope::AllTracks;
 };
+
+const char* stereoPaddingName(StereoPadding padding);
+bool stereoPaddingFromName(const std::string& name, StereoPadding& padding);
 
 } // namespace vwave

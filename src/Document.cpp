@@ -47,12 +47,32 @@ nlohmann::json selectionToJson(const Selection& selection) {
             {"active", selection.active}};
 }
 
+bool clipsFromOperation(const Operation& operation,
+                        std::vector<Clip>& clips, std::string* error) {
+    clips.clear();
+    if (!operation.params.contains("clips") ||
+        !operation.params["clips"].is_array()) {
+        setError(error, "clip operation is missing its clip list");
+        return false;
+    }
+    for (const auto& value : operation.params["clips"]) {
+        Clip clip;
+        if (!clipFromJson(value, clip, error)) return false;
+        clips.push_back(std::move(clip));
+    }
+    return true;
+}
+
 std::string operationKindName(Operation::Kind kind) {
     switch (kind) {
     case Operation::Kind::Process: return "process";
     case Operation::Kind::Delete: return "delete";
     case Operation::Kind::Insert: return "insert";
     case Operation::Kind::ReplaceRange: return "replace";
+    case Operation::Kind::MoveRange: return "move_range";
+    case Operation::Kind::RepeatRange: return "repeat_range";
+    case Operation::Kind::SetClips: return "set_clips";
+    case Operation::Kind::FlattenClips: return "flatten_clips";
     case Operation::Kind::Crop: return "crop";
     case Operation::Kind::Resample: return "resample";
     case Operation::Kind::ReplaceAll: return "replace_all";
@@ -65,6 +85,10 @@ bool operationKindFromName(const std::string& name, Operation::Kind& kind) {
     else if (name == "delete") kind = Operation::Kind::Delete;
     else if (name == "insert") kind = Operation::Kind::Insert;
     else if (name == "replace") kind = Operation::Kind::ReplaceRange;
+    else if (name == "move_range") kind = Operation::Kind::MoveRange;
+    else if (name == "repeat_range") kind = Operation::Kind::RepeatRange;
+    else if (name == "set_clips") kind = Operation::Kind::SetClips;
+    else if (name == "flatten_clips") kind = Operation::Kind::FlattenClips;
     else if (name == "crop") kind = Operation::Kind::Crop;
     else if (name == "resample") kind = Operation::Kind::Resample;
     else if (name == "replace_all") kind = Operation::Kind::ReplaceAll;
@@ -167,6 +191,52 @@ std::string joinLabel(const std::string& name, double value,
 }
 
 } // namespace
+
+int64_t clipOutputFrames(const Clip& clip) {
+    if (clip.sourceLength <= 0 || !std::isfinite(clip.stretch) ||
+        clip.stretch <= 0.0)
+        return 0;
+    const double value =
+        static_cast<double>(clip.sourceLength) * clip.stretch;
+    if (value >= static_cast<double>(std::numeric_limits<int64_t>::max()))
+        return 0;
+    return std::max<int64_t>(1, static_cast<int64_t>(std::llround(value)));
+}
+
+nlohmann::json clipToJson(const Clip& clip) {
+    return {{"sourceStart", clip.sourceStart},
+            {"sourceLength", clip.sourceLength},
+            {"timelineStart", clip.timelineStart},
+            {"stretch", clip.stretch},
+            {"gainDb", clip.gainDb},
+            {"fadeInSeconds", clip.fadeInSeconds},
+            {"fadeOutSeconds", clip.fadeOutSeconds},
+            {"name", clip.name}};
+}
+
+bool clipFromJson(const nlohmann::json& json, Clip& out,
+                  std::string* error) {
+    try {
+        if (!json.is_object()) {
+            setError(error, "clip must be an object");
+            return false;
+        }
+        Clip clip;
+        clip.sourceStart = json.value("sourceStart", int64_t{0});
+        clip.sourceLength = json.value("sourceLength", int64_t{0});
+        clip.timelineStart = json.value("timelineStart", int64_t{0});
+        clip.stretch = json.value("stretch", 1.0);
+        clip.gainDb = json.value("gainDb", 0.0);
+        clip.fadeInSeconds = json.value("fadeInSeconds", 0.0);
+        clip.fadeOutSeconds = json.value("fadeOutSeconds", 0.0);
+        clip.name = json.value("name", std::string{});
+        out = std::move(clip);
+        return true;
+    } catch (const std::exception& e) {
+        setError(error, std::string("cannot parse clip: ") + e.what());
+        return false;
+    }
+}
 
 const char* stretchAlgorithmName(StretchAlgorithm algorithm) {
     switch (algorithm) {
@@ -355,6 +425,41 @@ Operation Operation::replaceRange(Range range, Audio audio) {
     return operation;
 }
 
+Operation Operation::moveRange(Range range, int64_t destination, bool copy) {
+    Operation operation;
+    operation.kind = Kind::MoveRange;
+    operation.range = range;
+    operation.params = {{"destination", destination}, {"copy", copy}};
+    operation.label = copy ? "Copy range" : "Move range";
+    return operation;
+}
+
+Operation Operation::repeatRange(Range range, int repeats) {
+    Operation operation;
+    operation.kind = Kind::RepeatRange;
+    operation.range = range;
+    operation.params = {{"repeats", repeats}};
+    operation.label = "Repeat range";
+    return operation;
+}
+
+Operation Operation::setClips(std::vector<Clip> clips) {
+    Operation operation;
+    operation.kind = Kind::SetClips;
+    operation.params["clips"] = nlohmann::json::array();
+    for (const auto& clip : clips)
+        operation.params["clips"].push_back(clipToJson(clip));
+    operation.label = "Edit clips";
+    return operation;
+}
+
+Operation Operation::flattenClips() {
+    Operation operation;
+    operation.kind = Kind::FlattenClips;
+    operation.label = "Flatten clips";
+    return operation;
+}
+
 Operation Operation::crop(Range range) {
     Operation operation;
     operation.kind = Kind::Crop;
@@ -439,7 +544,78 @@ const Audio& Document::audio() const {
     if (!m_cacheValid) {
         const_cast<Document*>(this)->rebuild();
     }
-    return m_rendered;
+    if (!m_arrangedValid) {
+        const_cast<Document*>(this)->refreshArranged();
+    }
+    return m_arranged;
+}
+
+void Document::refreshArranged() {
+    m_arranged = renderClips(m_rendered, m_clips);
+    m_arrangedValid = true;
+}
+
+Audio Document::renderClips(const Audio& base,
+                            const std::vector<Clip>& clips) const {
+    if (clips.empty()) return base;
+    if (base.empty()) return Audio{};
+
+    int64_t totalFrames = 0;
+    for (const auto& clip : clips) {
+        const int64_t frames = clipOutputFrames(clip);
+        if (frames <= 0) continue;
+        totalFrames = std::max(totalFrames, clip.timelineStart + frames);
+    }
+    if (totalFrames <= 0) return Audio(base.numChannels(), 0, base.sampleRate());
+
+    Audio output(base.numChannels(), totalFrames, base.sampleRate());
+    for (const auto& clip : clips) {
+        if (clip.sourceLength <= 0 || clip.timelineStart < 0) continue;
+        const int64_t expectedFrames = clipOutputFrames(clip);
+        if (expectedFrames <= 0) continue;
+        Audio segment = base.slice(
+            {clip.sourceStart, clip.sourceStart + clip.sourceLength});
+        if (std::abs(clip.stretch - 1.0) > 1e-9) {
+            segment = vwave::timeStretch(segment, clip.stretch,
+                                         StretchAlgorithm::Wsola);
+        }
+        if (segment.empty()) continue;
+        const int64_t frames =
+            std::min<int64_t>(segment.numFrames(),
+                              totalFrames - clip.timelineStart);
+        if (frames <= 0) continue;
+        const int64_t fadeInFrames = std::clamp<int64_t>(
+            static_cast<int64_t>(std::llround(
+                clip.fadeInSeconds * base.sampleRate())),
+            0, frames);
+        const int64_t fadeOutFrames = std::clamp<int64_t>(
+            static_cast<int64_t>(std::llround(
+                clip.fadeOutSeconds * base.sampleRate())),
+            0, frames);
+        const double gain = dbToLinear(clip.gainDb);
+        for (int64_t frame = 0; frame < frames; ++frame) {
+            double envelope = gain;
+            if (fadeInFrames > 0 && frame < fadeInFrames) {
+                envelope *= static_cast<double>(frame) /
+                            static_cast<double>(fadeInFrames);
+            }
+            if (fadeOutFrames > 0 &&
+                frame >= frames - fadeOutFrames) {
+                const double position =
+                    fadeOutFrames > 1
+                        ? static_cast<double>(frame -
+                                              (frames - fadeOutFrames)) /
+                              static_cast<double>(fadeOutFrames - 1)
+                        : 1.0;
+                envelope *= 1.0 - position;
+            }
+            for (int ch = 0; ch < output.numChannels(); ++ch) {
+                output.sample(ch, clip.timelineStart + frame) +=
+                    static_cast<float>(segment.sample(ch, frame) * envelope);
+            }
+        }
+    }
+    return output;
 }
 
 int Document::sampleRate() const { return audio().sampleRate(); }
@@ -473,6 +649,235 @@ Range Document::selectedRange() const {
 Range Document::activeRange() const {
     if (m_selection.active) return m_selection.range();
     return {0, numFrames()};
+}
+
+bool Document::hasClips() const {
+    if (!m_cacheValid) const_cast<Document*>(this)->rebuild();
+    return !m_clips.empty();
+}
+
+const std::vector<Clip>& Document::clips() const {
+    if (!m_cacheValid) const_cast<Document*>(this)->rebuild();
+    return m_clips;
+}
+
+int Document::clipIndexAt(int64_t frame) const {
+    if (!m_cacheValid) const_cast<Document*>(this)->rebuild();
+    for (size_t i = 0; i < m_clips.size(); ++i) {
+        const Clip& clip = m_clips[i];
+        const int64_t end =
+            clip.timelineStart + clipOutputFrames(clip);
+        if (frame >= clip.timelineStart && frame < end)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+bool Document::createClipArrangement(std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (m_rendered.empty()) {
+        setError(error, "document is empty");
+        return false;
+    }
+    if (!m_clips.empty()) return true;
+    Clip clip;
+    clip.sourceLength = m_rendered.numFrames();
+    clip.name = "Clip 1";
+    return setClipArrangement({std::move(clip)}, "Create clips", error);
+}
+
+bool Document::setClipArrangement(std::vector<Clip> clips,
+                                  std::string label, std::string* error) {
+    if (clips.empty()) {
+        setError(error, "clip arrangement is empty");
+        return false;
+    }
+    Operation operation = Operation::setClips(std::move(clips));
+    if (!label.empty()) operation.label = std::move(label);
+    return apply(operation, error);
+}
+
+bool Document::splitClipAt(int64_t frame, std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (m_rendered.empty()) {
+        setError(error, "document is empty");
+        return false;
+    }
+    std::vector<Clip> clips = m_clips;
+    if (clips.empty()) {
+        Clip clip;
+        clip.sourceLength = m_rendered.numFrames();
+        clip.name = "Clip 1";
+        clips.push_back(std::move(clip));
+    }
+    int index = -1;
+    for (size_t i = 0; i < clips.size(); ++i) {
+        const int64_t end =
+            clips[i].timelineStart + clipOutputFrames(clips[i]);
+        if (frame > clips[i].timelineStart && frame < end) {
+            index = static_cast<int>(i);
+            break;
+        }
+    }
+    if (index < 0) {
+        setError(error, "split point is not inside a clip");
+        return false;
+    }
+    Clip& clip = clips[static_cast<size_t>(index)];
+    if (clip.sourceLength < 2) {
+        setError(error, "clip is too short to split");
+        return false;
+    }
+    const int64_t local = frame - clip.timelineStart;
+    const int64_t sourceOffset = std::clamp<int64_t>(
+        static_cast<int64_t>(std::llround(
+            static_cast<double>(local) / clip.stretch)),
+        1, clip.sourceLength - 1);
+
+    Clip left = clip;
+    left.sourceLength = sourceOffset;
+    left.fadeOutSeconds = 0.0;
+    Clip right = clip;
+    right.sourceStart += sourceOffset;
+    right.sourceLength -= sourceOffset;
+    right.timelineStart =
+        clip.timelineStart + clipOutputFrames(left);
+    right.fadeInSeconds = 0.0;
+    if (!left.name.empty()) left.name += " A";
+    if (!right.name.empty()) right.name += " B";
+    clips[static_cast<size_t>(index)] = std::move(left);
+    clips.insert(clips.begin() + index + 1, std::move(right));
+    return setClipArrangement(std::move(clips), "Split clip", error);
+}
+
+bool Document::deleteClip(size_t index, std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (index >= m_clips.size()) {
+        setError(error, "clip index is out of range");
+        return false;
+    }
+    if (m_clips.size() <= 1) {
+        setError(error, "cannot delete the last clip; flatten instead");
+        return false;
+    }
+    std::vector<Clip> clips = m_clips;
+    clips.erase(clips.begin() + static_cast<std::ptrdiff_t>(index));
+    return setClipArrangement(std::move(clips), "Delete clip", error);
+}
+
+bool Document::moveClip(size_t index, int64_t timelineStart,
+                        std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (index >= m_clips.size()) {
+        setError(error, "clip index is out of range");
+        return false;
+    }
+    if (timelineStart < 0) {
+        setError(error, "clip position must be non-negative");
+        return false;
+    }
+    std::vector<Clip> clips = m_clips;
+    clips[index].timelineStart = timelineStart;
+    return setClipArrangement(std::move(clips), "Move clip", error);
+}
+
+bool Document::stretchClip(size_t index, double ratio,
+                           std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (index >= m_clips.size()) {
+        setError(error, "clip index is out of range");
+        return false;
+    }
+    if (!std::isfinite(ratio) || ratio <= 0.0) {
+        setError(error, "clip stretch ratio must be positive");
+        return false;
+    }
+    std::vector<Clip> clips = m_clips;
+    clips[index].stretch = std::clamp(ratio, 0.05, 20.0);
+    return setClipArrangement(std::move(clips), "Stretch clip", error);
+}
+
+bool Document::repeatClip(size_t index, int count, std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (index >= m_clips.size()) {
+        setError(error, "clip index is out of range");
+        return false;
+    }
+    if (count <= 0 || count > 1000) {
+        setError(error, "clip repeat count must be between 1 and 1000");
+        return false;
+    }
+    const Clip& source = m_clips[index];
+    const int64_t length = clipOutputFrames(source);
+    const int64_t end = source.timelineStart + length;
+    const int64_t added = length * static_cast<int64_t>(count);
+    std::vector<Clip> clips;
+    clips.reserve(m_clips.size() + static_cast<size_t>(count));
+    for (size_t i = 0; i < m_clips.size(); ++i) {
+        Clip clip = m_clips[i];
+        if (i == index) {
+            clips.push_back(clip);
+            for (int repeat = 1; repeat <= count; ++repeat) {
+                Clip copy = clip;
+                copy.timelineStart =
+                    clip.timelineStart + static_cast<int64_t>(repeat) * length;
+                if (!copy.name.empty())
+                    copy.name += " copy " + std::to_string(repeat);
+                clips.push_back(std::move(copy));
+            }
+        } else {
+            if (clip.timelineStart >= end)
+                clip.timelineStart += added;
+            clips.push_back(std::move(clip));
+        }
+    }
+    return setClipArrangement(std::move(clips), "Repeat clip", error);
+}
+
+bool Document::setClipGain(size_t index, double gainDb,
+                           std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (index >= m_clips.size()) {
+        setError(error, "clip index is out of range");
+        return false;
+    }
+    if (!std::isfinite(gainDb)) {
+        setError(error, "clip gain must be finite");
+        return false;
+    }
+    std::vector<Clip> clips = m_clips;
+    clips[index].gainDb = std::clamp(gainDb, -96.0, 24.0);
+    return setClipArrangement(std::move(clips), "Set clip gain", error);
+}
+
+bool Document::setClipFades(size_t index, double fadeInSeconds,
+                            double fadeOutSeconds, std::string* error) {
+    if (error) error->clear();
+    if (!m_cacheValid) rebuild();
+    if (index >= m_clips.size()) {
+        setError(error, "clip index is out of range");
+        return false;
+    }
+    if (!std::isfinite(fadeInSeconds) || !std::isfinite(fadeOutSeconds) ||
+        fadeInSeconds < 0.0 || fadeOutSeconds < 0.0) {
+        setError(error, "clip fades must be non-negative");
+        return false;
+    }
+    std::vector<Clip> clips = m_clips;
+    clips[index].fadeInSeconds = fadeInSeconds;
+    clips[index].fadeOutSeconds = fadeOutSeconds;
+    return setClipArrangement(std::move(clips), "Set clip fades", error);
+}
+
+bool Document::flattenClips(std::string* error) {
+    return apply(Operation::flattenClips(), error);
 }
 
 std::vector<Operation> Document::operationHistory() const {
@@ -587,6 +992,41 @@ bool Document::validateRange(const Operation& operation,
             return false;
         }
         return true;
+    case Operation::Kind::MoveRange: {
+        if (!validateSampleRange(operation.range, "move")) return false;
+        const int64_t destination =
+            operation.params.value("destination", int64_t{-1});
+        if (destination < 0 || destination > frames) {
+            setError(error, "move destination is outside the document");
+            return false;
+        }
+        const bool copy = operation.params.value("copy", false);
+        if (!copy && destination > operation.range.start &&
+            destination < operation.range.end) {
+            setError(error, "move destination overlaps the source range");
+            return false;
+        }
+        return true;
+    }
+    case Operation::Kind::RepeatRange: {
+        if (!validateSampleRange(operation.range, "repeat")) return false;
+        const int repeats = operation.params.value("repeats", 0);
+        if (repeats <= 0 || repeats > 100000) {
+            setError(error, "repeat count must be between 1 and 100000");
+            return false;
+        }
+        if (operation.range.length() >
+            std::numeric_limits<int64_t>::max() /
+                static_cast<int64_t>(repeats)) {
+            setError(error, "repeated range is too large");
+            return false;
+        }
+        return true;
+    }
+    case Operation::Kind::SetClips:
+        return true;
+    case Operation::Kind::FlattenClips:
+        return true;
     case Operation::Kind::Crop:
         return validateSampleRange(operation.range, "crop");
     case Operation::Kind::Resample:
@@ -604,6 +1044,66 @@ bool Document::validateRange(const Operation& operation,
     }
     setError(error, "unknown operation");
     return false;
+}
+
+bool Document::validateClips(const std::vector<Clip>& clips,
+                             int64_t baseFrames,
+                             std::string* error) const {
+    for (const Clip& clip : clips) {
+        if (clip.sourceStart < 0 || clip.sourceLength <= 0 ||
+            clip.sourceStart + clip.sourceLength > baseFrames) {
+            setError(error, "clip source range is outside the document");
+            return false;
+        }
+        if (clip.timelineStart < 0) {
+            setError(error, "clip timeline position must be non-negative");
+            return false;
+        }
+        const int64_t outputFrames = clipOutputFrames(clip);
+        if (!std::isfinite(clip.stretch) || clip.stretch <= 0.0 ||
+            outputFrames <= 0 ||
+            clip.timelineStart >
+                std::numeric_limits<int64_t>::max() - outputFrames) {
+            setError(error, "clip has an invalid stretch ratio or position");
+            return false;
+        }
+        if (!std::isfinite(clip.gainDb) ||
+            !std::isfinite(clip.fadeInSeconds) ||
+            !std::isfinite(clip.fadeOutSeconds) ||
+            clip.fadeInSeconds < 0.0 || clip.fadeOutSeconds < 0.0) {
+            setError(error, "clip has invalid gain or fade values");
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Document::applyHistoryOperation(const Operation& operation, Audio& base,
+                                     std::vector<Clip>& clips,
+                                     Selection& after,
+                                     std::string* error) const {
+    if (operation.kind == Operation::Kind::SetClips) {
+        std::vector<Clip> target;
+        if (!clipsFromOperation(operation, target, error)) return false;
+        if (target.empty()) {
+            setError(error, "clip arrangement is empty");
+            return false;
+        }
+        if (!validateClips(target, base.numFrames(), error)) return false;
+        clips = std::move(target);
+        return true;
+    }
+    if (operation.kind == Operation::Kind::FlattenClips) {
+        if (clips.empty()) {
+            setError(error, "no clip arrangement to flatten");
+            return false;
+        }
+        base = renderClips(base, clips);
+        clips.clear();
+        after = {0, base.numFrames(), base.numFrames() > 0};
+        return true;
+    }
+    return applyOperation(operation, base, after, error);
 }
 
 bool Document::applyProcess(const Operation& operation, Audio& working,
@@ -892,6 +1392,80 @@ bool Document::applyOperation(const Operation& operation, Audio& working,
                  payload.numFrames() > 0};
         return true;
     }
+    case Operation::Kind::MoveRange: {
+        const Range source = operation.range;
+        const int64_t length = source.length();
+        const bool copy = operation.params.value("copy", false);
+        const int64_t destination =
+            operation.params.value("destination", int64_t{0});
+        if (copy) {
+            Audio result(working.numChannels(),
+                         working.numFrames() + length,
+                         working.sampleRate());
+            for (int ch = 0; ch < working.numChannels(); ++ch) {
+                std::copy_n(working.channel(ch), destination,
+                            result.channel(ch));
+                std::copy_n(working.channel(ch) + source.start, length,
+                            result.channel(ch) + destination);
+                std::copy_n(working.channel(ch) + destination,
+                            working.numFrames() - destination,
+                            result.channel(ch) + destination + length);
+            }
+            working = std::move(result);
+            after = {destination, destination + length, length > 0};
+            return true;
+        }
+
+        Audio rest(working.numChannels(), working.numFrames() - length,
+                   working.sampleRate());
+        for (int ch = 0; ch < working.numChannels(); ++ch) {
+            std::copy_n(working.channel(ch), source.start, rest.channel(ch));
+            std::copy_n(working.channel(ch) + source.end,
+                        working.numFrames() - source.end,
+                        rest.channel(ch) + source.start);
+        }
+        const int64_t insertAt =
+            destination <= source.start ? destination : destination - length;
+        Audio result(working.numChannels(), working.numFrames(),
+                     working.sampleRate());
+        for (int ch = 0; ch < working.numChannels(); ++ch) {
+            std::copy_n(rest.channel(ch), insertAt, result.channel(ch));
+            std::copy_n(working.channel(ch) + source.start, length,
+                        result.channel(ch) + insertAt);
+            std::copy_n(rest.channel(ch) + insertAt,
+                        rest.numFrames() - insertAt,
+                        result.channel(ch) + insertAt + length);
+        }
+        working = std::move(result);
+        after = {insertAt, insertAt + length, length > 0};
+        return true;
+    }
+    case Operation::Kind::RepeatRange: {
+        const Range source = operation.range;
+        const int64_t length = source.length();
+        const int repeats = operation.params.value("repeats", 1);
+        const int64_t added = length * static_cast<int64_t>(repeats);
+        Audio result(working.numChannels(), working.numFrames() + added,
+                     working.sampleRate());
+        for (int ch = 0; ch < working.numChannels(); ++ch) {
+            std::copy_n(working.channel(ch), source.end, result.channel(ch));
+            for (int repeat = 0; repeat < repeats; ++repeat) {
+                std::copy_n(working.channel(ch) + source.start, length,
+                            result.channel(ch) + source.end +
+                                static_cast<int64_t>(repeat) * length);
+            }
+            std::copy_n(working.channel(ch) + source.end,
+                        working.numFrames() - source.end,
+                        result.channel(ch) + source.end + added);
+        }
+        working = std::move(result);
+        after = {source.start, source.end + added, added > 0};
+        return true;
+    }
+    case Operation::Kind::SetClips:
+    case Operation::Kind::FlattenClips:
+        setError(error, "clip operation requires arrangement state");
+        return false;
     case Operation::Kind::Crop:
         working = working.slice(operation.range);
         after = {0, working.numFrames(), working.numFrames() > 0};
@@ -927,6 +1501,45 @@ bool Document::applyOperation(const Operation& operation, Audio& working,
 bool Document::apply(const Operation& operation, std::string* error) {
     if (error) error->clear();
     if (!m_cacheValid) rebuild();
+
+    if (operation.kind == Operation::Kind::SetClips) {
+        std::vector<Clip> clips;
+        if (!clipsFromOperation(operation, clips, error)) return false;
+        if (clips.empty()) {
+            setError(error, "clip arrangement is empty");
+            return false;
+        }
+        if (!validateClips(clips, m_rendered.numFrames(), error)) return false;
+        const Selection before = m_selection;
+        m_clips = std::move(clips);
+        refreshArranged();
+        m_selection = clampSelection(m_selection, m_arranged.numFrames());
+        m_history.push_back({operation, before, m_selection});
+        m_redo.clear();
+        return true;
+    }
+
+    if (operation.kind == Operation::Kind::FlattenClips) {
+        if (m_clips.empty()) {
+            setError(error, "no clip arrangement to flatten");
+            return false;
+        }
+        const Selection before = m_selection;
+        m_rendered = renderClips(m_rendered, m_clips);
+        m_clips.clear();
+        m_arranged = m_rendered;
+        m_arrangedValid = true;
+        m_cacheValid = true;
+        m_selection = clampSelection(m_selection, m_arranged.numFrames());
+        m_history.push_back({operation, before, m_selection});
+        m_redo.clear();
+        return true;
+    }
+
+    if (!m_clips.empty()) {
+        setError(error, "flatten the clip arrangement before destructive edits");
+        return false;
+    }
     if (!validateRange(operation, error)) return false;
 
     Audio working = m_rendered;
@@ -935,7 +1548,9 @@ bool Document::apply(const Operation& operation, std::string* error) {
     if (!applyOperation(operation, working, after, error)) return false;
 
     m_rendered = std::move(working);
+    m_arranged = m_rendered;
     m_cacheValid = true;
+    m_arrangedValid = true;
     m_selection = clampSelection(after, m_rendered.numFrames());
     m_history.push_back({operation, before, m_selection});
     m_redo.clear();
@@ -959,16 +1574,20 @@ bool Document::redo() {
     HistoryEntry entry = std::move(m_redo.back());
     m_redo.pop_back();
 
-    Audio working = m_rendered;
+    Audio base = m_rendered;
+    std::vector<Clip> clips = m_clips;
     Selection after = entry.after;
-    if (!applyOperation(entry.operation, working, after, nullptr)) {
+    if (!applyHistoryOperation(entry.operation, base, clips, after, nullptr)) {
         m_redo.push_back(std::move(entry));
         return false;
     }
-    m_rendered = std::move(working);
+    m_rendered = std::move(base);
+    m_clips = std::move(clips);
+    m_arranged = renderClips(m_rendered, m_clips);
+    m_arrangedValid = true;
     m_cacheValid = true;
     m_history.push_back(entry);
-    m_selection = clampSelection(entry.after, m_rendered.numFrames());
+    m_selection = clampSelection(entry.after, m_arranged.numFrames());
     return true;
 }
 
@@ -982,10 +1601,15 @@ std::string Document::redoLabel() const {
 
 void Document::clearHistory() {
     if (!m_cacheValid) rebuild();
+    if (!m_clips.empty())
+        m_rendered = renderClips(m_rendered, m_clips);
     m_source = m_rendered;
+    m_clips.clear();
+    m_arranged = m_rendered;
     m_history.clear();
     m_redo.clear();
     m_cacheValid = true;
+    m_arrangedValid = true;
     m_selection = clampSelection(m_selection, m_source.numFrames());
 }
 
@@ -1026,6 +1650,18 @@ bool Document::timeStretch(double ratio, StretchAlgorithm algorithm,
     return apply(Operation::timeStretch(ratio, activeRange(), algorithm), error);
 }
 
+bool Document::timeStretchTrack(double ratio, StretchAlgorithm algorithm,
+                                std::string* error) {
+    if (!m_cacheValid) rebuild();
+    if (m_rendered.empty()) {
+        setError(error, "document is empty");
+        return false;
+    }
+    return apply(Operation::timeStretch(ratio, {0, m_rendered.numFrames()},
+                                        algorithm),
+                 error);
+}
+
 bool Document::pitchShift(double semitones, StretchAlgorithm algorithm,
                           std::string* error) {
     return apply(Operation::pitchShift(semitones, activeRange(), algorithm),
@@ -1064,7 +1700,7 @@ bool Document::convolve(const Audio& impulseResponse, bool normalizeIr,
 bool Document::copySelection() {
     if (!m_cacheValid) rebuild();
     if (!m_selection.active || m_selection.empty()) return false;
-    m_clipboard = m_rendered.slice(m_selection.range());
+    m_clipboard = audio().slice(m_selection.range());
     return true;
 }
 
@@ -1081,6 +1717,24 @@ bool Document::deleteSelection(std::string* error) {
         return false;
     }
     return apply(Operation::remove(m_selection.range()), error);
+}
+
+bool Document::moveSelectionTo(int64_t destination, bool copy,
+                               std::string* error) {
+    if (!m_selection.active || m_selection.empty()) {
+        setError(error, "no active selection");
+        return false;
+    }
+    return apply(Operation::moveRange(m_selection.range(), destination, copy),
+                 error);
+}
+
+bool Document::repeatSelection(int repeats, std::string* error) {
+    if (!m_selection.active || m_selection.empty()) {
+        setError(error, "no active selection");
+        return false;
+    }
+    return apply(Operation::repeatRange(m_selection.range(), repeats), error);
 }
 
 bool Document::paste(std::string* error) {
@@ -1169,7 +1823,10 @@ bool Document::loadAudio(const std::string& path, std::string* error) {
     m_history.clear();
     m_redo.clear();
     m_rendered = m_source;
+    m_arranged = m_rendered;
+    m_clips.clear();
     m_cacheValid = true;
+    m_arrangedValid = true;
     m_selection.clear();
     m_clipboard = Audio{};
     m_markers.clear();
@@ -1241,13 +1898,11 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
         loaded.m_sourcePath = root.value("sourcePath", std::string{});
         loaded.m_selection = selectionFromJson(
             root.value("selection", nlohmann::json{}));
-        loaded.m_selection =
-            clampSelection(loaded.m_selection, loaded.m_source.numFrames());
 
         if (root.contains("markers") && root["markers"].is_array()) {
             for (const auto& marker : root["markers"]) {
                 const int64_t frame = marker.value("frame", int64_t{0});
-                if (frame < 0 || frame > loaded.m_source.numFrames()) continue;
+                if (frame < 0) continue;
                 loaded.m_markers.push_back(
                     {frame, marker.value("name", std::string{})});
             }
@@ -1261,30 +1916,32 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
             for (const auto& slice : root["slices"]) {
                 const int64_t start = slice.value("start", int64_t{0});
                 const int64_t end = slice.value("end", int64_t{0});
-                const Range range =
-                    Range{start, end}.clamped(loaded.m_source.numFrames());
-                if (range.empty()) continue;
+                if (start < 0 || end <= start) continue;
                 loaded.m_slices.push_back(
-                    {range, slice.value("name", std::string{})});
+                    {{start, end}, slice.value("name", std::string{})});
             }
         }
 
         if (root.contains("history") && root["history"].is_array()) {
             Audio working = loaded.m_source;
+            std::vector<Clip> clips;
             for (const auto& item : root["history"]) {
                 Operation operation;
                 if (!Operation::fromJson(item.at("operation"), operation,
                                          error))
                     return false;
                 loaded.m_rendered = working;
+                loaded.m_clips = clips;
                 loaded.m_cacheValid = true;
                 if (!loaded.validateRange(operation, error)) return false;
 
                 Selection after = selectionFromJson(
                     item.value("after", nlohmann::json{}));
-                if (!loaded.applyOperation(operation, working, after, nullptr)) {
+                if (!loaded.applyHistoryOperation(operation, working, clips,
+                                                  after, error)) {
                     setError(error, "cannot replay project operation: " +
-                                        operation.label);
+                                        operation.label + ": " +
+                                        (error ? *error : std::string{}));
                     return false;
                 }
                 Selection before = selectionFromJson(
@@ -1293,13 +1950,36 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
                     {std::move(operation), before, after});
             }
             loaded.m_rendered = std::move(working);
+            loaded.m_clips = std::move(clips);
+            loaded.m_arranged = loaded.renderClips(loaded.m_rendered,
+                                                   loaded.m_clips);
+            loaded.m_arrangedValid = true;
             loaded.m_cacheValid = true;
             loaded.m_redo.clear();
+        } else {
+            loaded.m_rendered = loaded.m_source;
+            loaded.m_arranged = loaded.m_rendered;
+            loaded.m_cacheValid = true;
+            loaded.m_arrangedValid = true;
         }
+
+        const int64_t arrangedFrames = loaded.m_arranged.numFrames();
+        loaded.m_markers.erase(
+            std::remove_if(loaded.m_markers.begin(), loaded.m_markers.end(),
+                           [arrangedFrames](const Marker& marker) {
+                               return marker.frame > arrangedFrames;
+                           }),
+            loaded.m_markers.end());
+        loaded.m_slices.erase(
+            std::remove_if(loaded.m_slices.begin(), loaded.m_slices.end(),
+                           [arrangedFrames](const Slice& slice) {
+                               return slice.range.end > arrangedFrames;
+                           }),
+            loaded.m_slices.end());
 
         out = std::move(loaded);
         out.m_selection =
-            clampSelection(out.m_selection, out.m_rendered.numFrames());
+            clampSelection(out.m_selection, out.m_arranged.numFrames());
         return true;
     } catch (const std::exception& e) {
         setError(error, std::string("cannot load project: ") + e.what());
@@ -1351,19 +2031,27 @@ bool Document::loadProject(const std::string& path, std::string* error) {
 
 bool Document::rebuild() {
     Audio working = m_source;
+    std::vector<Clip> clips;
     Selection selection;
     for (const auto& entry : m_history) {
         Selection after = selection;
-        if (!applyOperation(entry.operation, working, after, nullptr)) {
+        if (!applyHistoryOperation(entry.operation, working, clips, after,
+                                   nullptr)) {
             m_rendered = std::move(working);
+            m_clips = std::move(clips);
+            m_arranged = renderClips(m_rendered, m_clips);
+            m_arrangedValid = true;
             m_cacheValid = true;
             return false;
         }
         selection = after;
     }
     m_rendered = std::move(working);
+    m_clips = std::move(clips);
+    m_arranged = renderClips(m_rendered, m_clips);
+    m_arrangedValid = true;
     m_cacheValid = true;
-    m_selection = clampSelection(m_selection, m_rendered.numFrames());
+    m_selection = clampSelection(m_selection, m_arranged.numFrames());
     return true;
 }
 

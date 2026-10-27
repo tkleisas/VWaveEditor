@@ -287,7 +287,7 @@ Deferred:
 
 ## Implementation status
 
-As of the v0.0.6 development line:
+As of the v0.0.7 development line:
 
 - Phases 0–8 are implemented and test-green.
 - Multi-track Timeline, track controls, multi-track playback/export, recording,
@@ -302,10 +302,10 @@ As of the v0.0.6 development line:
   settings, ring buffers, UI viewport math, C ABI, and a headless desktop smoke
   test.
 
-## Future feature plan (post-v0.0.6)
+## Future feature plan (post-v0.0.6, implemented through v0.0.7)
 
 Detailed design notes and options are recorded in
-[docs/IDEAS.md](IDEAS.md). All planned phases 9-14 are implemented.
+[docs/IDEAS.md](IDEAS.md). All planned phases 9-15 are implemented.
 
 ### Phase 9: Wavetable designer and morph lab (implemented)
 
@@ -445,3 +445,44 @@ Additional constraints:
 - How reference matching and standards-compliant LUFS metering should work.
 - Whether generator recipes become shared first-class track metadata.
 - Which standard third-party wavetable metadata profile to target for WAV export.
+
+### Phase 15: Waveform editing and cut-up arrangement (implemented)
+
+Stage 1 is implemented as destructive-but-undoable track editing:
+
+- Selection edge handles, track trim handles, repeat handle, and whole-track
+  stretch handle.
+- Undoable move/copy/repeat range operations with deterministic replay.
+- Zero-crossing snap and one-step zero-cross cut.
+- Track-level stereo split into hard-panned mono tracks, preserving stereo
+  balance.
+- Mono-to-stereo combine with back/front/both padding and preserved offsets.
+- Session, CLI, Lua/MCP bridge, and tests for the new operations.
+
+Stage 2 is implemented as a document-owned clip arrangement:
+
+- `Document::Clip` with source range, local timeline position, stretch ratio,
+  gain, fades, and name.
+- Clip rendering supports gaps and overlap mixing; stereo channel layout is
+  preserved.
+- Clip tools: make, select, move, split, delete, repeat, stretch, move to
+  playhead, and flatten.
+- Clip layout is stored in the active track's `Document` history, sharing its
+  undo/redo stack and project persistence.
+- Destructive sample edits require flattening while clips exist, keeping source
+  ranges stable.
+- Session/CLI/Lua/MCP commands and tests cover the arrangement lifecycle.
+
+Remaining follow-up work is UI polish for clip gain/fade editing and more
+automation presets; the cut-up arrangement model itself is implemented.
+
+### Transport: click-to-seek and loop playback (implemented)
+
+- Clicking the waveform, 2D spectrum, ruler, or overview positions the playhead
+  while a drag still creates a selection or spectral region.
+- Shift+drag selects a loop region in waveform, 2D spectrum, or ruler views; Loop
+  Selection derives one from the current selection.
+- Loop playback wraps in `AudioPlayer`, with `L` toggling and `Shift+L` setting
+  the loop from the selection.
+- The loop region is session state and persists until cleared or a project or
+  audio file is loaded.

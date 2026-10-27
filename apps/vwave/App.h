@@ -82,7 +82,22 @@ private:
         LoadImage,
         SaveScopePath,
         LoadScopePath,
+        SeekTime,
         ExportSlices
+    };
+
+    enum class WaveDragMode {
+        None,
+        NewSelection,
+        SelectionStart,
+        SelectionEnd,
+        TrackTrimStart,
+        TrackTrimEnd,
+        TrackStretch,
+        SelectionRepeat,
+        ClipMove,
+        ClipStretch,
+        LoopSelection
     };
 
     void layout();
@@ -125,6 +140,9 @@ private:
     void drawTextCentered(const std::string& text, const SDL_Rect& rect,
                           const Color& color, TTF_Font* font);
     int textWidth(const std::string& text, TTF_Font* font) const;
+    int laneXForFrame(const SDL_Rect& lane, int64_t frame) const;
+    int64_t laneFrameAtX(const SDL_Rect& lane, int x) const;
+    SDL_Rect selectionScreenRect() const;
     TTF_Font* fontSmall() const { return m_fontSmall; }
     TTF_Font* fontNormal() const { return m_font; }
     TTF_Font* fontBold() const { return m_fontBold; }
@@ -166,6 +184,37 @@ private:
     void saveMasteringReport(const std::string& path);
     void renderMasteringStems();
     void regenerateActiveTrack();
+    void toggleSelectionScope();
+    bool seekToTime(double seconds, std::string* error = nullptr);
+    void goToStart();
+    void goToEnd();
+    void setLoopToSelection();
+    void clearLoop();
+    void toggleLoop();
+    void setLoopRegion(int64_t start, int64_t end);
+    bool loopPlaybackActive() const;
+    void cropActiveTrack();
+    void shiftActiveTrack(double seconds);
+    void repeatActiveSelection(int count);
+    void moveActiveSelectionToPlayhead(bool copy);
+    void zeroCrossCut();
+    void snapActiveSelection();
+    void stretchActiveTrack();
+    void splitActiveStereoTrack();
+    void combineActiveMono(int direction);
+    void cycleStereoPadding();
+    void toggleClipTool();
+    void makeClips();
+    void flattenClips();
+    void splitClipAtPlayhead();
+    void deleteSelectedClip();
+    void repeatSelectedClip(int count);
+    void moveSelectedClipToPlayhead();
+    void stretchSelectedClip();
+    int currentClipIndex() const;
+    void openTrackContextMenu(int trackIndex, int x, int y);
+    void drawContextMenu();
+    void closeContextMenu();
     void loadImage(const std::string& path);
     void renderImageToTrack();
     void cycleImagePhaseMode();
@@ -231,6 +280,7 @@ private:
     SDL_Rect m_contentRect{};
     SDL_Rect m_footerRect{};
     SDL_Rect m_waveArea{};
+    SDL_Rect m_rulerArea{};
     SDL_Rect m_overviewArea{};
     SDL_Rect m_spectrumArea{};
     SDL_Rect m_wavetableArea{};
@@ -316,6 +366,28 @@ private:
     vwave::PhaseSpectrogram m_phaseSpectrogram;
     bool m_phaseSpectrogramDirty = true;
     bool m_spectrum3D = false;
+    bool m_contextMenuOpen = false;
+    int m_contextMenuTrack = -1;
+    SDL_Point m_contextMenuPosition{};
+    SDL_Rect m_contextMenuRect{};
+    std::vector<MenuItem> m_contextMenuItems;
+    std::vector<SDL_Rect> m_contextMenuItemRects;
+    bool m_shiftingTrack = false;
+    int m_shiftingTrackIndex = -1;
+    int m_shiftStartMouseX = 0;
+    int64_t m_shiftStartFrame = 0;
+    WaveDragMode m_waveDrag = WaveDragMode::None;
+    int m_waveDragTrack = -1;
+    int m_waveDragMouseX = 0;
+    int64_t m_waveDragFixedFrame = 0;
+    int64_t m_waveDragOriginalStart = 0;
+    int64_t m_waveDragOriginalEnd = 0;
+    int64_t m_waveDragPreviewFrame = 0;
+    int m_repeatDragCount = 0;
+    int64_t m_clipDragOriginalFrames = 0;
+    int m_selectedClip = -1;
+    bool m_clipTool = false;
+    vwave::StereoPadding m_stereoPadding = vwave::StereoPadding::Back;
     int m_spectrum3DHoverX = -1;
     int m_spectrum3DHoverY = -1;
     SDL_Texture* m_spectrogramTexture = nullptr;
@@ -331,8 +403,19 @@ private:
     Uint32 m_statusUntil = 0;
     bool m_running = true;
     int64_t m_playhead = 0;
+    int64_t m_loopStart = 0;
+    int64_t m_loopEnd = 0;
+    int64_t m_loopAnchor = 0;
+    SDL_Rect m_loopDragArea{};
+    bool m_loopEnabled = false;
+    bool m_spectrumClickCandidate = false;
+    int m_spectrumClickX = 0;
+    int m_spectrumClickY = 0;
+    int64_t m_spectrumClickFrame = 0;
+    bool m_clickCandidate = false;
+    int64_t m_clickFrame = 0;
+    int m_clickMouseX = 0;
 
-    bool m_draggingSelection = false;
     int64_t m_selectionAnchor = 0;
     double m_trackScroll = 0.0;
     int m_trackContentHeight = 0;

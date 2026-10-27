@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace vwave {
 
@@ -186,6 +187,43 @@ void WavetableViewport::clamp(int frameCount) {
         return;
     }
     selectedFrame = std::clamp(selectedFrame, 0, frameCount - 1);
+}
+
+bool parseTimecode(const std::string& text, double& seconds) {
+    std::string value = text;
+    value.erase(0, value.find_first_not_of(" \t\r\n"));
+    const size_t last = value.find_last_not_of(" \t\r\n");
+    value.erase(last == std::string::npos ? value.size() : last + 1);
+    if (value.empty()) return false;
+    if (value.back() == 's' || value.back() == 'S') {
+        value.pop_back();
+        const size_t trimmed = value.find_last_not_of(" \t\r\n");
+        value.erase(trimmed == std::string::npos ? value.size()
+                                                  : trimmed + 1);
+        if (value.empty()) return false;
+    }
+    double total = 0.0;
+    size_t start = 0;
+    int parts = 0;
+    while (start <= value.size()) {
+        const size_t colon = value.find(':', start);
+        const std::string part = value.substr(
+            start, colon == std::string::npos ? std::string::npos
+                                              : colon - start);
+        if (part.empty()) return false;
+        char* end = nullptr;
+        const double component = std::strtod(part.c_str(), &end);
+        if (end == part.c_str() || *end != '\0' ||
+            !std::isfinite(component) || component < 0.0)
+            return false;
+        total = total * 60.0 + component;
+        ++parts;
+        if (colon == std::string::npos) break;
+        start = colon + 1;
+    }
+    if (parts == 0 || parts > 3) return false;
+    seconds = total;
+    return std::isfinite(seconds) && seconds >= 0.0;
 }
 
 } // namespace vwave

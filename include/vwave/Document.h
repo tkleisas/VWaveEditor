@@ -27,6 +27,22 @@ struct Slice {
     std::string name;
 };
 
+struct Clip {
+    int64_t sourceStart = 0;
+    int64_t sourceLength = 0;
+    int64_t timelineStart = 0;
+    double stretch = 1.0;
+    double gainDb = 0.0;
+    double fadeInSeconds = 0.0;
+    double fadeOutSeconds = 0.0;
+    std::string name;
+};
+
+int64_t clipOutputFrames(const Clip& clip);
+nlohmann::json clipToJson(const Clip& clip);
+bool clipFromJson(const nlohmann::json& json, Clip& out,
+                  std::string* error = nullptr);
+
 class Operation {
 public:
     enum class Kind {
@@ -34,6 +50,10 @@ public:
         Delete,
         Insert,
         ReplaceRange,
+        MoveRange,
+        RepeatRange,
+        SetClips,
+        FlattenClips,
         Crop,
         Resample,
         ReplaceAll
@@ -90,6 +110,10 @@ public:
     static Operation remove(Range range);
     static Operation insert(int64_t frame, Audio audio);
     static Operation replaceRange(Range range, Audio audio);
+    static Operation moveRange(Range range, int64_t destination, bool copy);
+    static Operation repeatRange(Range range, int repeats);
+    static Operation setClips(std::vector<Clip> clips);
+    static Operation flattenClips();
     static Operation crop(Range range);
     static Operation resample(int sampleRate);
     static Operation replaceAll(Audio audio);
@@ -135,6 +159,25 @@ public:
     Range selectedRange() const;
     Range activeRange() const;
 
+    bool hasClips() const;
+    const std::vector<Clip>& clips() const;
+    int clipIndexAt(int64_t frame) const;
+    bool createClipArrangement(std::string* error = nullptr);
+    bool setClipArrangement(std::vector<Clip> clips, std::string label,
+                            std::string* error = nullptr);
+    bool splitClipAt(int64_t frame, std::string* error = nullptr);
+    bool deleteClip(size_t index, std::string* error = nullptr);
+    bool moveClip(size_t index, int64_t timelineStart,
+                  std::string* error = nullptr);
+    bool stretchClip(size_t index, double ratio,
+                     std::string* error = nullptr);
+    bool repeatClip(size_t index, int count, std::string* error = nullptr);
+    bool setClipGain(size_t index, double gainDb,
+                     std::string* error = nullptr);
+    bool setClipFades(size_t index, double fadeInSeconds,
+                      double fadeOutSeconds, std::string* error = nullptr);
+    bool flattenClips(std::string* error = nullptr);
+
     bool apply(const Operation& operation, std::string* error = nullptr);
     bool undo();
     bool redo();
@@ -157,6 +200,8 @@ public:
     bool removeDc(std::string* error = nullptr);
     bool timeStretch(double ratio, StretchAlgorithm algorithm,
                      std::string* error = nullptr);
+    bool timeStretchTrack(double ratio, StretchAlgorithm algorithm,
+                          std::string* error = nullptr);
     bool pitchShift(double semitones, StretchAlgorithm algorithm,
                     std::string* error = nullptr);
     bool spectralGain(double lowHz, double highHz, double gainDb,
@@ -172,6 +217,9 @@ public:
     bool copySelection();
     bool cutSelection(std::string* error = nullptr);
     bool deleteSelection(std::string* error = nullptr);
+    bool moveSelectionTo(int64_t destination, bool copy,
+                         std::string* error = nullptr);
+    bool repeatSelection(int repeats, std::string* error = nullptr);
     bool paste(std::string* error = nullptr);
     bool pasteAt(int64_t frame, std::string* error = nullptr);
     bool cropToSelection(std::string* error = nullptr);
@@ -195,10 +243,18 @@ public:
 private:
     bool rebuild();
     bool validateRange(const Operation& operation, std::string* error) const;
+    bool validateClips(const std::vector<Clip>& clips, int64_t baseFrames,
+                       std::string* error) const;
     bool applyProcess(const Operation& operation, Audio& working,
                       std::string* error) const;
     bool applyOperation(const Operation& operation, Audio& working,
                         Selection& after, std::string* error) const;
+    bool applyHistoryOperation(const Operation& operation, Audio& base,
+                               std::vector<Clip>& clips, Selection& after,
+                               std::string* error) const;
+    Audio renderClips(const Audio& base,
+                      const std::vector<Clip>& clips) const;
+    void refreshArranged();
 
     struct HistoryEntry {
         Operation operation;
@@ -210,7 +266,10 @@ private:
     std::vector<HistoryEntry> m_history;
     std::vector<HistoryEntry> m_redo;
     mutable Audio m_rendered;
+    mutable Audio m_arranged;
     mutable bool m_cacheValid = false;
+    mutable bool m_arrangedValid = false;
+    std::vector<Clip> m_clips;
     Selection m_selection;
     Audio m_clipboard;
     std::vector<Marker> m_markers;

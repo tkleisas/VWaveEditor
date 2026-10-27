@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -45,6 +46,21 @@ void printUsage() {
         "  vwave project set <project> <index> [--gain DB] [--pan V]\n"
         "      [--name NAME] [--start SEC] [--mute|--unmute] [--solo] [--arm]\n"
         "  vwave project regenerate <project> [index]\n"
+        "  vwave project crop <project> [index]\n"
+        "  vwave project shift <project> <index> (--delta SEC|--start SEC)\n"
+        "  vwave project split-stereo <project> <index> [--remove-original]\n"
+        "  vwave project combine-mono <project> <left> <right>\n"
+        "      [--padding back|front|both] [--remove-originals]\n"
+        "  vwave project make-clips <project> [index]\n"
+        "  vwave project flatten-clips <project> [index]\n"
+        "  vwave project split-clip <project> [index] --at SEC\n"
+        "  vwave project move-clip <project> [index] --clip N --at SEC\n"
+        "  vwave project stretch-clip <project> [index] --clip N --ratio R\n"
+        "  vwave project repeat-clip <project> [index] --clip N --count N\n"
+        "  vwave project delete-clip <project> [index] --clip N\n"
+        "  vwave project clip-set <project> [index] --clip N\n"
+        "      [--gain DB] [--fade-in SEC] [--fade-out SEC]\n"
+        "  vwave project selection-scope <project> all|active\n"
         "  vwave project mixdown <project> <out.wav>\n"
         "  vwave lua <script.lua> [audio]\n"
         "  vwave command <name> [json] [--input audio] [--output audio]\n"
@@ -736,6 +752,164 @@ int commandProject(const std::vector<std::string>& args) {
                 return fail("unknown set option: " + args[i]);
         }
         executeOrFail(session, "track_set", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "crop") {
+        json parameters = json::object();
+        if (args.size() >= 5) parameters["index"] = std::stoi(args[4]);
+        executeOrFail(session, "crop_track", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "shift") {
+        if (args.size() < 5)
+            return fail("shift requires a track index");
+        json parameters = {{"index", std::stoi(args[4])}};
+        for (size_t i = 5; i < args.size(); ++i) {
+            if (args[i] == "--delta")
+                parameters["delta"] =
+                    std::stod(valueAt(args, i, "--delta"));
+            else if (args[i] == "--start")
+                parameters["start"] =
+                    std::stod(valueAt(args, i, "--start"));
+            else
+                return fail("unknown shift option: " + args[i]);
+        }
+        executeOrFail(session, "shift_track", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "split-stereo") {
+        if (args.size() < 5)
+            return fail("split-stereo requires a track index");
+        json parameters = {{"index", std::stoi(args[4])},
+                           {"keep_original", true}};
+        for (size_t i = 5; i < args.size(); ++i) {
+            if (args[i] == "--remove-original")
+                parameters["keep_original"] = false;
+            else
+                return fail("unknown split-stereo option: " + args[i]);
+        }
+        executeOrFail(session, "split_stereo_track", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "combine-mono") {
+        if (args.size() < 6)
+            return fail("combine-mono requires left and right track indexes");
+        json parameters = {{"left", std::stoi(args[4])},
+                           {"right", std::stoi(args[5])},
+                           {"keep_originals", true},
+                           {"padding", "back"}};
+        for (size_t i = 6; i < args.size(); ++i) {
+            if (args[i] == "--padding")
+                parameters["padding"] = valueAt(args, i, "--padding");
+            else if (args[i] == "--remove-originals")
+                parameters["keep_originals"] = false;
+            else
+                return fail("unknown combine-mono option: " + args[i]);
+        }
+        executeOrFail(session, "combine_mono_tracks", parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "make-clips" || subcommand == "flatten-clips" ||
+        subcommand == "split-clip" || subcommand == "move-clip" ||
+        subcommand == "stretch-clip" || subcommand == "repeat-clip" ||
+        subcommand == "delete-clip" || subcommand == "clip-set") {
+        json parameters = json::object();
+        size_t index = 4;
+        if (index < args.size() && args[index].rfind("--", 0) != 0) {
+            parameters["track"] = std::stoi(args[index]);
+            ++index;
+        }
+        bool hasAt = false;
+        bool hasClip = false;
+        bool hasRatio = false;
+        bool hasCount = false;
+        bool hasGain = false;
+        bool hasFades = false;
+        for (; index < args.size(); ++index) {
+            if (args[index] == "--at") {
+                parameters["at"] = std::stod(valueAt(args, index, "--at"));
+                hasAt = true;
+            } else if (args[index] == "--clip") {
+                parameters["clip"] =
+                    std::stoi(valueAt(args, index, "--clip"));
+                hasClip = true;
+            } else if (args[index] == "--ratio") {
+                parameters["ratio"] =
+                    std::stod(valueAt(args, index, "--ratio"));
+                hasRatio = true;
+            } else if (args[index] == "--count") {
+                parameters["count"] =
+                    std::stoi(valueAt(args, index, "--count"));
+                hasCount = true;
+            } else if (args[index] == "--gain") {
+                parameters["gain_db"] =
+                    std::stod(valueAt(args, index, "--gain"));
+                hasGain = true;
+            } else if (args[index] == "--fade-in") {
+                parameters["fade_in"] =
+                    std::stod(valueAt(args, index, "--fade-in"));
+                hasFades = true;
+            } else if (args[index] == "--fade-out") {
+                parameters["fade_out"] =
+                    std::stod(valueAt(args, index, "--fade-out"));
+                hasFades = true;
+            } else {
+                return fail("unknown clip option: " + args[index]);
+            }
+        }
+
+        std::string command = subcommand;
+        std::replace(command.begin(), command.end(), '-', '_');
+        if (subcommand == "split-clip") {
+            if (!hasAt) return fail("split-clip requires --at");
+            command = "split_clip";
+        } else if (subcommand == "move-clip") {
+            if (!hasClip || !hasAt)
+                return fail("move-clip requires --clip and --at");
+            command = "move_clip";
+        } else if (subcommand == "stretch-clip") {
+            if (!hasClip || !hasRatio)
+                return fail("stretch-clip requires --clip and --ratio");
+            command = "stretch_clip";
+        } else if (subcommand == "repeat-clip") {
+            if (!hasClip || !hasCount)
+                return fail("repeat-clip requires --clip and --count");
+            command = "repeat_clip";
+        } else if (subcommand == "delete-clip") {
+            if (!hasClip) return fail("delete-clip requires --clip");
+            command = "delete_clip";
+        } else if (subcommand == "clip-set") {
+            if (!hasClip || (!hasGain && !hasFades))
+                return fail("clip-set requires --clip and gain/fade values");
+            if (hasGain) {
+                executeOrFail(session, "set_clip_gain", parameters);
+            }
+            if (hasFades) {
+                executeOrFail(session, "set_clip_fades", parameters);
+            }
+            executeOrFail(session, "save_project", {{"path", projectPath}});
+            printJson(session.info());
+            return 0;
+        }
+        executeOrFail(session, command, parameters);
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    if (subcommand == "selection-scope") {
+        if (args.size() < 5)
+            return fail("selection-scope requires all or active");
+        executeOrFail(session, "selection_scope", {{"scope", args[4]}});
         executeOrFail(session, "save_project", {{"path", projectPath}});
         printJson(session.info());
         return 0;

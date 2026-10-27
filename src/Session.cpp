@@ -403,6 +403,9 @@ nlohmann::json Session::tracksInfo() const {
         const auto& track = m_timeline.track(i);
         const int rate = m_timeline.sampleRate();
         const int64_t frames = track.document.numFrames();
+        nlohmann::json clips = nlohmann::json::array();
+        for (const auto& clip : track.document.clips())
+            clips.push_back(clipToJson(clip));
         tracks.push_back(
             {{"index", i},
              {"name", track.name},
@@ -421,6 +424,8 @@ nlohmann::json Session::tracksInfo() const {
              {"solo", track.solo},
              {"armed", track.armed},
              {"empty", track.empty},
+             {"clip_count", track.document.clips().size()},
+             {"clips", std::move(clips)},
              {"source_path", track.document.sourcePath()}});
     }
     return tracks;
@@ -1021,6 +1026,93 @@ nlohmann::json Session::execute(const std::string& command,
             }
             return info();
         }
+        if (command == "selection_scope") {
+            const std::string scope = params.value(
+                "scope", std::string{"all_tracks"});
+            if (scope == "all" || scope == "all_tracks") {
+                m_timeline.setSelectionScope(SelectionScope::AllTracks);
+            } else if (scope == "active" || scope == "active_track") {
+                m_timeline.setSelectionScope(SelectionScope::ActiveTrack);
+            } else {
+                setError(error, "unknown selection scope: " + scope);
+                return nullptr;
+            }
+            return {{"ok", true},
+                    {"scope",
+                     m_timeline.selectionScope() ==
+                             SelectionScope::ActiveTrack
+                         ? "active_track"
+                         : "all_tracks"}};
+        }
+
+        if (command == "crop_track") {
+            int index = m_timeline.activeTrack();
+            if (params.contains("index")) index = params["index"].get<int>();
+            if (index < 0 || index >= m_timeline.trackCount()) {
+                setError(error, "track index is out of range");
+                return nullptr;
+            }
+            Range range;
+            bool hasRange = false;
+            if (!parseOptionalRange(
+                    m_timeline.track(index).document.audio(), params, range,
+                    hasRange, error))
+                return nullptr;
+            if (hasRange) {
+                range.start += m_timeline.track(index).startFrame;
+                range.end += m_timeline.track(index).startFrame;
+            } else {
+                range = m_timeline.selectedRange();
+            }
+            if (!m_timeline.cropTrack(index, range, error)) return nullptr;
+            return {{"ok", true},
+                    {"index", index},
+                    {"start_frame", m_timeline.track(index).startFrame},
+                    {"frames",
+                     m_timeline.track(index).document.numFrames()}};
+        }
+
+        if (command == "shift_track") {
+            int index = m_timeline.activeTrack();
+            if (params.contains("index")) index = params["index"].get<int>();
+            if (index < 0 || index >= m_timeline.trackCount()) {
+                setError(error, "track index is out of range");
+                return nullptr;
+            }
+            if (params.contains("start") && params.contains("delta")) {
+                setError(error, "use either start or delta, not both");
+                return nullptr;
+            }
+            if (params.contains("start")) {
+                const double start = params["start"].get<double>();
+                if (!std::isfinite(start) || start < 0.0 ||
+                    m_timeline.sampleRate() <= 0) {
+                    setError(error, "invalid track start time");
+                    return nullptr;
+                }
+                m_timeline.setTrackStartFrame(
+                    index, static_cast<int64_t>(
+                               std::llround(start * m_timeline.sampleRate())));
+            } else if (params.contains("delta")) {
+                const double delta = params["delta"].get<double>();
+                if (!std::isfinite(delta) || m_timeline.sampleRate() <= 0) {
+                    setError(error, "invalid track shift");
+                    return nullptr;
+                }
+                if (!m_timeline.shiftTrack(
+                        index, static_cast<int64_t>(std::llround(
+                                   delta * m_timeline.sampleRate())),
+                        error))
+                    return nullptr;
+            } else {
+                setError(error, "missing start or delta");
+                return nullptr;
+            }
+            return {{"ok", true},
+                    {"index", index},
+                    {"start_frame", m_timeline.track(index).startFrame}};
+        }
+
         if (command == "save_mixdown") {
             const std::string path = requiredString(params, "path", error);
             if (path.empty()) return nullptr;
@@ -1147,6 +1239,219 @@ nlohmann::json Session::execute(const std::string& command,
             if (!document().cropToSelection(error)) return nullptr;
             syncSelectionFromActive();
             return okResult();
+        }
+        if (command == "move_selection") {
+            if (!prepareSelection(m_timeline, params, error)) return nullptr;
+            if (!params.contains("at") && !params.contains("destination")) {
+                setError(error, "move_selection requires at");
+                return nullptr;
+            }
+            const double at = params.contains("at")
+                                  ? params["at"].get<double>()
+                                  : params["destination"].get<double>();
+            if (!std::isfinite(at) || at < 0.0) {
+                setError(error, "invalid move destination");
+                return nullptr;
+            }
+            const int64_t frame = static_cast<int64_t>(
+                std::llround(at * document().sampleRate()));
+            const bool copy = optionalBool(params, "copy", false);
+            if (!document().moveSelectionTo(frame, copy, error))
+                return nullptr;
+            syncSelectionFromActive();
+            return okResult();
+        }
+        if (command == "repeat_selection") {
+            if (!prepareSelection(m_timeline, params, error)) return nullptr;
+            const int repeats = optionalInt(params, "repeats",
+                                             optionalInt(params, "count", 1));
+            if (!document().repeatSelection(repeats, error)) return nullptr;
+            syncSelectionFromActive();
+            return okResult();
+        }
+        if (command == "snap_selection") {
+            if (!prepareSelection(m_timeline, params, error)) return nullptr;
+            const auto selection = document().selection();
+            if (!selection.active) {
+                setError(error, "no active selection");
+                return nullptr;
+            }
+            const double radiusMs = optionalDouble(params, "radius_ms", 10.0);
+            if (!std::isfinite(radiusMs) || radiusMs < 0.0) {
+                setError(error, "invalid snap radius");
+                return nullptr;
+            }
+            const int64_t radius = static_cast<int64_t>(std::llround(
+                radiusMs * document().sampleRate() / 1000.0));
+            const Range snapped = snapRangeToZeroCrossings(
+                document().audio(), selection.range(), radius);
+            document().setSelection(snapped.start, snapped.end);
+            syncSelectionFromActive();
+            return {{"ok", true},
+                    {"start", snapped.start},
+                    {"end", snapped.end},
+                    {"start_seconds",
+                     static_cast<double>(snapped.start) /
+                         document().sampleRate()},
+                    {"end_seconds",
+                     static_cast<double>(snapped.end) /
+                         document().sampleRate()}};
+        }
+        if (command == "stretch_track") {
+            if (m_timeline.empty()) {
+                setError(error, "no active track");
+                return nullptr;
+            }
+            int index = m_timeline.activeTrack();
+            if (params.contains("index"))
+                index = params["index"].get<int>();
+            if (index < 0 || index >= m_timeline.trackCount()) {
+                setError(error, "track index is out of range");
+                return nullptr;
+            }
+            const double ratio = optionalDouble(params, "ratio", 1.0);
+            const StretchAlgorithm algorithm =
+                stretchAlgorithm(params, error);
+            if (error && !error->empty()) return nullptr;
+            if (!m_timeline.track(index).document.timeStretchTrack(
+                    ratio, algorithm, error))
+                return nullptr;
+            m_timeline.setActiveTrack(index);
+            syncSelectionFromActive();
+            return info();
+        }
+        if (command == "split_stereo_track") {
+            if (m_timeline.empty()) {
+                setError(error, "no active track");
+                return nullptr;
+            }
+            int index = m_timeline.activeTrack();
+            if (params.contains("index"))
+                index = params["index"].get<int>();
+            const bool keepOriginal =
+                optionalBool(params, "keep_original", true);
+            if (!m_timeline.splitStereoTrack(index, keepOriginal, error))
+                return nullptr;
+            return info();
+        }
+        if (command == "combine_mono_tracks") {
+            int leftIndex = -1;
+            int rightIndex = -1;
+            if (params.contains("left"))
+                leftIndex = params["left"].get<int>();
+            else if (params.contains("left_index"))
+                leftIndex = params["left_index"].get<int>();
+            if (params.contains("right"))
+                rightIndex = params["right"].get<int>();
+            else if (params.contains("right_index"))
+                rightIndex = params["right_index"].get<int>();
+            if (leftIndex < 0 || rightIndex < 0) {
+                setError(error, "combine_mono_tracks requires left and right");
+                return nullptr;
+            }
+            StereoCombineOptions options;
+            options.keepOriginals =
+                optionalBool(params, "keep_originals", true);
+            const std::string paddingName =
+                params.value("padding", std::string{"back"});
+            if (!stereoPaddingFromName(paddingName, options.padding)) {
+                setError(error, "unknown padding mode: " + paddingName);
+                return nullptr;
+            }
+            if (!m_timeline.combineMonoTracks(leftIndex, rightIndex, options,
+                                              error))
+                return nullptr;
+            return info();
+        }
+
+        if (command == "make_clips" || command == "flatten_clips" ||
+            command == "split_clip" || command == "delete_clip" ||
+            command == "move_clip" || command == "stretch_clip" ||
+            command == "repeat_clip" || command == "set_clip_gain" ||
+            command == "set_clip_fades") {
+            if (m_timeline.empty()) {
+                setError(error, "no active track");
+                return nullptr;
+            }
+            int trackIndex = m_timeline.activeTrack();
+            if (params.contains("track"))
+                trackIndex = params["track"].get<int>();
+            else if (params.contains("track_index"))
+                trackIndex = params["track_index"].get<int>();
+            if (trackIndex < 0 || trackIndex >= m_timeline.trackCount()) {
+                setError(error, "track index is out of range");
+                return nullptr;
+            }
+            Document& clipDocument =
+                m_timeline.track(trackIndex).document;
+
+            if (command == "make_clips") {
+                if (!clipDocument.createClipArrangement(error)) return nullptr;
+            } else if (command == "flatten_clips") {
+                if (!clipDocument.flattenClips(error)) return nullptr;
+            } else {
+                int clipIndex = -1;
+                if (params.contains("clip"))
+                    clipIndex = params["clip"].get<int>();
+                else if (params.contains("clip_index"))
+                    clipIndex = params["clip_index"].get<int>();
+                if (command == "split_clip") {
+                    const double at = params.value("at", 0.0);
+                    if (!std::isfinite(at) || at < 0.0 ||
+                        clipDocument.sampleRate() <= 0) {
+                        setError(error, "invalid clip split position");
+                        return nullptr;
+                    }
+                    const int64_t frame = static_cast<int64_t>(
+                        std::llround(at * clipDocument.sampleRate()));
+                    if (!clipDocument.splitClipAt(frame, error))
+                        return nullptr;
+                } else {
+                    if (clipIndex < 0) {
+                        setError(error, "clip index is required");
+                        return nullptr;
+                    }
+                    const size_t index = static_cast<size_t>(clipIndex);
+                    if (command == "delete_clip") {
+                        if (!clipDocument.deleteClip(index, error))
+                            return nullptr;
+                    } else if (command == "move_clip") {
+                        const double at = params.value("at", 0.0);
+                        if (!std::isfinite(at) || at < 0.0 ||
+                            clipDocument.sampleRate() <= 0) {
+                            setError(error, "invalid clip position");
+                            return nullptr;
+                        }
+                        const int64_t frame = static_cast<int64_t>(
+                            std::llround(at * clipDocument.sampleRate()));
+                        if (!clipDocument.moveClip(index, frame, error))
+                            return nullptr;
+                    } else if (command == "stretch_clip") {
+                        if (!clipDocument.stretchClip(
+                                index, optionalDouble(params, "ratio", 1.0),
+                                error))
+                            return nullptr;
+                    } else if (command == "repeat_clip") {
+                        if (!clipDocument.repeatClip(
+                                index, optionalInt(params, "count", 1), error))
+                            return nullptr;
+                    } else if (command == "set_clip_gain") {
+                        if (!clipDocument.setClipGain(
+                                index, optionalDouble(params, "gain_db", 0.0),
+                                error))
+                            return nullptr;
+                    } else {
+                        if (!clipDocument.setClipFades(
+                                index,
+                                optionalDouble(params, "fade_in", 0.0),
+                                optionalDouble(params, "fade_out", 0.0), error))
+                            return nullptr;
+                    }
+                }
+            }
+            if (trackIndex == m_timeline.activeTrack())
+                syncSelectionFromActive();
+            return info();
         }
 
         if (command == "gain" || command == "normalize" ||
@@ -1764,10 +2069,16 @@ std::vector<std::string> Session::commandNames() {
         "image_spectrogram", "oscilloscope_render", "mastering_render",
         "regenerate_track", "add_track",
         "add_empty_track", "remove_track", "select_track", "track_set",
+        "selection_scope", "crop_track", "shift_track",
+        "split_stereo_track", "combine_mono_tracks", "stretch_track",
+        "make_clips", "flatten_clips", "split_clip", "delete_clip",
+        "move_clip", "stretch_clip", "repeat_clip", "set_clip_gain",
+        "set_clip_fades",
         "save_mixdown", "load_audio", "save_audio", "load_project",
         "save_project", "select", "select_all", "clear_selection", "undo",
         "redo",
-        "copy", "cut", "delete", "paste", "crop", "gain", "normalize",
+        "copy", "cut", "delete", "move_selection", "repeat_selection",
+        "snap_selection", "paste", "crop", "gain", "normalize",
         "fade_in", "fade_out", "reverse", "invert", "silence", "dc_remove",
         "insert_silence", "insert_audio", "time_stretch", "paulstretch",
         "pitch_shift", "resample", "spectral_gain", "spectral_filter",

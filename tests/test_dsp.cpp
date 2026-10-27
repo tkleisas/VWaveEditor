@@ -277,3 +277,33 @@ VWTEST("document resample changes rate and duration") {
     CHECK_EQ(doc.numFrames(), int64_t{4800});
     CHECK(doc.audio().equals(original));
 }
+
+VWTEST("zero crossing search finds the nearest sign change") {
+    Audio audio(1, 4800, 48000);
+    for (int64_t i = 0; i < audio.numFrames(); ++i) {
+        audio.sample(0, i) = static_cast<float>(
+            0.5 * std::sin(2.0 * kPi * 100.0 * static_cast<double>(i) /
+                           48000.0));
+    }
+    const int64_t crossing = findNearestZeroCrossing(audio, 250, 40);
+    CHECK(std::abs(crossing - 240) <= 1);
+    CHECK_EQ(findNearestZeroCrossing(audio, 4800, 4), int64_t{4800});
+
+    const Range snapped = snapRangeToZeroCrossings(audio, {247, 482}, 8);
+    CHECK(std::abs(snapped.start - 240) <= 1);
+    CHECK(snapped.length() > 0);
+    CHECK(snapped.end > snapped.start);
+}
+
+VWTEST("zero crossing search considers all stereo channels") {
+    Audio audio(2, 4800, 48000);
+    for (int64_t i = 0; i < audio.numFrames(); ++i) {
+        const double value =
+            0.5 * std::sin(2.0 * kPi * 100.0 * static_cast<double>(i) /
+                           48000.0);
+        audio.sample(0, i) = static_cast<float>(value);
+        audio.sample(1, i) = static_cast<float>(value);
+    }
+    const int64_t crossing = findNearestZeroCrossing(audio, 250, 40);
+    CHECK(std::abs(crossing - 240) <= 1);
+}

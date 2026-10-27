@@ -214,6 +214,7 @@ VWTEST("timeline project round-trip preserves tracks and controls") {
         {"version", 1},
         {"shape", "circle"}};
     timeline.setActiveTrack(2);
+    timeline.setSelectionScope(SelectionScope::ActiveTrack);
     timeline.setSelection(100, 800);
 
     TempDirectory directory;
@@ -227,6 +228,7 @@ VWTEST("timeline project round-trip preserves tracks and controls") {
     CHECK_EQ(loaded.trackCount(), 3);
     CHECK_EQ(loaded.sampleRate(), 48000);
     CHECK_EQ(loaded.activeTrack(), 2);
+    CHECK(loaded.selectionScope() == SelectionScope::ActiveTrack);
     CHECK_EQ(loaded.selection().start, int64_t{100});
     CHECK_EQ(loaded.selection().end, int64_t{800});
     CHECK_EQ(loaded.track(0).name, std::string("drums"));
@@ -241,6 +243,58 @@ VWTEST("timeline project round-trip preserves tracks and controls") {
     CHECK(loaded.track(2).document.audio().equals(
         timeline.track(2).document.audio()));
     CHECK(loaded.mixdown().numFrames() == timeline.mixdown().numFrames());
+}
+
+VWTEST("timeline selection scope limits selection to the active track") {
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("a", constantAudio(1000, 0.25f), 0,
+                                   &error));
+    REQUIRE(timeline.addAudioTrack("b", constantAudio(1000, 0.25f), 100,
+                                   &error));
+    timeline.setSelectionScope(SelectionScope::ActiveTrack);
+    timeline.setActiveTrack(1);
+    timeline.setSelection(200, 400);
+    CHECK(!timeline.track(0).document.selection().active);
+    REQUIRE(timeline.track(1).document.selection().active);
+    CHECK_EQ(timeline.track(1).document.selection().start, int64_t{100});
+    CHECK_EQ(timeline.track(1).document.selection().end, int64_t{300});
+
+    timeline.setActiveTrack(0);
+    CHECK(timeline.track(0).document.selection().active);
+    CHECK(!timeline.track(1).document.selection().active);
+    timeline.setSelectionScope(SelectionScope::AllTracks);
+    CHECK(timeline.track(0).document.selection().active);
+    CHECK(timeline.track(1).document.selection().active);
+}
+
+VWTEST("timeline crops one track and shifts tracks in time") {
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("a", constantAudio(1000, 0.25f), 100,
+                                   &error));
+    REQUIRE(timeline.addAudioTrack("b", constantAudio(800, 0.5f), 0,
+                                   &error));
+    timeline.track(0).recipe = {{"type", "test"}};
+    timeline.setSelectionScope(SelectionScope::ActiveTrack);
+    timeline.setActiveTrack(0);
+    timeline.setSelection(350, 650);
+    REQUIRE(timeline.cropTrack(0, {}, &error));
+    CHECK(error.empty());
+    CHECK_EQ(timeline.track(0).startFrame, int64_t{350});
+    CHECK_EQ(timeline.track(0).document.numFrames(), int64_t{300});
+    CHECK(timeline.track(0).recipe.empty());
+    CHECK_EQ(timeline.track(1).startFrame, int64_t{0});
+    CHECK_EQ(timeline.track(1).document.numFrames(), int64_t{800});
+    CHECK(!timeline.selection().active);
+
+    REQUIRE(timeline.shiftTrack(1, 250, &error));
+    CHECK_EQ(timeline.track(1).startFrame, int64_t{250});
+    CHECK(timeline.track(1).document.audio().equals(
+        constantAudio(800, 0.5f)));
+    CHECK(!timeline.shiftTrack(0, -1000, &error));
+    CHECK(!error.empty());
+    CHECK(!timeline.cropTrack(9, {}, &error));
 }
 
 VWTEST("timeline loads a legacy single-document project as one track") {
@@ -285,4 +339,151 @@ VWTEST("timeline empty mixdown and length after edits") {
     CHECK_EQ(timeline.mixdown().numFrames(), int64_t{50});
     timeline.track(0).document.undo();
     CHECK_EQ(timeline.lengthFrames(), int64_t{100});
+}
+
+VWTEST("timeline splits stereo into two mono tracks and preserves the mix") {
+    Timeline timeline;
+    std::string error;
+    Audio stereo(2, 400, 48000);
+    for (int64_t i = 0; i < 400; ++i) {
+        stereo.sample(0, i) = 0.25f;
+        stereo.sample(1, i) = 0.5f;
+    }
+    REQUIRE(timeline.addAudioTrack("wide", stereo, 100, &error));
+    REQUIRE(timeline.setTrackGainDb(0, -6.0));
+    const Audio before = timeline.mixdown();
+
+    REQUIRE(timeline.splitStereoTrack(0, true, &error));
+    CHECK(error.empty());
+    CHECK_EQ(timeline.trackCount(), 3);
+    CHECK(timeline.track(0).muted);
+    CHECK_EQ(timeline.track(1).name, std::string("wide L"));
+    CHECK_EQ(timeline.track(2).name, std::string("wide R"));
+    CHECK_EQ(timeline.track(1).document.numChannels(), 1);
+    CHECK_EQ(timeline.track(2).document.numChannels(), 1);
+    CHECK_NEAR(timeline.track(1).pan, -1.0, 1e-9);
+    CHECK_NEAR(timeline.track(2).pan, 1.0, 1e-9);
+    CHECK_EQ(timeline.track(1).startFrame, int64_t{100});
+    CHECK_EQ(timeline.track(2).startFrame, int64_t{100});
+    CHECK_EQ(timeline.activeTrack(), 1);
+    const Audio after = timeline.mixdown();
+    CHECK_EQ(after.numFrames(), before.numFrames());
+    for (int64_t i = 0; i < after.numFrames(); ++i) {
+        CHECK_NEAR(after.sample(0, i), before.sample(0, i), 1e-6);
+        CHECK_NEAR(after.sample(1, i), before.sample(1, i), 1e-6);
+    }
+
+    Timeline replaced;
+    REQUIRE(replaced.addAudioTrack("wide", stereo, 0, &error));
+    REQUIRE(replaced.splitStereoTrack(0, false, &error));
+    CHECK_EQ(replaced.trackCount(), 2);
+    CHECK_EQ(replaced.activeTrack(), 0);
+    CHECK_EQ(replaced.track(0).name, std::string("wide L"));
+    CHECK_EQ(replaced.track(1).name, std::string("wide R"));
+
+    Timeline mono;
+    REQUIRE(mono.addAudioTrack("mono", constantAudio(100, 0.1f), 0, &error));
+    CHECK(!mono.splitStereoTrack(0, true, &error));
+    CHECK(!error.empty());
+}
+
+VWTEST("timeline combines mono tracks with selectable padding") {
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("left", constantAudio(100, 0.2f), 0,
+                                   &error));
+    REQUIRE(timeline.addAudioTrack("short", constantAudio(50, 0.4f), 0,
+                                   &error));
+    StereoCombineOptions options;
+    options.padding = StereoPadding::Back;
+    REQUIRE(timeline.combineMonoTracks(0, 1, options, &error));
+    CHECK(error.empty());
+    CHECK_EQ(timeline.trackCount(), 3);
+    CHECK(timeline.track(0).muted);
+    CHECK(timeline.track(1).muted);
+    CHECK_EQ(timeline.activeTrack(), 2);
+    const auto& combined = timeline.track(2);
+    CHECK_EQ(combined.document.numChannels(), 2);
+    CHECK_EQ(combined.document.numFrames(), int64_t{100});
+    CHECK_NEAR(combined.document.audio().sample(0, 10), 0.2, 1e-6);
+    CHECK_NEAR(combined.document.audio().sample(1, 10), 0.4, 1e-6);
+    CHECK_NEAR(combined.document.audio().sample(1, 80), 0.0, 1e-6);
+
+    Timeline front;
+    REQUIRE(front.addAudioTrack("left", constantAudio(100, 0.2f), 0,
+                                &error));
+    REQUIRE(front.addAudioTrack("short", constantAudio(50, 0.4f), 0,
+                                &error));
+    options.padding = StereoPadding::Front;
+    REQUIRE(front.combineMonoTracks(0, 1, options, &error));
+    CHECK_NEAR(front.track(2).document.audio().sample(1, 10), 0.0, 1e-6);
+    CHECK_NEAR(front.track(2).document.audio().sample(1, 60), 0.4, 1e-6);
+
+    Timeline both;
+    REQUIRE(both.addAudioTrack("left", constantAudio(100, 0.2f), 0,
+                               &error));
+    REQUIRE(both.addAudioTrack("short", constantAudio(50, 0.4f), 0,
+                               &error));
+    options.padding = StereoPadding::Both;
+    REQUIRE(both.combineMonoTracks(0, 1, options, &error));
+    CHECK_NEAR(both.track(2).document.audio().sample(1, 10), 0.0, 1e-6);
+    CHECK_NEAR(both.track(2).document.audio().sample(1, 30), 0.4, 1e-6);
+    CHECK_NEAR(both.track(2).document.audio().sample(1, 80), 0.0, 1e-6);
+}
+
+VWTEST("timeline combines mono tracks at their timeline offsets") {
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("late", constantAudio(100, 0.2f), 100,
+                                   &error));
+    REQUIRE(timeline.addAudioTrack("early", constantAudio(50, 0.4f), 0,
+                                   &error));
+    StereoCombineOptions options;
+    options.padding = StereoPadding::Back;
+    options.keepOriginals = false;
+    REQUIRE(timeline.combineMonoTracks(0, 1, options, &error));
+    CHECK_EQ(timeline.trackCount(), 1);
+    CHECK_EQ(timeline.activeTrack(), 0);
+    const auto& combined = timeline.track(0);
+    CHECK_EQ(combined.startFrame, int64_t{0});
+    CHECK_EQ(combined.document.numFrames(), int64_t{200});
+    CHECK_NEAR(combined.document.audio().sample(0, 10), 0.0, 1e-6);
+    CHECK_NEAR(combined.document.audio().sample(0, 110), 0.2, 1e-6);
+    CHECK_NEAR(combined.document.audio().sample(1, 10), 0.4, 1e-6);
+}
+
+VWTEST("timeline rejects invalid stereo splits and combines") {
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("a", constantAudio(100, 0.1f), 0, &error));
+    REQUIRE(timeline.addAudioTrack("b", constantAudio(100, 0.1f), 0, &error));
+    CHECK(!timeline.splitStereoTrack(0, true, &error));
+    CHECK(!error.empty());
+    error.clear();
+    CHECK(!timeline.combineMonoTracks(0, 0, {}, &error));
+    CHECK(!error.empty());
+    error.clear();
+    CHECK(!timeline.combineMonoTracks(0, 8, {}, &error));
+    CHECK(!error.empty());
+}
+
+VWTEST("timeline uses clip arrangements for length and mixdown") {
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("clips", constantAudio(1000, 0.2f), 100,
+                                   &error));
+    auto& document = timeline.track(0).document;
+    REQUIRE(document.createClipArrangement());
+    REQUIRE(document.splitClipAt(400));
+    REQUIRE(document.moveClip(1, 600));
+    CHECK_EQ(timeline.lengthFrames(), int64_t{1300});
+    const Audio mix = timeline.mixdown();
+    CHECK_EQ(mix.numFrames(), int64_t{1300});
+    CHECK_NEAR(mix.sample(0, 150), 0.2 * 0.70710678, 1e-5);
+    CHECK_NEAR(mix.sample(0, 500), 0.0, 1e-6);
+    CHECK_NEAR(mix.sample(0, 750), 0.2 * 0.70710678, 1e-5);
+
+    timeline.track(0).startFrame = 0;
+    CHECK_EQ(timeline.lengthFrames(), int64_t{1200});
+    CHECK_EQ(timeline.mixdown().numFrames(), int64_t{1200});
 }
