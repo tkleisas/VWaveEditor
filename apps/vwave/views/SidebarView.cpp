@@ -516,10 +516,10 @@ void App::drawSidebar() {
                   256, m_imageIterations);
         y += 30;
     } else if (m_tab == vwave::EditorTab::Oscilloscope) {
-        const bool hasScope = m_scopePath.valid();
+        const bool hasScope = m_scopeController.valid();
         drawSection("SCOPE PATH", y);
         addButton(std::string("Shape: ") +
-                      kScopeShapeNames[m_scopeShape],
+                      kScopeShapeNames[m_scopeController.shape()],
                   18, y, buttonWidth * 2 + gap, buttonHeight,
                   [this] { cycleScopeShape(); });
         y += buttonHeight + 6;
@@ -543,15 +543,13 @@ void App::drawSidebar() {
                   m_scopeTurns, [this](double) { generateScopePath(); });
         y += 30;
         addButton(std::string("Closed: ") +
-                      (m_scopePath.closed ? "On" : "Off"),
+                      (m_scopeController.path().closed ? "On" : "Off"),
                   18, y, buttonWidth, buttonHeight, [this] {
-                      m_scopePath.closed = !m_scopePath.closed;
+                      m_scopeController.path().closed = !m_scopeController.path().closed;
                   }, false, false, hasScope);
         addButton("Clear Path", 18 + buttonWidth + gap, y, buttonWidth,
                   buttonHeight, [this] {
-                      m_scopeShape = 0;
-                      m_scopePath = {};
-                      m_scopePath.name = "Path";
+                      m_scopeController.startPolyline();
                       setStatus("Scope path cleared; click the scope to add points");
                   });
         y += buttonHeight + 6;
@@ -583,32 +581,32 @@ void App::drawSidebar() {
                   m_scopeSmoothing);
         y += 30;
         addButton(std::string("Band Limit: ") +
-                      (m_scopeBandLimited ? "On" : "Off"),
+                      (m_scopeController.bandLimited() ? "On" : "Off"),
                   18, y, buttonWidth, buttonHeight,
-                  [this] { m_scopeBandLimited = !m_scopeBandLimited; });
+                  [this] { m_scopeController.toggleBandLimited(); });
         addButton("Oversample: " +
-                      std::to_string(kScopeOversampling[m_scopeOversampling]) +
+                      std::to_string(kScopeOversampling[m_scopeController.oversampling()]) +
                       "x",
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
                   [this] { cycleScopeOversampling(); });
         y += buttonHeight + 6;
         addButton(std::string("Direction: ") +
-                      kScopeDirectionNames[m_scopeDirection],
+                      kScopeDirectionNames[m_scopeController.direction()],
                   18, y, buttonWidth, buttonHeight,
                   [this] { cycleScopeDirection(); });
         addButton(std::string("Normalize: ") +
-                      (m_scopeNormalize ? "On" : "Off"),
+                      (m_scopeController.normalize() ? "On" : "Off"),
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
-                  [this] { m_scopeNormalize = !m_scopeNormalize; });
+                  [this] { m_scopeController.toggleNormalize(); });
         y += buttonHeight + 6;
         addButton("Render to Track", 18, y, buttonWidth * 2 + gap, 26,
                   [this] { renderScopeToTrack(); }, true, false, hasScope);
         y += 32;
         if (hasScope) {
             std::ostringstream info;
-            info << m_scopePath.points.size() << " points  "
-                 << (m_scopePath.closed ? "closed" : "open") << "  "
-                 << formatMorph(m_scopePath.length());
+            info << m_scopeController.path().points.size() << " points  "
+                 << (m_scopeController.path().closed ? "closed" : "open") << "  "
+                 << formatMorph(m_scopeController.path().length());
             drawText(info.str(), 18, y, kTextDim, fontSmall());
             y += 18;
         }

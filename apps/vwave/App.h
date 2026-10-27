@@ -12,6 +12,7 @@
 #include "controllers/SelectionController.h"
 #include "controllers/ImageController.h"
 #include "controllers/MasteringController.h"
+#include "controllers/ScopeController.h"
 #include "controllers/SpectralController.h"
 #include "views/WaveformPeakCache.h"
 #include "controllers/StereoController.h"
@@ -192,6 +193,8 @@ private:
     void drawContextMenu();
     void closeContextMenu();
     void loadImage(const std::string& path);
+    vwave::app::ScopeShapeParams scopeShapeParams() const;
+    vwave::app::ScopeRenderParams scopeRenderParams() const;
     void renderImageToTrack();
     void cycleImagePhaseMode();
     void cycleImageFrequencyScale();
@@ -293,12 +296,10 @@ private:
     vwave::Document m_emptyDocument;
     vwave::app::UiDispatcher m_dispatcher;
     vwave::JobSystem m_jobs;
-    vwave::JobHandle m_scopeJob;
     vwave::JobHandle m_wavetableJob;
     vwave::app::AnalysisService m_analysis;
     vwave::app::AnalysisController m_analysisData;
     std::shared_ptr<const vwave::Audio> m_audioSnapshot;
-    uint64_t m_scopeRequest = 0;
     uint64_t m_wavetableRequest = 0;
     AudioPlayer m_player;
     vwave::app::StereoController m_stereo;
@@ -307,13 +308,7 @@ private:
     vwave::SpectralViewport m_spectralView;
     vwave::Wavetable m_wavetable;
     vwave::WavetableViewport m_wavetableView;
-    vwave::ScopePath m_scopePath;
     SDL_Rect m_scopeArea{};
-    int m_scopeShape = 2;
-    int m_scopeDirection = 0;
-    int m_scopeOversampling = 2;
-    bool m_scopeBandLimited = true;
-    bool m_scopeNormalize = true;
     std::vector<double> m_frameWeights;
     bool m_freeBlend = false;
     vwave::Spectrogram m_spectrogram;
@@ -390,6 +385,7 @@ private:
     vwave::app::SpectralController m_spectralController;
     vwave::app::MasteringController m_masteringController;
     vwave::app::ImageController m_imageController;
+    vwave::app::ScopeController m_scopeController;
     vwave::app::WaveformPeakCache m_peakCache;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;

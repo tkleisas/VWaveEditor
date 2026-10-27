@@ -134,6 +134,17 @@ App::App()
               clearAnalysis();
               setTab(vwave::EditorTab::Waveform);
               updateWindowTitle();
+          }),
+      m_scopeController(
+          m_jobs, m_dispatcher, m_timeline, m_player,
+          [this](const std::string& status) { setStatus(status); },
+          [this](int64_t start) {
+              syncTrackControls();
+              m_view.fit(m_timeline.lengthFrames());
+              m_playhead = start;
+              clearAnalysis();
+              setTab(vwave::EditorTab::Waveform);
+              updateWindowTitle();
           }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
@@ -579,9 +590,8 @@ std::shared_ptr<const vwave::Audio> App::activeAudioSnapshot() {
 
 void App::cancelRenderJobs() {
     m_imageController.cancel();
-    ++m_scopeRequest;
+    m_scopeController.cancel();
     ++m_wavetableRequest;
-    if (m_scopeJob.valid()) m_scopeJob.cancel();
     if (m_wavetableJob.valid()) m_wavetableJob.cancel();
 }
 
@@ -844,134 +854,50 @@ void App::renderImageToTrack() {
     m_imageController.render(m_playhead, params);
 }
 
+vwave::app::ScopeShapeParams App::scopeShapeParams() const {
+    vwave::app::ScopeShapeParams params;
+    params.pointCount =
+        static_cast<int>(std::lround(m_scopePointCount.value));
+    params.size = m_scopeSize.value;
+    params.a = m_scopeA.value;
+    params.b = m_scopeB.value;
+    params.phase = m_scopePhase.value;
+    params.turns = static_cast<int>(std::lround(m_scopeTurns.value));
+    return params;
+}
+
+vwave::app::ScopeRenderParams App::scopeRenderParams() const {
+    vwave::app::ScopeRenderParams params;
+    params.duration = m_scopeDuration.value;
+    params.scanHz = m_scopeScanHz.value;
+    params.gain = m_scopeGain.value;
+    params.smoothing = m_scopeSmoothing.value;
+    return params;
+}
+
 void App::generateScopePath() {
-    if (m_scopeShape <= 0) return;
-    const vwave::ScopeShape shape =
-        static_cast<vwave::ScopeShape>(m_scopeShape);
-    m_scopePath = makeScopeShape(
-        shape, static_cast<int>(std::lround(m_scopePointCount.value)),
-        m_scopeSize.value, m_scopeA.value, m_scopeB.value,
-        m_scopePhase.value,
-        static_cast<int>(std::lround(m_scopeTurns.value)));
+    m_scopeController.generate(scopeShapeParams());
 }
 
 void App::cycleScopeShape() {
-    m_scopeShape = (m_scopeShape + 1) %
-                   static_cast<int>(sizeof(kScopeShapeNames) /
-                                    sizeof(kScopeShapeNames[0]));
-    if (m_scopeShape == 0) {
-        m_scopePath = {};
-        m_scopePath.name = "Path";
-        setStatus("Polyline mode: click the scope to add points");
-    } else {
-        generateScopePath();
-        setStatus("Scope shape: " + std::string(kScopeShapeNames[m_scopeShape]));
-    }
+    m_scopeController.cycleShape(scopeShapeParams());
 }
 
-void App::cycleScopeDirection() {
-    m_scopeDirection = (m_scopeDirection + 1) % 3;
-}
+void App::cycleScopeDirection() { m_scopeController.cycleDirection(); }
 
-void App::cycleScopeOversampling() {
-    m_scopeOversampling = (m_scopeOversampling + 1) % 4;
-}
+void App::cycleScopeOversampling() { m_scopeController.cycleOversampling(); }
 
 void App::renderScopeToTrack() {
-    if (!m_scopePath.valid()) {
-        setStatus("Create or load a scope path first");
-        return;
-    }
-    vwave::ScopeRenderOptions options;
-    options.sampleRate =
-        m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;
-    options.duration = m_scopeDuration.value;
-    options.scanHz = m_scopeScanHz.value;
-    options.gain = m_scopeGain.value;
-    options.smoothing = m_scopeSmoothing.value;
-    options.bandLimited = m_scopeBandLimited;
-    options.bandLimitHz = 16000.0;
-    options.oversampling = kScopeOversampling[m_scopeOversampling];
-    options.direction = static_cast<vwave::ScopeDirection>(m_scopeDirection);
-    options.normalize = m_scopeNormalize;
-    options.peak = 0.9;
-
-    const vwave::ScopePath path = m_scopePath;
-    const int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
-    const std::string name =
-        path.name.empty() ? std::string("Scope") : path.name;
-    const uint64_t request = ++m_scopeRequest;
-    if (m_scopeJob.valid()) m_scopeJob.cancel();
-
-    m_scopeJob = m_jobs.submit(
-        [this, request, path, options, start, name](
-            vwave::JobControl& control) mutable {
-            std::string error;
-            vwave::Audio rendered;
-            try {
-                rendered = vwave::renderScopePath(path, options, &error);
-            } catch (const std::exception& exception) {
-                error = exception.what();
-            }
-            if (control.cancelled()) return;
-            m_dispatcher.post(
-                [this, request, rendered = std::move(rendered),
-                 error = std::move(error), path, options, start, name]() mutable {
-                    if (request != m_scopeRequest) return;
-                    if (rendered.empty()) {
-                        setStatus(error.empty() ? "Scope render failed" : error,
-                                  6000);
-                        return;
-                    }
-                    m_player.stop();
-                    std::string addError;
-                    if (!m_timeline.addAudioTrack(name, rendered, start,
-                                                  &addError)) {
-                        setStatus("Cannot add scope track: " + addError);
-                        return;
-                    }
-                    const int trackIndex = m_timeline.trackCount() - 1;
-                    m_timeline.track(trackIndex).recipe =
-                        vwave::makeScopeTrackRecipe(path, options);
-                    m_timeline.setActiveTrack(trackIndex);
-                    syncTrackControls();
-                    m_view.fit(m_timeline.lengthFrames());
-                    m_playhead = start;
-                    clearAnalysis();
-                    setTab(vwave::EditorTab::Waveform);
-                    updateWindowTitle();
-                    setStatus("Rendered scope path to track (" +
-                              formatSeconds(rendered.duration()) + ")");
-                });
-        });
-    setStatus("Rendering scope in background...", 60000);
+    m_scopeController.render(m_playhead, scopeRenderParams());
 }
 
 void App::loadScopePathFile(const std::string& path) {
-    vwave::ScopePath loaded;
-    std::string error;
-    if (!vwave::loadScopePath(path, loaded, &error)) {
-        setStatus(error.empty() ? "Scope path load failed" : error, 6000);
-        return;
-    }
-    m_scopePath = std::move(loaded);
-    m_scopeShape = 0;
-    setTab(vwave::EditorTab::Oscilloscope);
-    setStatus("Loaded scope path " + baseName(path));
+    if (m_scopeController.load(path))
+        setTab(vwave::EditorTab::Oscilloscope);
 }
 
 void App::saveScopePathFile(const std::string& path) {
-    if (!m_scopePath.valid()) {
-        setStatus("Create a scope path first");
-        return;
-    }
-    const std::string target = withExtension(path, ".vscope");
-    std::string error;
-    if (!vwave::saveScopePath(m_scopePath, target, &error)) {
-        setStatus(error.empty() ? "Scope path save failed" : error, 6000);
-        return;
-    }
-    setStatus("Saved scope path " + baseName(target));
+    m_scopeController.save(path);
 }
 
 void App::setTab(vwave::EditorTab tab) {
@@ -1235,7 +1161,7 @@ bool App::loadFile(const std::string& path) {
     if (extension == ".vwdoc") return loadProject(path);
     if (isScopePath(path)) {
         loadScopePathFile(path);
-        return m_scopePath.valid();
+        return m_scopeController.valid();
     }
     if (isImagePath(path)) {
         loadImage(path);
@@ -2309,7 +2235,9 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
             m_lastWavetableSample = -1;
         }
     } else if (m_tab == vwave::EditorTab::Oscilloscope) {
-        if (event.button != SDL_BUTTON_LEFT || m_scopeShape != 0) return;
+        if (event.button != SDL_BUTTON_LEFT ||
+            m_scopeController.shape() != 0)
+            return;
         SDL_Point point{event.x, event.y};
         if (!SDL_PointInRect(&point, &m_scopeArea) || m_scopeArea.w <= 0 ||
             m_scopeArea.h <= 0)
@@ -2326,20 +2254,21 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 2.0;
         const vwave::ScopePoint candidate{std::clamp(x, -1.0, 1.0),
                                           std::clamp(y, -1.0, 1.0)};
-        if (m_scopePath.points.size() >= 3) {
-            const auto& first = m_scopePath.points.front();
+        auto& path = m_scopeController.path();
+        if (path.points.size() >= 3) {
+            const auto& first = path.points.front();
             if (std::hypot(candidate.x - first.x, candidate.y - first.y) <
                 0.06) {
-                m_scopePath.closed = true;
+                path.closed = true;
                 setStatus("Scope path closed");
                 return;
             }
         }
-        m_scopePath.name = "Path";
-        m_scopePath.points.push_back(candidate);
-        m_scopePath.closed = false;
+        path.name = "Path";
+        path.points.push_back(candidate);
+        path.closed = false;
         setStatus("Scope point " +
-                  std::to_string(m_scopePath.points.size()) +
+                  std::to_string(path.points.size()) +
                   " added");
     }
 }

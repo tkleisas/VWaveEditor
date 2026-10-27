@@ -132,6 +132,7 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ImageController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/MasteringController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/RecordingController.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ScopeController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/SelectionController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/SpectralController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/StereoController.cpp
