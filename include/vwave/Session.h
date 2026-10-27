@@ -41,6 +41,9 @@ private:
     nlohmann::json executeTrackCommands(const std::string& command,
                                         const nlohmann::json& params,
                                         std::string* error);
+    nlohmann::json executeAnalysisCommands(const std::string& command,
+                                           const nlohmann::json& params,
+                                           std::string* error);
     nlohmann::json executeClipCommands(const std::string& command,
                                        const nlohmann::json& params,
                                        std::string* error);

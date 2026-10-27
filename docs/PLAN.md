@@ -517,4 +517,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   `src/session/`; `Session.cpp` is down from 2,092 to 1,722 lines.
 - Split track command handling into `SessionTrackCommands`; `Session.cpp` is
   down to 1,537 lines.
-- Next: split remaining Session command domains and `Document` internals.
+- Split analysis command handling into `SessionAnalysisCommands`; `Session.cpp`
+  is down to 1,438 lines.
+- Next: split remaining Session domains and `Document` internals.
