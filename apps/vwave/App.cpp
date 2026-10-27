@@ -356,6 +356,33 @@ int App::run() {
         std::error_code removeError;
         std::filesystem::remove(path, removeError);
         if (!hasTracks()) return 1;
+        auto waitForFile = [this](const std::filesystem::path& target) {
+            const Uint32 deadline = SDL_GetTicks() + 5000;
+            while (SDL_GetTicks() < deadline) {
+                std::error_code sizeError;
+                const auto size = std::filesystem::file_size(target, sizeError);
+                if (!sizeError && size > 0) return true;
+                m_dispatcher.drain();
+                SDL_Delay(2);
+            }
+            return false;
+        };
+        const auto savePath =
+            std::filesystem::temp_directory_path() /
+            "vwave_editor_smoke_saved.wav";
+        std::filesystem::remove(savePath, removeError);
+        saveAudio(savePath.string());
+        const bool audioSaved = waitForFile(savePath);
+        std::filesystem::remove(savePath, removeError);
+        if (!audioSaved) return 1;
+        const auto projectPath =
+            std::filesystem::temp_directory_path() /
+            "vwave_editor_smoke_saved.vwdoc";
+        std::filesystem::remove(projectPath, removeError);
+        saveProject(projectPath.string());
+        const bool projectSaved = waitForFile(projectPath);
+        std::filesystem::remove(projectPath, removeError);
+        if (!projectSaved) return 1;
     }
     static const vwave::EditorTab kSmokeTabs[] = {
         vwave::EditorTab::Waveform, vwave::EditorTab::Spectrum,
