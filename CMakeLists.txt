@@ -127,6 +127,9 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/AudioRecorder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ChromeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/AnalysisController.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/EventDispatch.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/KeyboardInput.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/input/MouseInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ClipController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/PlaybackController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ImageController.cpp
