@@ -75,7 +75,8 @@ Import/export converts to interleaved data only at the libsndfile boundary.
 
 ## Timeline
 
-`vwave::Timeline` is a project of layered tracks. Each track owns a
+`vwave::Timeline` is split into track management, stereo conversion, mixdown,
+and project IO units. Each track owns a
 `vwave::Document` plus a name, timeline offset, gain, pan, mute, solo, arm, and
 empty state. Timeline selection is expressed in project frames and translated
 to local track frames by subtracting each track's offset. Editing, analysis,
