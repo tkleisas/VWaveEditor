@@ -1,6 +1,8 @@
 #pragma once
 
 #include "AudioPlayer.h"
+#include "services/UiDispatcher.h"
+#include "vwave/JobSystem.h"
 #include "vwave/Mastering.h"
 #include "vwave/Timeline.h"
 
@@ -15,6 +17,7 @@ public:
     using Sink = std::function<void()>;
 
     MasteringController(vwave::Timeline& timeline, AudioPlayer& player,
+                        vwave::JobSystem& jobs, UiDispatcher& dispatcher,
                         StatusSink status, Sink rendered);
 
     const vwave::MasteringAnalysis& analysis() const { return m_analysis; }
@@ -35,12 +38,18 @@ public:
 private:
     vwave::Timeline& m_timeline;
     AudioPlayer& m_player;
+    vwave::JobSystem& m_jobs;
+    UiDispatcher& m_dispatcher;
     StatusSink m_status;
     Sink m_rendered;
     vwave::MasteringAnalysis m_analysis;
     int m_profile = 0;
     bool m_includeMuted = false;
     bool m_muteOriginals = true;
+    vwave::JobHandle m_job;
+    uint64_t m_request = 0;
+
+    void cancel();
 };
 
 } // namespace vwave::app

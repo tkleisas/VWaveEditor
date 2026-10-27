@@ -111,7 +111,7 @@ App::App()
                  const std::string& success) { runEdit(edit, success); },
           [this](const std::string& status) { setStatus(status); }),
       m_masteringController(
-          m_timeline, m_player,
+          m_timeline, m_player, m_jobs, m_dispatcher,
           [this](const std::string& status) { setStatus(status); },
           [this] {
               syncTrackControls();

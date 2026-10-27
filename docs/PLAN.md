@@ -529,4 +529,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   handling into `apps/vwave/input/`.
 - Current major files: `App.cpp` 1,352 lines, `Session.cpp` 327,
   `Document.cpp` 227, `Timeline.cpp` 157.
-- Next: remaining async/performance work and broader editor smoke coverage.
+- Moved mastering analysis and processed-stem rendering to background jobs
+  with stale-result rejection and timeline snapshots.
+- Next: broader editor smoke coverage and remaining async/performance work.
