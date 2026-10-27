@@ -322,6 +322,26 @@ bool App::init(const std::string& initialPath) {
 
 int App::run() {
     const bool smokeTest = std::getenv("VWAVE_SMOKE_TEST") != nullptr;
+    if (smokeTest) {
+        vwave::Audio audio(2, 9600, 48000);
+        for (int64_t frame = 0; frame < audio.numFrames(); ++frame) {
+            const double value =
+                0.2 * std::sin(2.0 * 3.141592653589793 * 440.0 *
+                               static_cast<double>(frame) / 48000.0);
+            audio.sample(0, frame) = static_cast<float>(value);
+            audio.sample(1, frame) = static_cast<float>(value * 0.8);
+        }
+        std::string error;
+        if (!m_timeline.addAudioTrack("Smoke", audio, 0, &error))
+            return 1;
+        m_timeline.setActiveTrack(0);
+        syncTrackControls();
+        m_view.fit(m_timeline.lengthFrames());
+    }
+    static const vwave::EditorTab kSmokeTabs[] = {
+        vwave::EditorTab::Waveform, vwave::EditorTab::Spectrum,
+        vwave::EditorTab::Wavetable, vwave::EditorTab::Mastering,
+        vwave::EditorTab::Image, vwave::EditorTab::Oscilloscope};
     int frames = 0;
     while (m_running) {
         SDL_Event event;
@@ -329,9 +349,20 @@ int App::run() {
         updatePlayback();
         updateRecording();
         m_dispatcher.drain();
+        if (smokeTest) {
+            constexpr int kTabCount =
+                static_cast<int>(sizeof(kSmokeTabs) / sizeof(kSmokeTabs[0]));
+            if (frames < 18) {
+                setTab(kSmokeTabs[frames / 3 % kTabCount]);
+            } else if (frames == 18) {
+                m_settingsController.open();
+            } else if (frames == 22) {
+                m_settingsController.close();
+            }
+        }
         draw();
         ++frames;
-        if (smokeTest && frames >= 4) break;
+        if (smokeTest && frames >= 26) break;
         SDL_Delay(4);
     }
     return 0;

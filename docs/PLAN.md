@@ -531,4 +531,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   `Document.cpp` 227, `Timeline.cpp` 157.
 - Moved mastering analysis and processed-stem rendering to background jobs
   with stale-result rejection and timeline snapshots.
-- Next: broader editor smoke coverage and remaining async/performance work.
+- Expanded editor smoke coverage with a generated stereo tone, all editor
+  tabs, and the settings dialog.
+- Next: remaining async/performance work.
