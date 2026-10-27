@@ -64,6 +64,18 @@ App::App()
               updateWindowTitle();
           },
           [this](const std::string& status) { setStatus(status); }),
+      m_playback(
+          m_timeline, m_player, m_playhead, m_loop,
+          [this](const std::string& status) { setStatus(status); },
+          [this](int64_t playhead) {
+              const double viewEnd = m_view.startFrame + m_view.visibleFrames;
+              if (playhead < m_view.startFrame || playhead > viewEnd) {
+                  m_view.startFrame =
+                      static_cast<double>(playhead) -
+                      m_view.visibleFrames * 0.15;
+                  m_view.clamp(m_timeline.lengthFrames());
+              }
+          }),
       m_clips(
           m_timeline, m_playhead, m_stretchRatio,
           [this](const std::function<bool(std::string*)>& edit,
@@ -959,42 +971,12 @@ void App::stretchSelectedClip() { m_clips.stretchSelected(); }
 int App::currentClipIndex() const { return m_clips.currentIndex(); }
 
 bool App::seekToTime(double seconds, std::string* error) {
-    if (error) error->clear();
-    if (m_timeline.empty() || m_timeline.sampleRate() <= 0) {
-        if (error) *error = "No timeline audio";
-        return false;
-    }
-    if (!std::isfinite(seconds) || seconds < 0.0) {
-        if (error) *error = "Invalid time";
-        return false;
-    }
-    m_player.stop();
-    m_playhead = clampFrame(
-        static_cast<int64_t>(std::llround(
-            seconds * static_cast<double>(m_timeline.sampleRate()))),
-        m_timeline.lengthFrames());
-    const double viewEnd = m_view.startFrame + m_view.visibleFrames;
-    if (m_playhead < m_view.startFrame || m_playhead > viewEnd) {
-        m_view.startFrame =
-            static_cast<double>(m_playhead) - m_view.visibleFrames * 0.15;
-        m_view.clamp(m_timeline.lengthFrames());
-    }
-    setStatus("Playhead " +
-              formatSeconds(static_cast<double>(m_playhead) /
-                            m_timeline.sampleRate()));
-    return true;
+    return m_playback.seekToTime(seconds, error);
 }
 
-void App::goToStart() {
-    seekToTime(0.0);
-}
+void App::goToStart() { m_playback.goToStart(); }
 
-void App::goToEnd() {
-    if (m_timeline.sampleRate() > 0) {
-        seekToTime(static_cast<double>(m_timeline.lengthFrames()) /
-                   static_cast<double>(m_timeline.sampleRate()));
-    }
-}
+void App::goToEnd() { m_playback.goToEnd(); }
 
 void App::setLoopToSelection() {
     if (!m_timeline.selection().active) {
@@ -1043,7 +1025,7 @@ void App::toggleLoop() {
 }
 
 bool App::loopPlaybackActive() const {
-    return m_loop.active(m_timeline.lengthFrames());
+    return m_playback.loopPlaybackActive();
 }
 
 void App::setLoopRegion(int64_t start, int64_t end) {
@@ -1067,6 +1049,7 @@ void App::setLoopRegion(int64_t start, int64_t end) {
               formatSeconds(static_cast<double>(end) /
                             std::max(1, m_timeline.sampleRate())));
 }
+
 
 void App::cycleImagePhaseMode() {
     m_imagePhaseMode = (m_imagePhaseMode + 1) % 5;
@@ -1336,60 +1319,12 @@ void App::setTab(vwave::EditorTab tab) {
 
 void App::togglePlay() {
     if (m_recording) stopRecording();
-    if (m_player.isPlaying()) {
-        stopPlayback();
-        return;
-    }
-    if (m_timeline.empty()) {
-        setStatus("Add or open an audio file first");
-        return;
-    }
-    vwave::Range range;
-    const bool loop = loopPlaybackActive();
-    if (loop) {
-        const int64_t loopEnd = std::clamp<int64_t>(
-            m_loop.end(), 0, m_timeline.lengthFrames());
-        const int64_t loopStart = std::clamp<int64_t>(
-            m_loop.start(), 0, m_timeline.lengthFrames());
-        int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
-        if (start < loopStart || start >= loopEnd) start = loopStart;
-        range = {start, loopEnd};
-    } else if (m_timeline.selection().active) {
-        range = m_timeline.selectedRange();
-    } else {
-        int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
-        if (start >= m_timeline.lengthFrames()) start = 0;
-        range = {start, m_timeline.lengthFrames()};
-    }
-    if (range.empty()) {
-        setStatus("Nothing to play");
-        return;
-    }
-    if (m_player.play(m_timeline, range.start, range.end, loop)) {
-        m_playhead = range.start;
-        setStatus(loop ? "Playing loop" : "Playing mix");
-    } else {
-        setStatus("Audio playback is unavailable");
-    }
+    m_playback.togglePlay();
 }
 
-void App::stopPlayback() {
-    m_player.stop();
-    if (m_player.sourceStart() <= m_timeline.lengthFrames())
-        m_playhead = m_player.sourceStart();
-}
+void App::stopPlayback() { m_playback.stop(); }
 
-void App::updatePlayback() {
-    if (!m_player.isPlaying()) return;
-    m_playhead = clampFrame(m_player.sourcePosition(),
-                            m_timeline.lengthFrames());
-    const double viewEnd = m_view.startFrame + m_view.visibleFrames;
-    if (m_playhead < m_view.startFrame || m_playhead > viewEnd) {
-        m_view.startFrame =
-            static_cast<double>(m_playhead) - m_view.visibleFrames * 0.15;
-        m_view.clamp(m_timeline.lengthFrames());
-    }
-}
+void App::updatePlayback() { m_playback.update(); }
 
 void App::runEdit(const std::function<bool(std::string*)>& edit,
                   const std::string& success) {

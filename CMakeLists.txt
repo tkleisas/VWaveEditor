@@ -128,6 +128,7 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ChromeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/AnalysisController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ClipController.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/PlaybackController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/StereoController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/TrackController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ContextMenu.cpp

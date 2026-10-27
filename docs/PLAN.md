@@ -509,4 +509,6 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Extracted `StereoController` for padding mode and stereo/mono track conversion.
 - Extracted `TrackController` for track selection, add/remove/empty-track actions,
   and per-track gain/pan control state.
-- Next: extract transport controller, then split `Session` and `Document`.
+- Extracted `PlaybackController` for seek/play/stop/update and loop-aware
+  playback ranges; loop state remains in `LoopController`.
+- Next: split `Session` and `Document` internals.

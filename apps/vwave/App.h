@@ -7,6 +7,7 @@
 #include "controllers/AnalysisController.h"
 #include "controllers/ClipController.h"
 #include "controllers/LoopController.h"
+#include "controllers/PlaybackController.h"
 #include "controllers/StereoController.h"
 #include "controllers/TrackController.h"
 #include "services/AnalysisService.h"
@@ -376,6 +377,7 @@ private:
     int64_t m_playhead = 0;
     vwave::app::TrackController m_tracks;
     vwave::app::LoopController m_loop;
+    vwave::app::PlaybackController m_playback;
     bool m_spectrumClickCandidate = false;
     int m_spectrumClickX = 0;
     int m_spectrumClickY = 0;
