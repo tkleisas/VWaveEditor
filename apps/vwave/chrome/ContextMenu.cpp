@@ -28,7 +28,7 @@ void App::openTrackContextMenu(int trackIndex, int x, int y) {
             const int64_t local = std::clamp<int64_t>(
                 laneFrameAtX(lane, x) - track.startFrame, 0,
                 track.document.numFrames());
-            m_selectedClip = track.document.clipIndexAt(local);
+            m_clips.setSelectedClip(track.document.clipIndexAt(local));
         }
     }
     m_contextMenuTrack = trackIndex;

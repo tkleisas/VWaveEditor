@@ -503,5 +503,5 @@ automation presets; the cut-up arrangement model itself is implemented.
   jobs with stale-result rejection; waveform, spectrum, and 3D views use them.
 - Added copy-on-write `Audio` storage, making analysis snapshots cheap and
   isolating worker reads from UI edits.
-- Next: extract transport/track/clip controllers, then split `Session` and
-  `Document`.
+- Extracted `ClipController` for clip-tool state and clip editing actions.
+- Next: extract transport/track controllers, then split `Session` and `Document`.

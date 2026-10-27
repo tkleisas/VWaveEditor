@@ -133,9 +133,9 @@ void App::drawTrackSidebar(int& y) {
                   else
                       makeClips();
               }, false, false, !m_timeline.empty());
-    addButton(std::string("Clip Tool: ") + (m_clipTool ? "On" : "Off"),
+    addButton(std::string("Clip Tool: ") + (m_clips.toolEnabled() ? "On" : "Off"),
               18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
-              [this] { toggleClipTool(); }, false, m_clipTool, hasClips);
+              [this] { toggleClipTool(); }, false, m_clips.toolEnabled(), hasClips);
     y += buttonHeight + 6;
     addButton("Split Clip", 18, y, buttonWidth, buttonHeight,
               [this] { splitClipAtPlayhead(); }, false, false, hasClips);

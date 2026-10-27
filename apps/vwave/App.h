@@ -4,6 +4,7 @@
 #include "AudioRecorder.h"
 
 #include "ui/UiRenderer.h"
+#include "controllers/ClipController.h"
 #include "controllers/LoopController.h"
 #include "services/AnalysisService.h"
 #include "services/UiDispatcher.h"
@@ -359,8 +360,6 @@ private:
     int64_t m_waveDragPreviewFrame = 0;
     int m_repeatDragCount = 0;
     int64_t m_clipDragOriginalFrames = 0;
-    int m_selectedClip = -1;
-    bool m_clipTool = false;
     vwave::StereoPadding m_stereoPadding = vwave::StereoPadding::Back;
     int m_spectrum3DHoverX = -1;
     int m_spectrum3DHoverY = -1;
@@ -405,6 +404,7 @@ private:
     vwave::ParameterSlider m_gainDb;
     vwave::ParameterSlider m_normalizePeak;
     vwave::ParameterSlider m_stretchRatio;
+    vwave::app::ClipController m_clips;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;
     vwave::ParameterSlider m_sliceSensitivity;

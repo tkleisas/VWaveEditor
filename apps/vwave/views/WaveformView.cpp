@@ -44,10 +44,7 @@ void App::drawWaveform(const SDL_Rect& area) {
     m_trackLaneRects.clear();
     m_trackHeaderRects.resize(static_cast<size_t>(m_timeline.trackCount()));
     m_trackLaneRects.resize(static_cast<size_t>(m_timeline.trackCount()));
-    if (!hasTracks() || !activeDocument().hasClips()) {
-        m_clipTool = false;
-        m_selectedClip = -1;
-    }
+    if (!hasTracks() || !activeDocument().hasClips()) m_clips.reset();
 
     const int margin = 10;
     const int headerWidth = 232;
@@ -299,7 +296,7 @@ void App::drawWaveform(const SDL_Rect& area) {
                          lane.h - 8};
             const bool selected =
                 index == m_timeline.activeTrack() &&
-                static_cast<int>(clipIndex) == m_selectedClip;
+                static_cast<int>(clipIndex) == m_clips.selectedClip();
             SDL_SetRenderDrawColor(
                 m_renderer, selected ? kAccent.r : kTextDim.r,
                 selected ? kAccent.g : kTextDim.g,
@@ -328,10 +325,11 @@ void App::drawWaveform(const SDL_Rect& area) {
                          box.y + 5, selected ? kText : kTextDim, fontSmall());
             }
         }
-        if (index == m_timeline.activeTrack() && m_clipTool &&
-            m_selectedClip >= 0 &&
-            static_cast<size_t>(m_selectedClip) < clips.size()) {
-            const auto& clip = clips[static_cast<size_t>(m_selectedClip)];
+        if (index == m_timeline.activeTrack() && m_clips.toolEnabled() &&
+            m_clips.selectedClip() >= 0 &&
+            static_cast<size_t>(m_clips.selectedClip()) < clips.size()) {
+            const auto& clip =
+                clips[static_cast<size_t>(m_clips.selectedClip())];
             const int64_t clipEnd =
                 track.startFrame + clip.timelineStart +
                 vwave::clipOutputFrames(clip);

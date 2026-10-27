@@ -25,7 +25,13 @@
 using namespace vwave::app;
 using namespace vwave::ui;
 
-App::App() : m_analysis(m_jobs, m_dispatcher) {
+App::App()
+    : m_analysis(m_jobs, m_dispatcher),
+      m_clips(
+          m_timeline, m_playhead, m_stretchRatio,
+          [this](const std::function<bool(std::string*)>& edit,
+                 const std::string& success) { runEdit(edit, success); },
+          [this](const std::string& status) { setStatus(status); }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
             applyDialog(mode, path);
@@ -463,8 +469,7 @@ void App::selectTrack(int index) {
     if (index < 0 || index >= m_timeline.trackCount()) return;
     if (m_timeline.activeTrack() == index) return;
     m_timeline.setActiveTrack(index);
-    m_selectedClip = -1;
-    if (!activeDocument().hasClips()) m_clipTool = false;
+    m_clips.onTrackChanged(activeDocument().hasClips());
     clearAnalysis();
     m_wavetable = {};
     m_frameWeights.clear();
@@ -479,8 +484,7 @@ void App::removeTrack(int index) {
     m_player.stop();
     const std::string name = m_timeline.track(index).name;
     if (!m_timeline.removeTrack(index)) return;
-    m_selectedClip = -1;
-    if (!hasTracks() || !activeDocument().hasClips()) m_clipTool = false;
+    m_clips.onTrackChanged(hasTracks() && activeDocument().hasClips());
     syncTrackControls();
     clearAnalysis();
     m_wavetable = {};
@@ -524,8 +528,7 @@ void App::addEmptyTrack() {
         return;
     }
     m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
-    m_selectedClip = -1;
-    m_clipTool = false;
+    m_clips.reset();
     for (int i = 0; i < m_timeline.trackCount(); ++i)
         m_timeline.setTrackArmed(i, i == m_timeline.activeTrack());
     syncTrackControls();
@@ -958,8 +961,7 @@ void App::splitActiveStereoTrack() {
         setStatus(error.empty() ? "Split failed" : error, 6000);
         return;
     }
-    m_selectedClip = -1;
-    m_clipTool = false;
+    m_clips.reset();
     syncTrackControls();
     clearAnalysis();
     m_view.fit(m_timeline.lengthFrames());
@@ -991,8 +993,7 @@ void App::combineActiveMono(int direction) {
         setStatus(error.empty() ? "Combine failed" : error, 6000);
         return;
     }
-    m_selectedClip = -1;
-    m_clipTool = false;
+    m_clips.reset();
     syncTrackControls();
     clearAnalysis();
     m_view.fit(m_timeline.lengthFrames());
@@ -1018,137 +1019,23 @@ void App::cycleStereoPadding() {
               std::string(vwave::stereoPaddingName(m_stereoPadding)));
 }
 
-void App::toggleClipTool() {
-    if (!hasTracks() || !activeDocument().hasClips()) {
-        setStatus("Make clips first");
-        return;
-    }
-    m_clipTool = !m_clipTool;
-    if (m_clipTool) {
-        m_timeline.clearSelection();
-        m_selectedClip = -1;
-        m_selectedClip = currentClipIndex();
-    }
-    setStatus(m_clipTool ? "Clip tool enabled" : "Clip tool disabled");
-}
+void App::toggleClipTool() { m_clips.toggleTool(); }
 
-void App::makeClips() {
-    if (!hasTracks() || activeDocument().audio().empty()) {
-        setStatus("Open a track first");
-        return;
-    }
-    if (activeDocument().hasClips()) {
-        setStatus("Track already has clips");
-        return;
-    }
-    runEdit([this](std::string* error) {
-        return activeDocument().createClipArrangement(error);
-    }, "Created clip arrangement");
-    if (activeDocument().hasClips()) {
-        m_selectedClip = 0;
-        m_clipTool = true;
-        m_timeline.clearSelection();
-    }
-}
+void App::makeClips() { m_clips.make(); }
 
-void App::flattenClips() {
-    if (!hasTracks() || !activeDocument().hasClips()) {
-        setStatus("Track has no clips");
-        return;
-    }
-    runEdit([this](std::string* error) {
-        return activeDocument().flattenClips(error);
-    }, "Flattened clip arrangement");
-    m_selectedClip = -1;
-    m_clipTool = false;
-}
+void App::flattenClips() { m_clips.flatten(); }
 
-void App::splitClipAtPlayhead() {
-    if (!hasTracks() || !activeDocument().hasClips()) {
-        setStatus("Make clips first");
-        return;
-    }
-    const auto& track = m_timeline.track(m_timeline.activeTrack());
-    const int64_t frame = std::max<int64_t>(0, m_playhead - track.startFrame);
-    runEdit([this, frame](std::string* error) {
-        return activeDocument().splitClipAt(frame, error);
-    }, "Split clip");
-    m_selectedClip = activeDocument().clipIndexAt(frame);
-}
+void App::splitClipAtPlayhead() { m_clips.splitAtPlayhead(); }
 
-void App::deleteSelectedClip() {
-    const int index = currentClipIndex();
-    if (index < 0) {
-        setStatus("Select a clip first");
-        return;
-    }
-    runEdit([this, index](std::string* error) {
-        return activeDocument().deleteClip(static_cast<size_t>(index), error);
-    }, "Deleted clip");
-    if (m_selectedClip < 0 ||
-        static_cast<size_t>(m_selectedClip) >=
-            activeDocument().clips().size())
-        m_selectedClip = static_cast<int>(activeDocument().clips().size()) - 1;
-}
+void App::deleteSelectedClip() { m_clips.deleteSelected(); }
 
-void App::repeatSelectedClip(int count) {
-    const int index = currentClipIndex();
-    if (index < 0) {
-        setStatus("Select a clip first");
-        return;
-    }
-    count = std::clamp(count, 1, 64);
-    runEdit([this, index, count](std::string* error) {
-        return activeDocument().repeatClip(static_cast<size_t>(index), count,
-                                           error);
-    }, "Repeated clip");
-    m_selectedClip = index;
-}
+void App::repeatSelectedClip(int count) { m_clips.repeatSelected(count); }
 
-void App::moveSelectedClipToPlayhead() {
-    const int index = currentClipIndex();
-    if (index < 0) {
-        setStatus("Select a clip first");
-        return;
-    }
-    const auto& track = m_timeline.track(m_timeline.activeTrack());
-    const int64_t frame = std::max<int64_t>(0, m_playhead - track.startFrame);
-    runEdit([this, index, frame](std::string* error) {
-        return activeDocument().moveClip(static_cast<size_t>(index), frame,
-                                         error);
-    }, "Moved clip to playhead");
-    m_selectedClip = index;
-}
+void App::moveSelectedClipToPlayhead() { m_clips.moveSelectedToPlayhead(); }
 
-void App::stretchSelectedClip() {
-    const int index = currentClipIndex();
-    if (index < 0) {
-        setStatus("Select a clip first");
-        return;
-    }
-    runEdit([this, index](std::string* error) {
-        return activeDocument().stretchClip(
-            static_cast<size_t>(index), m_stretchRatio.value, error);
-    }, "Stretched clip");
-    m_selectedClip = index;
-}
+void App::stretchSelectedClip() { m_clips.stretchSelected(); }
 
-int App::currentClipIndex() const {
-    if (m_timeline.empty()) return -1;
-    const auto& document = activeDocument();
-    const auto& clips = document.clips();
-    if (clips.empty()) return -1;
-    if (m_selectedClip >= 0 &&
-        m_selectedClip < static_cast<int>(clips.size()))
-        return m_selectedClip;
-    const auto& track = m_timeline.track(m_timeline.activeTrack());
-    int index = document.clipIndexAt(m_playhead - track.startFrame);
-    if (index < 0 && m_timeline.selection().active) {
-        index = document.clipIndexAt(m_timeline.selection().start -
-                                     track.startFrame);
-    }
-    return index;
-}
+int App::currentClipIndex() const { return m_clips.currentIndex(); }
 
 bool App::seekToTime(double seconds, std::string* error) {
     if (error) error->clear();
@@ -1601,14 +1488,10 @@ void App::markEdited() {
     m_audioSnapshot.reset();
     m_analysis.cancelAll();
     m_loop.clamp(m_timeline.lengthFrames());
-    if (!hasTracks() || !activeDocument().hasClips()) {
-        m_clipTool = false;
-        m_selectedClip = -1;
-    } else if (m_selectedClip >=
-               static_cast<int>(activeDocument().clips().size())) {
-        m_selectedClip =
-            static_cast<int>(activeDocument().clips().size()) - 1;
-    }
+    if (hasTracks())
+        m_clips.afterEdit(activeDocument());
+    else
+        m_clips.reset();
     syncSelectionFromActive();
     m_view.clamp(m_timeline.lengthFrames());
     m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
@@ -1884,8 +1767,7 @@ bool App::loadAudio(const std::string& path) {
     m_timeline = std::move(timeline);
     m_audioPath = path;
     m_projectPath.clear();
-    m_selectedClip = -1;
-    m_clipTool = false;
+    m_clips.reset();
     m_loop.clear();
     syncTrackControls();
     m_wavetable = {};
@@ -1919,8 +1801,7 @@ bool App::addTrackFile(const std::string& path) {
         return false;
     }
     m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
-    m_selectedClip = -1;
-    m_clipTool = false;
+    m_clips.reset();
     syncTrackControls();
     clearAnalysis();
     m_view.fit(m_timeline.lengthFrames());
@@ -1943,8 +1824,7 @@ bool App::loadProject(const std::string& path) {
     m_timeline = std::move(timeline);
     m_projectPath = path;
     m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
-    m_selectedClip = -1;
-    m_clipTool = false;
+    m_clips.reset();
     m_loop.clear();
     m_wavetable = {};
     m_frameWeights.clear();
@@ -2730,10 +2610,8 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
     }
     if (event.button != SDL_BUTTON_LEFT) return;
     if (m_tab == vwave::EditorTab::Waveform) {
-        if (m_clipTool && !activeDocument().hasClips()) {
-            m_clipTool = false;
-            m_selectedClip = -1;
-        }
+        if (m_clips.toolEnabled() && !activeDocument().hasClips())
+            m_clips.reset();
         m_clickCandidate = false;
         SDL_Point point{event.x, event.y};
         if (SDL_PointInRect(&point, &m_rulerArea)) {
@@ -2809,7 +2687,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 m_loop.beginDrag(frame, clipLane);
                 return;
             }
-            if (m_clipTool) {
+            if (m_clips.toolEnabled()) {
                 m_player.stop();
                 m_playhead = clampFrame(laneFrameAtX(clipLane, event.x),
                                         m_timeline.lengthFrames());
@@ -2824,11 +2702,11 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 const int clipIndex =
                     clipTrack.document.clipIndexAt(local);
                 if (clipIndex < 0) {
-                    m_selectedClip = -1;
+                    m_clips.setSelectedClip(-1);
                     setStatus("Click inside a clip");
                     return;
                 }
-                m_selectedClip = clipIndex;
+                m_clips.setSelectedClip(clipIndex);
                 const auto& clip =
                     clipTrack.document.clips()[static_cast<size_t>(clipIndex)];
                 const int64_t frames = vwave::clipOutputFrames(clip);
@@ -2929,7 +2807,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
 
             m_selectionAnchor = laneFrameAtX(lane, event.x);
             m_timeline.setSelection(m_selectionAnchor, m_selectionAnchor);
-            m_selectedClip = -1;
+            m_clips.setSelectedClip(-1);
             m_waveDrag = WaveDragMode::NewSelection;
             m_waveDragTrack = laneIndex;
             m_waveDragMouseX = event.x;
@@ -2961,7 +2839,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 m_view.frameAt(event.x - m_waveArea.x, m_waveArea.w,
                                m_timeline.lengthFrames());
             m_timeline.setSelection(m_selectionAnchor, m_selectionAnchor);
-            m_selectedClip = -1;
+            m_clips.setSelectedClip(-1);
             m_waveDrag = WaveDragMode::NewSelection;
             m_waveDragTrack = m_timeline.activeTrack();
             m_waveDragMouseX = event.x;
@@ -3106,7 +2984,7 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
             }
         } else if (drag == WaveDragMode::ClipMove) {
             if (index >= 0 && index < m_timeline.trackCount() &&
-                m_selectedClip >= 0) {
+                m_clips.selectedClip() >= 0) {
                 auto& track = m_timeline.track(index);
                 const int64_t localStart =
                     std::max<int64_t>(0, preview - track.startFrame);
@@ -3114,7 +2992,8 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
                     m_player.stop();
                     std::string error;
                     if (track.document.moveClip(
-                            static_cast<size_t>(m_selectedClip), localStart,
+                            static_cast<size_t>(m_clips.selectedClip()),
+                            localStart,
                             &error)) {
                         markEdited();
                         setStatus("Moved clip");
@@ -3125,7 +3004,7 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
             }
         } else if (drag == WaveDragMode::ClipStretch) {
             if (index >= 0 && index < m_timeline.trackCount() &&
-                m_selectedClip >= 0 && clipOriginalFrames > 0) {
+                m_clips.selectedClip() >= 0 && clipOriginalFrames > 0) {
                 auto& track = m_timeline.track(index);
                 const int64_t clipStartGlobal =
                     track.startFrame + originalStart;
@@ -3138,7 +3017,7 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
                     m_player.stop();
                     std::string error;
                     if (track.document.stretchClip(
-                            static_cast<size_t>(m_selectedClip), ratio,
+                            static_cast<size_t>(m_clips.selectedClip()), ratio,
                             &error)) {
                         markEdited();
                         setStatus("Stretched clip");
