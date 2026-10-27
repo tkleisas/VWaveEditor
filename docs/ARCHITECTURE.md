@@ -162,6 +162,9 @@ document undo/redo stack and are stored in the same project history. Destructive
 sample operations are rejected while clips exist; flatten first. This keeps
 clip source ranges stable and avoids ambiguous edits across the arrangement.
 
+Document-level audio import/export and project JSON persistence live in
+`DocumentIO.cpp`; shared JSON/selection helpers live in `DocumentInternal.h`.
+
 ## Persistence
 
 Timeline projects are versioned JSON. Each non-empty track nests its
