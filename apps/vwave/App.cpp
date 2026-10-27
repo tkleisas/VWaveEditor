@@ -27,6 +27,9 @@ using namespace vwave::ui;
 
 App::App()
     : m_analysis(m_jobs, m_dispatcher),
+      m_fileLoader(
+          m_jobs, m_dispatcher,
+          [this](const std::string& status) { setStatus(status); }),
       m_analysisData(
           m_analysis, [this](const std::string& status) { setStatus(status); }),
       m_stereo(
@@ -863,6 +866,7 @@ void App::runEdit(const std::function<bool(std::string*)>& edit,
 }
 
 void App::markEdited() {
+    m_fileLoader.cancel();
     m_masteringController.clear();
     m_phaseSpectrogramDirty = true;
     m_audioSnapshot.reset();
@@ -1104,90 +1108,89 @@ bool App::loadFile(const std::string& path) {
 bool App::loadAudio(const std::string& path) {
     if (m_recordingController.recording()) stopRecording();
     m_player.stop();
-    vwave::Audio audio;
-    std::string error;
-    if (!vwave::readAudio(path, audio, &error)) {
-        setStatus("Open failed: " + error, 6000);
-        return false;
-    }
     cancelRenderJobs();
-    vwave::Timeline timeline;
-    std::string name = std::filesystem::path(path).stem().string();
-    if (name.empty()) name = "Track 1";
-    if (!timeline.addAudioTrack(name, audio, 0, &error)) {
-        setStatus("Open failed: " + error, 6000);
-        return false;
-    }
-    m_timeline = std::move(timeline);
-    m_audioPath = path;
-    m_projectPath.clear();
-    m_clips.reset();
-    m_loop.clear();
-    syncTrackControls();
-    m_wavetableController.clear();
-    m_view.fit(m_timeline.lengthFrames());
-    m_spectralView.maxHz = std::min(
-        20000.0, std::max(1000.0, m_timeline.sampleRate() / 2.0));
-    clearAnalysis();
-    m_playhead = 0;
-    updateWindowTitle();
-    setStatus("Loaded " + baseName(path));
-    return true;
+    return m_fileLoader.loadAudio(
+        path, [this](vwave::Audio audio, const std::string& loadedPath) {
+            m_player.stop();
+            vwave::Timeline timeline;
+            std::string error;
+            std::string name =
+                std::filesystem::path(loadedPath).stem().string();
+            if (name.empty()) name = "Track 1";
+            if (!timeline.addAudioTrack(name, audio, 0, &error)) {
+                setStatus("Open failed: " + error, 6000);
+                return;
+            }
+            m_timeline = std::move(timeline);
+            m_audioPath = loadedPath;
+            m_projectPath.clear();
+            m_clips.reset();
+            m_loop.clear();
+            syncTrackControls();
+            m_wavetableController.clear();
+            m_view.fit(m_timeline.lengthFrames());
+            m_spectralView.maxHz = std::min(
+                20000.0,
+                std::max(1000.0, m_timeline.sampleRate() / 2.0));
+            clearAnalysis();
+            m_playhead = 0;
+            updateWindowTitle();
+            setStatus("Loaded " + baseName(loadedPath));
+        });
 }
 
 bool App::addTrackFile(const std::string& path) {
     if (m_timeline.empty()) return loadAudio(path);
     if (m_recordingController.recording()) stopRecording();
     m_player.stop();
-    vwave::Audio audio;
-    std::string error;
-    if (!vwave::readAudio(path, audio, &error)) {
-        setStatus("Add track failed: " + error, 6000);
-        return false;
-    }
-    std::string name = std::filesystem::path(path).stem().string();
-    if (name.empty()) name = "Track " +
-                             std::to_string(m_timeline.trackCount() + 1);
-    if (!m_timeline.addAudioTrack(name, audio, 0, &error)) {
-        setStatus("Add track failed: " + error, 6000);
-        return false;
-    }
-    m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
-    m_clips.reset();
-    syncTrackControls();
-    clearAnalysis();
-    m_view.fit(m_timeline.lengthFrames());
-    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-    updateWindowTitle();
-    setStatus("Added track " + name);
-    return true;
+    return m_fileLoader.loadAudio(
+        path, [this](vwave::Audio audio, const std::string& loadedPath) {
+            m_player.stop();
+            std::string name =
+                std::filesystem::path(loadedPath).stem().string();
+            if (name.empty())
+                name = "Track " +
+                       std::to_string(m_timeline.trackCount() + 1);
+            std::string error;
+            if (!m_timeline.addAudioTrack(name, audio, 0, &error)) {
+                setStatus("Add track failed: " + error, 6000);
+                return;
+            }
+            m_timeline.setActiveTrack(m_timeline.trackCount() - 1);
+            m_clips.reset();
+            syncTrackControls();
+            clearAnalysis();
+            m_view.fit(m_timeline.lengthFrames());
+            m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+            updateWindowTitle();
+            setStatus("Added track " + name);
+        });
 }
 
 bool App::loadProject(const std::string& path) {
     if (m_recordingController.recording()) stopRecording();
     m_player.stop();
     cancelRenderJobs();
-    vwave::Timeline timeline;
-    std::string error;
-    if (!timeline.loadProject(path, &error)) {
-        setStatus("Open failed: " + error, 6000);
-        return false;
-    }
-    m_timeline = std::move(timeline);
-    m_projectPath = path;
-    m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
-    m_clips.reset();
-    m_loop.clear();
-    m_wavetableController.clear();
-    syncTrackControls();
-    m_view.fit(m_timeline.lengthFrames());
-    m_spectralView.maxHz = std::min(
-        20000.0, std::max(1000.0, m_timeline.sampleRate() / 2.0));
-    clearAnalysis();
-    m_playhead = 0;
-    updateWindowTitle();
-    setStatus("Loaded project " + baseName(path));
-    return true;
+    return m_fileLoader.loadProject(
+        path, [this](vwave::Timeline timeline, const std::string& loadedPath) {
+            m_player.stop();
+            m_timeline = std::move(timeline);
+            m_projectPath = loadedPath;
+            m_audioPath =
+                hasTracks() ? activeDocument().sourcePath() : std::string{};
+            m_clips.reset();
+            m_loop.clear();
+            m_wavetableController.clear();
+            syncTrackControls();
+            m_view.fit(m_timeline.lengthFrames());
+            m_spectralView.maxHz = std::min(
+                20000.0,
+                std::max(1000.0, m_timeline.sampleRate() / 2.0));
+            clearAnalysis();
+            m_playhead = 0;
+            updateWindowTitle();
+            setStatus("Loaded project " + baseName(loadedPath));
+        });
 }
 
 void App::saveAudio(const std::string& path) {

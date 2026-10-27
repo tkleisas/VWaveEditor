@@ -536,4 +536,7 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Moved image decoding to background jobs; texture creation and tab switch
   happen on the UI thread after the load completes.
 - Moved wavetable file loading to background jobs with stale-result rejection.
+- Moved audio and project reads off the main thread via
+  `FileLoadController`; callbacks apply results only when still current and
+  document edits cancel pending loads.
 - Next: remaining async/performance work.

@@ -20,6 +20,7 @@
 #include "controllers/StereoController.h"
 #include "controllers/TrackController.h"
 #include "services/AnalysisService.h"
+#include "services/FileLoadController.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
 #include "ui/Widgets.h"
@@ -294,6 +295,7 @@ private:
     vwave::app::UiDispatcher m_dispatcher;
     vwave::JobSystem m_jobs;
     vwave::app::AnalysisService m_analysis;
+    vwave::app::FileLoadController m_fileLoader;
     vwave::app::AnalysisController m_analysisData;
     std::shared_ptr<const vwave::Audio> m_audioSnapshot;
     AudioPlayer m_player;
