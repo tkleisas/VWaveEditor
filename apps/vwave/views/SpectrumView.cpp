@@ -159,26 +159,26 @@ void App::drawSpectrum(const SDL_Rect& area) {
                  rect.y + static_cast<int>(y) - 13, kTextDim, fontSmall());
     }
 
-    if (m_loopEnd > m_loopStart) {
+    if (m_loop.end() > m_loop.start()) {
         const int loopLeft = std::clamp(
             rect.x + static_cast<int>(
-                         (static_cast<double>(m_loopStart) -
+                         (static_cast<double>(m_loop.start()) -
                           m_view.startFrame) /
                          std::max(1.0, m_view.visibleFrames) * rect.w),
             rect.x, rect.x + rect.w);
         const int loopRight = std::clamp(
             rect.x + static_cast<int>(
-                         (static_cast<double>(m_loopEnd) -
+                         (static_cast<double>(m_loop.end()) -
                           m_view.startFrame) /
                          std::max(1.0, m_view.visibleFrames) * rect.w),
             rect.x, rect.x + rect.w);
         SDL_Rect loop{loopLeft, rect.y, std::max(1, loopRight - loopLeft),
                       rect.h};
         SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
-                               m_loopEnabled ? 20 : 8);
+                               m_loop.enabled() ? 20 : 8);
         SDL_RenderFillRect(m_renderer, &loop);
         SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
-                               m_loopEnabled ? 190 : 80);
+                               m_loop.enabled() ? 190 : 80);
         SDL_RenderDrawLine(m_renderer, loopLeft, rect.y, loopLeft,
                            rect.y + rect.h);
         SDL_RenderDrawLine(m_renderer, loopRight, rect.y, loopRight,

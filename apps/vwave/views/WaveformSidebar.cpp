@@ -84,16 +84,16 @@ void App::drawTrackSidebar(int& y) {
     y += buttonHeight + 6;
 
     drawSection("LOOP", y);
-    addButton(std::string("Loop: ") + (m_loopEnabled ? "On" : "Off"), 18, y,
+    addButton(std::string("Loop: ") + (m_loop.enabled() ? "On" : "Off"), 18, y,
               buttonWidth, buttonHeight, [this] { toggleLoop(); }, false,
-              m_loopEnabled, !m_timeline.empty());
+              m_loop.enabled(), !m_timeline.empty());
     addButton("Loop Selection", 18 + buttonWidth + gap, y, buttonWidth,
               buttonHeight, [this] { setLoopToSelection(); }, false, false,
               hasSelection);
     y += buttonHeight + 6;
     addButton("Clear Loop", 18, y, buttonWidth, buttonHeight,
               [this] { clearLoop(); }, false, false,
-              m_loopEnd > m_loopStart);
+              m_loop.end() > m_loop.start());
     y += buttonHeight + 6;
 
     const int activeIndex = m_timeline.activeTrack();

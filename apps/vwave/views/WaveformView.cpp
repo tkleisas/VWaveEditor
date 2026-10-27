@@ -80,18 +80,18 @@ void App::drawWaveform(const SDL_Rect& area) {
         drawText(formatSeconds(frame / std::max(1, m_timeline.sampleRate())),
                  x + 3, area.y + 7, kTextFaint, fontSmall());
     }
-    if (m_loopEnd > m_loopStart) {
+    if (m_loop.end() > m_loop.start()) {
         const int loopLeft = std::clamp(
-            laneXForFrame(m_rulerArea, m_loopStart), m_rulerArea.x,
+            laneXForFrame(m_rulerArea, m_loop.start()), m_rulerArea.x,
             m_rulerArea.x + m_rulerArea.w);
         const int loopRight = std::clamp(
-            laneXForFrame(m_rulerArea, m_loopEnd), m_rulerArea.x,
+            laneXForFrame(m_rulerArea, m_loop.end()), m_rulerArea.x,
             m_rulerArea.x + m_rulerArea.w);
         SDL_Rect bar{loopLeft, area.y + rulerHeight - 5,
                      std::max(1, loopRight - loopLeft), 4};
         SDL_SetRenderDrawColor(
             m_renderer, kOrange.r, kOrange.g, kOrange.b,
-            m_loopEnabled ? 230 : 90);
+            m_loop.enabled() ? 230 : 90);
         SDL_RenderFillRect(m_renderer, &bar);
     }
 
@@ -345,25 +345,25 @@ void App::drawWaveform(const SDL_Rect& area) {
         }
     }
 
-    if (m_loopEnd > m_loopStart) {
+    if (m_loop.end() > m_loop.start()) {
         const int loopLeft = std::clamp(
-            laneXForFrame(m_waveArea, m_loopStart), m_waveArea.x,
+            laneXForFrame(m_waveArea, m_loop.start()), m_waveArea.x,
             m_waveArea.x + m_waveArea.w);
         const int loopRight = std::clamp(
-            laneXForFrame(m_waveArea, m_loopEnd), m_waveArea.x,
+            laneXForFrame(m_waveArea, m_loop.end()), m_waveArea.x,
             m_waveArea.x + m_waveArea.w);
         SDL_Rect loop{loopLeft, m_waveArea.y,
                       std::max(1, loopRight - loopLeft), m_waveArea.h};
         SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
-                               m_loopEnabled ? 20 : 8);
+                               m_loop.enabled() ? 20 : 8);
         SDL_RenderFillRect(m_renderer, &loop);
         SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
-                               m_loopEnabled ? 190 : 80);
+                               m_loop.enabled() ? 190 : 80);
         SDL_RenderDrawLine(m_renderer, loopLeft, m_waveArea.y, loopLeft,
                            m_waveArea.y + m_waveArea.h);
         SDL_RenderDrawLine(m_renderer, loopRight, m_waveArea.y, loopRight,
                            m_waveArea.y + m_waveArea.h);
-        if (m_loopEnabled) {
+        if (m_loop.enabled()) {
             drawText("LOOP", loopLeft + 4, m_waveArea.y + 4, kOrange,
                      fontSmall());
         }

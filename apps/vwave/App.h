@@ -4,6 +4,7 @@
 #include "AudioRecorder.h"
 
 #include "ui/UiRenderer.h"
+#include "controllers/LoopController.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
 #include "ui/Widgets.h"
@@ -371,11 +372,7 @@ private:
     Uint32 m_statusUntil = 0;
     bool m_running = true;
     int64_t m_playhead = 0;
-    int64_t m_loopStart = 0;
-    int64_t m_loopEnd = 0;
-    int64_t m_loopAnchor = 0;
-    SDL_Rect m_loopDragArea{};
-    bool m_loopEnabled = false;
+    vwave::app::LoopController m_loop;
     bool m_spectrumClickCandidate = false;
     int m_spectrumClickX = 0;
     int m_spectrumClickY = 0;

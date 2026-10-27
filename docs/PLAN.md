@@ -498,5 +498,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   exception propagation.
 - Added `UiDispatcher` and moved image, scope, and wavetable-note rendering to
   the worker pool. Image rendering supports progress and cancellation.
-- Next: move view state/actions into controllers, migrate cache/analysis jobs
-  with immutable snapshots, then split `Session` and `Document`.
+- Extracted `LoopController` for loop state, clamping, and drag-region handling.
+- Next: extract transport/track/clip controllers, migrate cache/analysis jobs with
+  immutable snapshots, then split `Session` and `Document`.

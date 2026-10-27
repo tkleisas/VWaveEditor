@@ -488,16 +488,7 @@ void App::removeTrack(int index) {
     m_wavetableView.selectedFrame = 0;
     m_view.fit(m_timeline.lengthFrames());
     m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-    if (m_loopEnabled) {
-        const int64_t total = m_timeline.lengthFrames();
-        m_loopStart = std::clamp<int64_t>(m_loopStart, 0, total);
-        m_loopEnd = std::clamp<int64_t>(m_loopEnd, 0, total);
-        if (m_loopEnd <= m_loopStart) {
-            m_loopEnabled = false;
-            m_loopStart = 0;
-            m_loopEnd = 0;
-        }
-    }
+    m_loop.clamp(m_timeline.lengthFrames());
     m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
     if (m_timeline.empty()) m_projectPath.clear();
     updateWindowTitle();
@@ -1200,9 +1191,7 @@ void App::setLoopToSelection() {
 
 void App::clearLoop() {
     const bool wasPlaying = m_player.isPlaying();
-    m_loopEnabled = false;
-    m_loopStart = 0;
-    m_loopEnd = 0;
+    m_loop.clear();
     if (wasPlaying) {
         m_player.stop();
         togglePlay();
@@ -1211,16 +1200,16 @@ void App::clearLoop() {
 }
 
 void App::toggleLoop() {
-    if (m_loopEnabled) {
+    if (m_loop.enabled()) {
         clearLoop();
         return;
     }
     const int64_t total = m_timeline.lengthFrames();
-    const int64_t start = std::clamp<int64_t>(m_loopStart, 0, total);
-    const int64_t end = std::clamp<int64_t>(m_loopEnd, 0, total);
+    const int64_t start = std::clamp<int64_t>(m_loop.start(), 0, total);
+    const int64_t end = std::clamp<int64_t>(m_loop.end(), 0, total);
     if (end > start) {
         const bool wasPlaying = m_player.isPlaying();
-        m_loopEnabled = true;
+        m_loop.setEnabled(true);
         if (wasPlaying) {
             m_player.stop();
             togglePlay();
@@ -1237,11 +1226,7 @@ void App::toggleLoop() {
 }
 
 bool App::loopPlaybackActive() const {
-    if (!m_loopEnabled) return false;
-    const int64_t total = m_timeline.lengthFrames();
-    const int64_t start = std::clamp<int64_t>(m_loopStart, 0, total);
-    const int64_t end = std::clamp<int64_t>(m_loopEnd, 0, total);
-    return end > start;
+    return m_loop.active(m_timeline.lengthFrames());
 }
 
 void App::setLoopRegion(int64_t start, int64_t end) {
@@ -1253,9 +1238,7 @@ void App::setLoopRegion(int64_t start, int64_t end) {
         return;
     }
     const bool wasPlaying = m_player.isPlaying();
-    m_loopStart = start;
-    m_loopEnd = end;
-    m_loopEnabled = true;
+    m_loop.setRegion(start, end, total);
     if (wasPlaying) {
         m_player.stop();
         togglePlay();
@@ -1548,9 +1531,9 @@ void App::togglePlay() {
     const bool loop = loopPlaybackActive();
     if (loop) {
         const int64_t loopEnd = std::clamp<int64_t>(
-            m_loopEnd, 0, m_timeline.lengthFrames());
+            m_loop.end(), 0, m_timeline.lengthFrames());
         const int64_t loopStart = std::clamp<int64_t>(
-            m_loopStart, 0, m_timeline.lengthFrames());
+            m_loop.start(), 0, m_timeline.lengthFrames());
         int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
         if (start < loopStart || start >= loopEnd) start = loopStart;
         range = {start, loopEnd};
@@ -1606,16 +1589,7 @@ void App::runEdit(const std::function<bool(std::string*)>& edit,
 void App::markEdited() {
     m_mastering = {};
     m_phaseSpectrogramDirty = true;
-    if (m_loopEnabled) {
-        const int64_t total = m_timeline.lengthFrames();
-        m_loopStart = std::clamp<int64_t>(m_loopStart, 0, total);
-        m_loopEnd = std::clamp<int64_t>(m_loopEnd, 0, total);
-        if (m_loopEnd <= m_loopStart) {
-            m_loopEnabled = false;
-            m_loopStart = 0;
-            m_loopEnd = 0;
-        }
-    }
+    m_loop.clamp(m_timeline.lengthFrames());
     if (!hasTracks() || !activeDocument().hasClips()) {
         m_clipTool = false;
         m_selectedClip = -1;
@@ -1899,9 +1873,7 @@ bool App::loadAudio(const std::string& path) {
     m_projectPath.clear();
     m_selectedClip = -1;
     m_clipTool = false;
-    m_loopEnabled = false;
-    m_loopStart = 0;
-    m_loopEnd = 0;
+    m_loop.clear();
     syncTrackControls();
     m_wavetable = {};
     m_frameWeights.clear();
@@ -1960,9 +1932,7 @@ bool App::loadProject(const std::string& path) {
     m_audioPath = hasTracks() ? activeDocument().sourcePath() : std::string{};
     m_selectedClip = -1;
     m_clipTool = false;
-    m_loopEnabled = false;
-    m_loopStart = 0;
-    m_loopEnd = 0;
+    m_loop.clear();
     m_wavetable = {};
     m_frameWeights.clear();
     m_wavetableView.selectedFrame = 0;
@@ -2763,11 +2733,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 m_waveDrag = WaveDragMode::LoopSelection;
                 m_waveDragTrack = -1;
                 m_waveDragMouseX = event.x;
-                m_loopDragArea = m_rulerArea;
-                m_loopAnchor = m_playhead;
-                m_loopStart = m_playhead;
-                m_loopEnd = m_playhead;
-                m_loopEnabled = true;
+                m_loop.beginDrag(m_playhead, m_rulerArea);
             }
             return;
         }
@@ -2827,11 +2793,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 m_waveDrag = WaveDragMode::LoopSelection;
                 m_waveDragTrack = laneIndex;
                 m_waveDragMouseX = event.x;
-                m_loopDragArea = clipLane;
-                m_loopAnchor = frame;
-                m_loopStart = frame;
-                m_loopEnd = frame;
-                m_loopEnabled = true;
+                m_loop.beginDrag(frame, clipLane);
                 return;
             }
             if (m_clipTool) {
@@ -3009,11 +2971,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
                 m_waveDrag = WaveDragMode::LoopSelection;
                 m_waveDragTrack = -1;
                 m_waveDragMouseX = event.x;
-                m_loopDragArea = m_spectrumArea;
-                m_loopAnchor = m_playhead;
-                m_loopStart = m_playhead;
-                m_loopEnd = m_playhead;
-                m_loopEnabled = true;
+                m_loop.beginDrag(m_playhead, m_spectrumArea);
                 return;
             }
             m_spectrumClickCandidate = true;
@@ -3180,15 +3138,15 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
         } else if (drag == WaveDragMode::SelectionRepeat) {
             if (repeatCount > 0) repeatActiveSelection(repeatCount);
         } else if (drag == WaveDragMode::LoopSelection) {
-            if (m_loopEnd <= m_loopStart) {
+            m_loop.finishDrag(m_timeline.lengthFrames());
+            if (!m_loop.active(m_timeline.lengthFrames())) {
                 clearLoop();
             } else {
-                m_loopEnabled = true;
                 setStatus("Loop " +
-                          formatSeconds(static_cast<double>(m_loopStart) /
+                          formatSeconds(static_cast<double>(m_loop.start()) /
                                         std::max(1, m_timeline.sampleRate())) +
                           " - " +
-                          formatSeconds(static_cast<double>(m_loopEnd) /
+                          formatSeconds(static_cast<double>(m_loop.end()) /
                                         std::max(1, m_timeline.sampleRate())));
             }
         } else if (drag == WaveDragMode::NewSelection &&
@@ -3283,12 +3241,10 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
             break;
         case WaveDragMode::LoopSelection: {
             const int64_t loopFrame =
-                m_loopDragArea.w > 0
-                    ? laneFrameAtX(m_loopDragArea, event.x)
+                m_loop.dragArea().w > 0
+                    ? laneFrameAtX(m_loop.dragArea(), event.x)
                     : frame;
-            m_loopStart = std::min(m_loopAnchor, loopFrame);
-            m_loopEnd = std::max(m_loopAnchor, loopFrame);
-            m_loopEnabled = true;
+            m_loop.updateDrag(loopFrame);
             m_clickCandidate = false;
             break;
         }
