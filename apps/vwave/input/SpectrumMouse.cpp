@@ -43,3 +43,61 @@ void App::handleSpectrumMouseDown(const SDL_MouseButtonEvent& event) {
     }
 
 }
+
+void App::handleSpectrumHover(const SDL_MouseMotionEvent& event) {
+    SDL_Point point{event.x, event.y};
+    if (SDL_PointInRect(&point, &m_spectrumArea)) {
+        m_spectrum3DHoverX = event.x;
+        m_spectrum3DHoverY = event.y;
+    } else {
+        m_spectrum3DHoverX = -1;
+        m_spectrum3DHoverY = -1;
+    }
+
+}
+
+void App::handleSpectrumMouseMotion(const SDL_MouseMotionEvent& event) {
+if (m_draggingSpectrum) {
+    if (m_spectrumClickCandidate &&
+        (std::abs(event.x - m_spectrumClickX) > 2 ||
+         std::abs(event.y - m_spectrumClickY) > 2)) {
+        m_spectrumClickCandidate = false;
+    }
+    const int x0 = std::clamp(m_spectrumStartX, m_spectrumArea.x,
+                              m_spectrumArea.x + m_spectrumArea.w);
+    const int x1 = std::clamp(event.x, m_spectrumArea.x,
+                              m_spectrumArea.x + m_spectrumArea.w);
+    const int y0 = std::clamp(m_spectrumStartY, m_spectrumArea.y,
+                              m_spectrumArea.y + m_spectrumArea.h);
+    const int y1 = std::clamp(event.y, m_spectrumArea.y,
+                              m_spectrumArea.y + m_spectrumArea.h);
+    if (std::abs(x1 - x0) >= 2 && std::abs(y1 - y0) >= 2 && hasTracks()) {
+        const auto& track = m_timeline.track(m_timeline.activeTrack());
+        const int64_t trackFrames = track.document.numFrames();
+        auto timelineFrame = [this](int x) {
+            const double fraction =
+                static_cast<double>(x - m_spectrumArea.x) /
+                std::max(1, m_spectrumArea.w);
+            return static_cast<int64_t>(std::llround(
+                m_view.startFrame +
+                fraction * m_view.visibleFrames));
+        };
+        const int64_t local0 = std::clamp<int64_t>(
+            timelineFrame(std::min(x0, x1)) - track.startFrame, 0,
+            trackFrames);
+        const int64_t local1 = std::clamp<int64_t>(
+            timelineFrame(std::max(x0, x1)) - track.startFrame, 0,
+            trackFrames);
+        const double hz0 = m_spectralView.frequencyAtY(
+            std::min(y0, y1) - m_spectrumArea.y, m_spectrumArea.h);
+        const double hz1 = m_spectralView.frequencyAtY(
+            std::max(y0, y1) - m_spectrumArea.y, m_spectrumArea.h);
+        m_spectralController.region().frames = {std::min(local0, local1),
+                                   std::max(local0, local1)};
+        m_spectralController.region().lowHz = std::min(hz0, hz1);
+        m_spectralController.region().highHz = std::max(hz0, hz1);
+        m_spectralController.region().active =
+            m_spectralController.region().frames.length() > 0;
+    }
+}
+}

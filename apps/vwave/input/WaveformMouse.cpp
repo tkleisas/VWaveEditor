@@ -254,3 +254,133 @@ void App::handleWaveformMouseDown(const SDL_MouseButtonEvent& event) {
     }
 
 }
+
+void App::handleWaveformMouseMotion(const SDL_MouseMotionEvent& event) {
+if (m_waveDrag != WaveDragMode::None) {
+    const SDL_Rect& lane =
+        m_waveDragTrack >= 0 &&
+                m_waveDragTrack < static_cast<int>(m_trackLaneRects.size()) &&
+                m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)].w > 0
+            ? m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)]
+            : m_waveArea;
+    const int64_t frame = laneFrameAtX(lane, event.x);
+    const int64_t looseFrame = std::max<int64_t>(
+        0, static_cast<int64_t>(std::llround(
+               m_view.startFrame +
+               static_cast<double>(event.x - lane.x) *
+                   m_view.samplesPerPixel(std::max(1, lane.w)))));
+    switch (m_waveDrag) {
+    case WaveDragMode::NewSelection:
+        if (m_clickCandidate &&
+            std::abs(event.x - m_clickMouseX) > 2)
+            m_clickCandidate = false;
+        m_timeline.setSelection(std::min(m_selectionAnchor, frame),
+                                std::max(m_selectionAnchor, frame));
+        break;
+    case WaveDragMode::LoopSelection: {
+        const int64_t loopFrame =
+            m_loop.dragArea().w > 0
+                ? laneFrameAtX(m_loop.dragArea(), event.x)
+                : frame;
+        m_loop.updateDrag(loopFrame);
+        m_clickCandidate = false;
+        break;
+    }
+    case WaveDragMode::SelectionStart:
+        m_timeline.setSelection(
+            std::min(frame, m_waveDragFixedFrame),
+            std::max(frame, m_waveDragFixedFrame));
+        break;
+    case WaveDragMode::SelectionEnd:
+        m_timeline.setSelection(
+            std::min(frame, m_waveDragFixedFrame),
+            std::max(frame, m_waveDragFixedFrame));
+        break;
+    case WaveDragMode::TrackTrimStart:
+        m_waveDragPreviewFrame =
+            std::clamp<int64_t>(frame, m_waveDragOriginalStart,
+                                m_waveDragOriginalEnd - 1);
+        break;
+    case WaveDragMode::TrackTrimEnd:
+        m_waveDragPreviewFrame =
+            std::clamp<int64_t>(frame, m_waveDragOriginalStart + 1,
+                                m_waveDragOriginalEnd);
+        break;
+    case WaveDragMode::TrackStretch: {
+        const int64_t originalLength =
+            m_waveDragOriginalEnd - m_waveDragOriginalStart;
+        m_waveDragPreviewFrame = std::clamp<int64_t>(
+            looseFrame, m_waveDragOriginalStart + 1,
+            m_waveDragOriginalStart + originalLength * 20);
+        break;
+    }
+    case WaveDragMode::SelectionRepeat: {
+        const auto& selection = m_timeline.selection();
+        if (selection.active && selection.length() > 0) {
+            const double repeats =
+                static_cast<double>(looseFrame - selection.end) /
+                static_cast<double>(selection.length());
+            m_repeatDragCount = std::clamp(
+                static_cast<int>(std::floor(repeats)), 0, 64);
+            m_waveDragPreviewFrame = selection.end + m_repeatDragCount *
+                                                      selection.length();
+        }
+        break;
+    }
+    case WaveDragMode::ClipMove: {
+        if (m_waveDragTrack >= 0 &&
+            m_waveDragTrack < m_timeline.trackCount()) {
+            const auto& track =
+                m_timeline.track(m_waveDragTrack);
+            const double framesPerPixel =
+                m_view.samplesPerPixel(std::max(1, lane.w));
+            const int64_t delta = static_cast<int64_t>(std::llround(
+                static_cast<double>(event.x - m_waveDragMouseX) *
+                framesPerPixel));
+            const int64_t localStart =
+                std::max<int64_t>(0, m_waveDragOriginalStart + delta);
+            m_waveDragPreviewFrame =
+                track.startFrame + localStart;
+        }
+        break;
+    }
+    case WaveDragMode::ClipStretch: {
+        if (m_waveDragTrack >= 0 &&
+            m_waveDragTrack < m_timeline.trackCount() &&
+            m_clipDragOriginalFrames > 0) {
+            const auto& track =
+                m_timeline.track(m_waveDragTrack);
+            const double framesPerPixel =
+                m_view.samplesPerPixel(std::max(1, lane.w));
+            const int64_t delta = static_cast<int64_t>(std::llround(
+                static_cast<double>(event.x - m_waveDragMouseX) *
+                framesPerPixel));
+            const int64_t maximum =
+                std::max<int64_t>(1, m_clipDragOriginalFrames * 20);
+            const int64_t frames = std::clamp<int64_t>(
+                m_clipDragOriginalFrames + delta, 1, maximum);
+            m_waveDragPreviewFrame =
+                track.startFrame + m_waveDragOriginalStart + frames;
+        }
+        break;
+    }
+    case WaveDragMode::None:
+        break;
+    }
+    return;
+}
+if (m_panning) {
+    const int delta = event.x - m_lastMouseX;
+    m_view.pan(-delta, m_waveArea.w, m_timeline.lengthFrames());
+    m_lastMouseX = event.x;
+}
+if (m_panningOverview) {
+    const double fraction =
+        static_cast<double>(event.x - m_overviewArea.x) /
+        std::max(1, m_overviewArea.w);
+    m_view.startFrame = fraction * m_timeline.lengthFrames() -
+                        m_view.visibleFrames / 2.0;
+    m_view.clamp(m_timeline.lengthFrames());
+    m_lastMouseX = event.x;
+}
+}

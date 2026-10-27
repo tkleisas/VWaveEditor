@@ -135,6 +135,10 @@ private:
     void handleSpectrumMouseDown(const SDL_MouseButtonEvent& event);
     void handleWavetableMouseDown(const SDL_MouseButtonEvent& event);
     void handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event);
+    void handleWaveformMouseMotion(const SDL_MouseMotionEvent& event);
+    void handleSpectrumHover(const SDL_MouseMotionEvent& event);
+    void handleSpectrumMouseMotion(const SDL_MouseMotionEvent& event);
+    void handleWavetableMouseMotion(const SDL_MouseMotionEvent& event);
     void handleWheel(const SDL_MouseWheelEvent& event);
 
     bool loadFile(const std::string& path);
