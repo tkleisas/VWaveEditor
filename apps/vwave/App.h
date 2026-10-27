@@ -5,6 +5,7 @@
 
 #include "ui/UiRenderer.h"
 #include "controllers/LoopController.h"
+#include "services/AnalysisService.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
 #include "ui/Widgets.h"
@@ -26,6 +27,7 @@
 #include <SDL_ttf.h>
 
 #include <cstdint>
+#include <memory>
 #include <functional>
 #include <string>
 #include <vector>
@@ -147,6 +149,7 @@ private:
     void renderMasteringStems();
     void regenerateActiveTrack();
     void cancelRenderJobs();
+    std::shared_ptr<const vwave::Audio> activeAudioSnapshot();
     void toggleSelectionScope();
     bool seekToTime(double seconds, std::string* error = nullptr);
     void goToStart();
@@ -284,6 +287,8 @@ private:
     vwave::JobHandle m_imageJob;
     vwave::JobHandle m_scopeJob;
     vwave::JobHandle m_wavetableJob;
+    vwave::app::AnalysisService m_analysis;
+    std::shared_ptr<const vwave::Audio> m_audioSnapshot;
     uint64_t m_imageRequest = 0;
     uint64_t m_scopeRequest = 0;
     uint64_t m_wavetableRequest = 0;

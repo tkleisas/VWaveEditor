@@ -618,12 +618,16 @@ void App::drawTrackHeader(const SDL_Rect& header, int index) {
 }
 
 void App::ensureOverview() {
-    if (!m_overviewDirty && !m_overviewPeaks.empty()) return;
+    if (!m_overviewDirty) return;
     m_overviewDirty = false;
-    m_overviewPeaks.clear();
-    const vwave::Audio& audio = activeDocument().audio();
-    if (audio.empty()) return;
-    m_overviewPeaks = vwave::computePeaks(audio, 0,
-                                          {0, audio.numFrames()}, 2048);
+    const auto audio = activeAudioSnapshot();
+    if (!audio || audio->empty()) {
+        m_overviewPeaks.clear();
+        return;
+    }
+    m_analysis.requestOverview(
+        audio, 2048, [this](std::vector<vwave::PeakBin> peaks) {
+            m_overviewPeaks = std::move(peaks);
+        });
 }
 

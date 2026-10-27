@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
@@ -50,9 +51,10 @@ public:
         : m_channels(numChannels), m_frames(numFrames), m_sampleRate(sampleRate) {
         if (m_channels < 0 || m_frames < 0 || m_sampleRate < 0)
             throw std::invalid_argument("Audio dimensions must be non-negative");
-        m_data.assign(static_cast<size_t>(m_channels) *
-                          static_cast<size_t>(m_frames),
-                      0.0f);
+        m_data = std::make_shared<std::vector<float>>(
+            static_cast<size_t>(m_channels) *
+                static_cast<size_t>(m_frames),
+            0.0f);
     }
 
     int numChannels() const { return m_channels; }
@@ -65,36 +67,48 @@ public:
                    : 0.0;
     }
 
-    float* data() { return m_data.data(); }
-    const float* data() const { return m_data.data(); }
-    size_t totalSamples() const { return m_data.size(); }
+    float* data() {
+        ensureUnique();
+        return m_data ? m_data->data() : nullptr;
+    }
+    const float* data() const {
+        return m_data ? m_data->data() : nullptr;
+    }
+    size_t totalSamples() const {
+        return m_data ? m_data->size() : 0;
+    }
+    bool sharedStorage() const {
+        return m_data && m_data.use_count() > 1;
+    }
 
     float* channel(int channel) {
+        ensureUnique();
         assert(channel >= 0 && channel < m_channels);
-        return m_data.data() + static_cast<size_t>(channel) *
-                                   static_cast<size_t>(m_frames);
+        return m_data->data() + static_cast<size_t>(channel) *
+                                    static_cast<size_t>(m_frames);
     }
 
     const float* channel(int channel) const {
         assert(channel >= 0 && channel < m_channels);
-        return m_data.data() + static_cast<size_t>(channel) *
-                                   static_cast<size_t>(m_frames);
+        return m_data->data() + static_cast<size_t>(channel) *
+                                    static_cast<size_t>(m_frames);
     }
 
     float& sample(int channel, int64_t frame) {
+        ensureUnique();
         assert(channel >= 0 && channel < m_channels);
         assert(frame >= 0 && frame < m_frames);
-        return m_data[static_cast<size_t>(channel) *
-                          static_cast<size_t>(m_frames) +
-                      static_cast<size_t>(frame)];
+        return (*m_data)[static_cast<size_t>(channel) *
+                             static_cast<size_t>(m_frames) +
+                         static_cast<size_t>(frame)];
     }
 
     float sample(int channel, int64_t frame) const {
         assert(channel >= 0 && channel < m_channels);
         assert(frame >= 0 && frame < m_frames);
-        return m_data[static_cast<size_t>(channel) *
-                          static_cast<size_t>(m_frames) +
-                      static_cast<size_t>(frame)];
+        return (*m_data)[static_cast<size_t>(channel) *
+                             static_cast<size_t>(m_frames) +
+                         static_cast<size_t>(frame)];
     }
 
     void resize(int numChannels, int64_t numFrames, int sampleRate) {
@@ -103,12 +117,16 @@ public:
         m_channels = numChannels;
         m_frames = numFrames;
         m_sampleRate = sampleRate;
-        m_data.assign(static_cast<size_t>(m_channels) *
-                          static_cast<size_t>(m_frames),
-                      0.0f);
+        m_data = std::make_shared<std::vector<float>>(
+            static_cast<size_t>(m_channels) *
+                static_cast<size_t>(m_frames),
+            0.0f);
     }
 
-    void clear() { std::fill(m_data.begin(), m_data.end(), 0.0f); }
+    void clear() {
+        ensureUnique();
+        if (m_data) std::fill(m_data->begin(), m_data->end(), 0.0f);
+    }
 
     Audio slice(Range range) const {
         const Range r = range.clamped(m_frames);
@@ -155,8 +173,9 @@ public:
     }
 
     float peak() const {
+        if (!m_data) return 0.0f;
         float maxValue = 0.0f;
-        for (float value : m_data) {
+        for (float value : *m_data) {
             const float magnitude = std::abs(value);
             if (magnitude > maxValue) maxValue = magnitude;
         }
@@ -164,28 +183,36 @@ public:
     }
 
     float rms() const {
-        if (m_data.empty()) return 0.0f;
+        if (!m_data || m_data->empty()) return 0.0f;
         double sum = 0.0;
-        for (float value : m_data) sum += static_cast<double>(value) * value;
-        return static_cast<float>(std::sqrt(sum / static_cast<double>(m_data.size())));
+        for (float value : *m_data)
+            sum += static_cast<double>(value) * value;
+        return static_cast<float>(
+            std::sqrt(sum / static_cast<double>(m_data->size())));
     }
 
     bool equals(const Audio& other) const {
         if (m_channels != other.m_channels || m_frames != other.m_frames ||
             m_sampleRate != other.m_sampleRate)
             return false;
-        if (m_data.size() != other.m_data.size()) return false;
-        for (size_t i = 0; i < m_data.size(); ++i) {
-            if (m_data[i] != other.m_data[i]) return false;
+        if (totalSamples() != other.totalSamples()) return false;
+        if (!m_data || !other.m_data) return true;
+        for (size_t i = 0; i < m_data->size(); ++i) {
+            if ((*m_data)[i] != (*other.m_data)[i]) return false;
         }
         return true;
     }
 
 private:
+    void ensureUnique() {
+        if (m_data && m_data.use_count() > 1)
+            m_data = std::make_shared<std::vector<float>>(*m_data);
+    }
+
     int m_channels = 0;
     int64_t m_frames = 0;
     int m_sampleRate = 48000;
-    std::vector<float> m_data;
+    std::shared_ptr<std::vector<float>> m_data;
 };
 
 } // namespace vwave

@@ -12,63 +12,49 @@
 using namespace vwave::ui;
 
 void App::ensureSpectrogram() {
-    if (!m_spectrogramDirty && m_spectrogramTexture) return;
+    if (!m_spectrogramDirty) return;
     m_spectrogramDirty = false;
-    if (m_spectrogramTexture) {
-        SDL_DestroyTexture(m_spectrogramTexture);
-        m_spectrogramTexture = nullptr;
-    }
-    const vwave::Audio& audio = activeDocument().audio();
-    if (audio.empty()) return;
-    const int64_t frames = audio.numFrames();
+    const auto audio = activeAudioSnapshot();
+    if (!audio || audio->empty()) return;
+    const int64_t frames = audio->numFrames();
     const int hop = static_cast<int>(
         std::max<int64_t>(256, frames / 2048));
-    m_spectrogram = vwave::computeSpectrogram(audio, 1024, hop);
-    if (m_spectrogram.frameCount <= 0) return;
-    const int width = std::min(m_spectrogram.frameCount, 2048);
-    const int height = 512;
-    std::vector<Uint32> pixels(static_cast<size_t>(width) *
-                               static_cast<size_t>(height));
-    for (int y = 0; y < height; ++y) {
-        const double frequency =
-            m_spectralView.frequencyAtY(y + 0.5, height);
-        const int bin = std::clamp(
-            static_cast<int>(std::llround(
-                frequency * m_spectrogram.fftSize /
-                std::max(1, m_spectrogram.sampleRate))),
-            0, m_spectrogram.binCount - 1);
-        for (int x = 0; x < width; ++x) {
-            const int frame = static_cast<int>(
-                static_cast<double>(x) / std::max(1, width - 1) *
-                static_cast<double>(m_spectrogram.frameCount - 1));
-            const float db = m_spectrogram.dbAt(frame, bin);
-            const float normalized = std::clamp((db + 90.0f) / 90.0f,
-                                                0.0f, 1.0f);
-            pixels[static_cast<size_t>(y) * width + x] =
-                makePixel(normalized, 1.0f);
-        }
-    }
-    m_spectrogramTexture = SDL_CreateTexture(
-        m_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-        width, height);
-    if (!m_spectrogramTexture) return;
-    SDL_UpdateTexture(m_spectrogramTexture, nullptr, pixels.data(),
-                      width * static_cast<int>(sizeof(Uint32)));
-    SDL_SetTextureBlendMode(m_spectrogramTexture, SDL_BLENDMODE_NONE);
-    m_spectrogramTextureWidth = width;
-    m_spectrogramTextureHeight = height;
+    m_analysis.requestSpectrogram(
+        audio, 1024, hop, m_spectralView.minHz, m_spectralView.maxHz,
+        m_spectralView.logarithmic,
+        [this](vwave::app::AnalysisService::SpectrogramRender render) {
+            if (render.width <= 0 || render.height <= 0 ||
+                render.pixels.empty())
+                return;
+            SDL_Texture* texture = SDL_CreateTexture(
+                m_renderer, SDL_PIXELFORMAT_ARGB8888,
+                SDL_TEXTUREACCESS_STREAMING, render.width, render.height);
+            if (!texture) return;
+            SDL_UpdateTexture(
+                texture, nullptr, render.pixels.data(),
+                render.width * static_cast<int>(sizeof(Uint32)));
+            SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE);
+            if (m_spectrogramTexture)
+                SDL_DestroyTexture(m_spectrogramTexture);
+            m_spectrogramTexture = texture;
+            m_spectrogramTextureWidth = render.width;
+            m_spectrogramTextureHeight = render.height;
+            m_spectrogram = std::move(render.spectrogram);
+        });
 }
 
 void App::ensurePhaseSpectrogram() {
-    if (!m_phaseSpectrogramDirty && m_phaseSpectrogram.valid()) return;
+    if (!m_phaseSpectrogramDirty) return;
     m_phaseSpectrogramDirty = false;
-    const vwave::Audio& audio = activeDocument().audio();
-    if (audio.empty()) {
+    const auto audio = activeAudioSnapshot();
+    if (!audio || audio->empty()) {
         m_phaseSpectrogram = {};
         return;
     }
-    m_phaseSpectrogram =
-        vwave::computePhaseSpectrogram(audio, 2048, 1536);
+    m_analysis.requestPhase(
+        audio, [this](vwave::PhaseSpectrogram phase) {
+            m_phaseSpectrogram = std::move(phase);
+        });
 }
 
 void App::drawSpectrum(const SDL_Rect& area) {

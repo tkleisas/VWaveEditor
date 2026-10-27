@@ -127,6 +127,8 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/AudioRecorder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ChromeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ContextMenu.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/AnalysisService.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/AnalysisService.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/FileService.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/DialogController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/UiFormat.cpp

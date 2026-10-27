@@ -25,7 +25,7 @@
 using namespace vwave::app;
 using namespace vwave::ui;
 
-App::App() {
+App::App() : m_analysis(m_jobs, m_dispatcher) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
             applyDialog(mode, path);
@@ -493,6 +493,15 @@ void App::removeTrack(int index) {
     if (m_timeline.empty()) m_projectPath.clear();
     updateWindowTitle();
     setStatus("Removed track " + name);
+}
+
+std::shared_ptr<const vwave::Audio> App::activeAudioSnapshot() {
+    if (!hasTracks()) return {};
+    if (!m_audioSnapshot) {
+        m_audioSnapshot =
+            std::make_shared<vwave::Audio>(activeDocument().audio());
+    }
+    return m_audioSnapshot;
 }
 
 void App::cancelRenderJobs() {
@@ -1589,6 +1598,8 @@ void App::runEdit(const std::function<bool(std::string*)>& edit,
 void App::markEdited() {
     m_mastering = {};
     m_phaseSpectrogramDirty = true;
+    m_audioSnapshot.reset();
+    m_analysis.cancelAll();
     m_loop.clamp(m_timeline.lengthFrames());
     if (!hasTracks() || !activeDocument().hasClips()) {
         m_clipTool = false;
@@ -1614,6 +1625,8 @@ void App::markEdited() {
 void App::clearAnalysis() {
     m_mastering = {};
     m_phaseSpectrogramDirty = true;
+    m_audioSnapshot.reset();
+    m_analysis.cancelAll();
     m_hasBeats = false;
     m_hasPitch = false;
     m_beats = {};

@@ -33,11 +33,19 @@ completion uses a future, while UI-facing services will post results back to the
 main thread through a dispatcher instead of touching SDL or live documents from
 worker threads.
 
-The editor uses the pool for image-to-spectrogram, scope-path, and wavetable
-note rendering. Workers return results through `UiDispatcher`, and only the main
-thread mutates the timeline. Image rendering also supports cooperative progress
-and cancellation. Spectrogram/analysis caches and document edits still run
-synchronously until snapshot support is added.
+The editor uses the pool for image-to-spectrogram, scope-path, wavetable-note,
+overview, spectrogram, and phase-spectrogram work. Workers return results
+through `UiDispatcher`, and only the main thread mutates the timeline or creates
+SDL textures. `AnalysisService` owns request tokens and task handles so stale
+results are discarded after edits or track changes. Image rendering supports
+cooperative progress and cancellation. Snapshot inputs currently copy the
+active audio; a copy-on-write/shared audio buffer remains a later optimization.
+Document edits themselves still run synchronously.
+
+`Audio` uses copy-on-write shared buffers. Copies and job snapshots share sample
+storage until either side writes, then the writer detaches. This keeps async
+analysis snapshots cheap even for long tracks without allowing workers to race
+with UI edits.
 
 ## Editor structure
 

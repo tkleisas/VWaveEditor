@@ -499,5 +499,9 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Added `UiDispatcher` and moved image, scope, and wavetable-note rendering to
   the worker pool. Image rendering supports progress and cancellation.
 - Extracted `LoopController` for loop state, clamping, and drag-region handling.
-- Next: extract transport/track/clip controllers, migrate cache/analysis jobs with
-  immutable snapshots, then split `Session` and `Document`.
+- Added `AnalysisService` and async overview, spectrogram, and phase-spectrogram
+  jobs with stale-result rejection; waveform, spectrum, and 3D views use them.
+- Added copy-on-write `Audio` storage, making analysis snapshots cheap and
+  isolating worker reads from UI edits.
+- Next: extract transport/track/clip controllers, then split `Session` and
+  `Document`.

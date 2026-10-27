@@ -135,3 +135,23 @@ VWTEST("audio int24 round-trip is within quantisation error") {
     for (int64_t i = 0; i < original.numFrames(); ++i)
         CHECK_NEAR(loaded.sample(0, i), original.sample(0, i), 1e-5);
 }
+
+VWTEST("audio copies use copy-on-write storage") {
+    Audio original(2, 64, 48000);
+    original.sample(0, 10) = 0.25f;
+    Audio snapshot = original;
+    CHECK(original.sharedStorage());
+    CHECK(snapshot.sharedStorage());
+    CHECK_NEAR(snapshot.sample(0, 10), 0.25, 1e-9);
+
+    snapshot.sample(0, 10) = -0.5f;
+    CHECK(!original.sharedStorage());
+    CHECK(!snapshot.sharedStorage());
+    CHECK_NEAR(original.sample(0, 10), 0.25, 1e-9);
+    CHECK_NEAR(snapshot.sample(0, 10), -0.5, 1e-9);
+
+    Audio channelCopy = original;
+    channelCopy.channel(0)[20] = 0.75f;
+    CHECK_NEAR(original.sample(0, 20), 0.0, 1e-9);
+    CHECK_NEAR(channelCopy.sample(0, 20), 0.75, 1e-9);
+}
