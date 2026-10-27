@@ -76,10 +76,38 @@ App::App()
                   m_view.clamp(m_timeline.lengthFrames());
               }
           }),
+      m_recordingController(
+          m_timeline, m_player, m_playhead,
+          [this](const std::string& status) { setStatus(status); },
+          [this] {
+              m_clips.onTrackChanged(activeDocument().hasClips());
+              syncTrackControls();
+              clearAnalysis();
+          },
+          [this] {
+              syncTrackControls();
+              clearAnalysis();
+              m_view.fit(m_timeline.lengthFrames());
+              m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+              updateWindowTitle();
+          }),
       m_clips(
           m_timeline, m_playhead, m_stretchRatio,
           [this](const std::function<bool(std::string*)>& edit,
                  const std::string& success) { runEdit(edit, success); },
+          [this](const std::string& status) { setStatus(status); }),
+      m_selection(
+          m_timeline, m_player, m_playhead, m_stretchRatio,
+          [this](const std::function<bool(std::string*)>& edit,
+                 const std::string& success) { runEdit(edit, success); },
+          [this](bool documentEdited) {
+              if (documentEdited)
+                  markEdited();
+              else
+                  clearAnalysis();
+              m_view.clamp(m_timeline.lengthFrames());
+              m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
+          },
           [this](const std::string& status) { setStatus(status); }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
@@ -140,7 +168,6 @@ App::App()
 }
 
 App::~App() {
-    m_recorder.stop();
     m_player.close();
     if (m_spectrogramTexture) SDL_DestroyTexture(m_spectrogramTexture);
     if (m_imageTexture) SDL_DestroyTexture(m_imageTexture);
@@ -504,7 +531,7 @@ void App::fitFrequency() {
 void App::selectTrack(int index) { m_tracks.select(index); }
 
 void App::removeTrack(int index) {
-    if (m_recording) stopRecording();
+    if (m_recordingController.recording()) stopRecording();
     m_tracks.remove(index);
 }
 
@@ -534,117 +561,16 @@ void App::cancelRenderJobs() {
 }
 
 void App::toggleRecording() {
-    if (m_recording) stopRecording();
-    else startRecording();
+    m_recordingController.toggle(m_settings.inputDevice);
 }
 
 void App::startRecording() {
-    if (m_recording) return;
-    m_player.stop();
-    const int64_t recordStart =
-        clampFrame(m_playhead, m_timeline.lengthFrames());
-    int target = m_timeline.armedTrack();
-    bool created = false;
-    if (target < 0 || !m_timeline.track(target).empty) {
-        std::string name = "Rec " + std::to_string(m_timeline.trackCount() + 1);
-        if (target >= 0)
-            name = m_timeline.track(target).name + " take";
-        std::string error;
-        if (!m_timeline.addEmptyTrack(name, recordStart, &error)) {
-            setStatus("Cannot create recording track: " + error);
-            return;
-        }
-        target = m_timeline.trackCount() - 1;
-        created = true;
-    }
-    if (target < 0) {
-        setStatus("No recording track");
-        return;
-    }
-    m_timeline.setActiveTrack(target);
-    for (int i = 0; i < m_timeline.trackCount(); ++i)
-        m_timeline.setTrackArmed(i, i == target);
-    m_timeline.setTrackStartFrame(target, recordStart);
-    syncTrackControls();
-    clearAnalysis();
-    m_recordTarget = target;
-    m_recordStartFrame = recordStart;
-    m_recordedInterleaved.clear();
-    m_recording = true;
-    const char* inputDevice = m_settings.inputDevice.empty()
-                                  ? nullptr
-                                  : m_settings.inputDevice.c_str();
-    if (!m_recorder.start(inputDevice, m_timeline.sampleRate())) {
-        m_recording = false;
-        setStatus("Cannot open audio input");
-        if (created) removeTrack(target);
-        return;
-    }
-    m_recordedChannels = m_recorder.channels();
-    m_recordedSampleRate = m_recorder.sampleRate();
-    setStatus("Recording... press Record or F9 to stop");
+    m_recordingController.start(m_settings.inputDevice);
 }
 
-void App::updateRecording() {
-    if (!m_recording) return;
-    m_recorder.drain(m_recordedInterleaved);
-}
+void App::updateRecording() { m_recordingController.update(); }
 
-void App::stopRecording() {
-    if (!m_recording) return;
-    m_recorder.drain(m_recordedInterleaved);
-    m_recorder.stop();
-    m_recording = false;
-    if (m_recordedChannels <= 0 || m_recordedSampleRate <= 0) {
-        m_recordedInterleaved.clear();
-        setStatus("Recording stopped");
-        return;
-    }
-    const int64_t frames = static_cast<int64_t>(
-        m_recordedInterleaved.size() / static_cast<size_t>(m_recordedChannels));
-    if (frames <= 0) {
-        m_recordedInterleaved.clear();
-        setStatus("Recording stopped - no input captured");
-        return;
-    }
-    vwave::Audio recorded = vwave::Audio::fromInterleaved(
-        m_recordedInterleaved.data(), m_recordedChannels, frames,
-        m_recordedSampleRate);
-    m_recordedInterleaved.clear();
-    std::string error;
-    int target = m_recordTarget;
-    if (target < 0 || target >= m_timeline.trackCount()) {
-        if (!m_timeline.addAudioTrack("Recording", recorded, m_recordStartFrame,
-                                      &error)) {
-            setStatus("Cannot store recording: " + error);
-            return;
-        }
-        target = m_timeline.trackCount() - 1;
-    } else if (m_timeline.track(target).empty) {
-        if (!m_timeline.setTrackAudio(target, std::move(recorded),
-                                      m_recordStartFrame, &error)) {
-            setStatus("Cannot store recording: " + error);
-            return;
-        }
-    } else {
-        if (!m_timeline.addAudioTrack(
-                m_timeline.track(target).name + " take", recorded,
-                m_recordStartFrame, &error)) {
-            setStatus("Cannot store recording: " + error);
-            return;
-        }
-        target = m_timeline.trackCount() - 1;
-    }
-    m_timeline.setActiveTrack(target);
-    syncTrackControls();
-    clearAnalysis();
-    m_view.fit(m_timeline.lengthFrames());
-    m_playhead = m_recordStartFrame;
-    m_recordTarget = -1;
-    setStatus("Recorded " +
-              formatSeconds(static_cast<double>(frames) /
-                            std::max(1, m_recordedSampleRate)));
-}
+void App::stopRecording() { m_recordingController.stop(); }
 
 void App::syncSelectionFromActive() {
     if (!hasTracks()) return;
@@ -829,119 +755,28 @@ void App::regenerateActiveTrack() {
     setStatus("Regenerated track " + m_timeline.track(index).name);
 }
 
-void App::toggleSelectionScope() {
-    m_timeline.setSelectionScope(
-        m_timeline.selectionScope() == vwave::SelectionScope::AllTracks
-            ? vwave::SelectionScope::ActiveTrack
-            : vwave::SelectionScope::AllTracks);
-    setStatus(m_timeline.selectionScope() ==
-                      vwave::SelectionScope::ActiveTrack
-                  ? "Selection: active track"
-                  : "Selection: all tracks");
-}
+void App::toggleSelectionScope() { m_selection.toggleScope(); }
 
-void App::cropActiveTrack() {
-    if (m_timeline.empty()) return;
-    const int index = m_timeline.activeTrack();
-    if (!m_timeline.selection().active) {
-        setStatus("Select a range first");
-        return;
-    }
-    m_player.stop();
-    std::string error;
-    if (!m_timeline.cropTrack(index, m_timeline.selectedRange(), &error)) {
-        setStatus(error.empty() ? "Crop failed" : error, 6000);
-        return;
-    }
-    markEdited();
-    m_view.clamp(m_timeline.lengthFrames());
-    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-    setStatus("Cropped track " + m_timeline.track(index).name);
-}
+void App::cropActiveTrack() { m_selection.cropActiveTrack(); }
 
 void App::shiftActiveTrack(double seconds) {
-    if (m_timeline.empty() || m_timeline.sampleRate() <= 0) return;
-    const int64_t delta = static_cast<int64_t>(
-        std::llround(seconds * static_cast<double>(m_timeline.sampleRate())));
-    std::string error;
-    if (!m_timeline.shiftTrack(m_timeline.activeTrack(), delta, &error)) {
-        setStatus(error.empty() ? "Shift failed" : error, 6000);
-        return;
-    }
-    clearAnalysis();
-    m_view.clamp(m_timeline.lengthFrames());
-    m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-    setStatus("Shifted track by " +
-              formatSeconds(seconds));
+    m_selection.shiftActiveTrack(seconds);
 }
 
 void App::repeatActiveSelection(int count) {
-    if (!hasTracks() || !activeDocument().selection().active) {
-        setStatus("Select a range first");
-        return;
-    }
-    count = std::clamp(count, 1, 64);
-    runEdit([this, count](std::string* error) {
-        return activeDocument().repeatSelection(count, error);
-    }, "Repeated selection " + std::to_string(count) + "x");
+    m_selection.repeatSelection(count);
 }
 
 void App::moveActiveSelectionToPlayhead(bool copy) {
-    if (!hasTracks() || !activeDocument().selection().active) {
-        setStatus("Select a range first");
-        return;
-    }
-    const auto& track = m_timeline.track(m_timeline.activeTrack());
-    const int64_t destination = std::clamp<int64_t>(
-        m_playhead - track.startFrame, 0, activeDocument().numFrames());
-    runEdit([this, destination, copy](std::string* error) {
-        return activeDocument().moveSelectionTo(destination, copy, error);
-    }, copy ? "Copied selection to playhead"
-            : "Moved selection to playhead");
+    m_selection.moveSelectionToPlayhead(copy);
 }
 
-void App::zeroCrossCut() {
-    if (!hasTracks() || !activeDocument().selection().active) {
-        setStatus("Select a range first");
-        return;
-    }
-    const int64_t radius = std::max<int64_t>(
-        1, activeDocument().sampleRate() / 100);
-    const vwave::Range snapped = vwave::snapRangeToZeroCrossings(
-        activeDocument().audio(), activeDocument().selectedRange(), radius);
-    if (snapped.length() <= 0) {
-        setStatus("Cannot snap selection");
-        return;
-    }
-    activeDocument().setSelection(snapped.start, snapped.end);
-    runEdit([this](std::string* error) {
-        return activeDocument().deleteSelection(error);
-    }, "Zero-cross cut");
-}
+void App::zeroCrossCut() { m_selection.zeroCrossCut(); }
 
-void App::snapActiveSelection() {
-    if (!hasTracks() || !activeDocument().selection().active) {
-        setStatus("Select a range first");
-        return;
-    }
-    const int64_t radius = std::max<int64_t>(
-        1, activeDocument().sampleRate() / 100);
-    const vwave::Range snapped = vwave::snapRangeToZeroCrossings(
-        activeDocument().audio(), activeDocument().selectedRange(), radius);
-    activeDocument().setSelection(snapped.start, snapped.end);
-    syncSelectionFromActive();
-    setStatus("Selection snapped to zero crossings");
-}
+void App::snapActiveSelection() { m_selection.snapSelection(); }
 
 void App::stretchActiveTrack() {
-    if (!hasTracks() || activeDocument().audio().empty()) {
-        setStatus("Open an audio file first");
-        return;
-    }
-    runEdit([this](std::string* error) {
-        return activeDocument().timeStretchTrack(
-            m_stretchRatio.value, selectedStretchAlgorithm(), error);
-    }, "Track stretched");
+    m_selection.stretchTrack(selectedStretchAlgorithm());
 }
 
 void App::splitActiveStereoTrack() { m_stereo.splitActive(); }
@@ -1318,7 +1153,7 @@ void App::setTab(vwave::EditorTab tab) {
 }
 
 void App::togglePlay() {
-    if (m_recording) stopRecording();
+    if (m_recordingController.recording()) stopRecording();
     m_playback.togglePlay();
 }
 
@@ -1547,22 +1382,7 @@ vwave::Range App::spectralTimeRange() const {
     return {0, activeDocument().numFrames()};
 }
 
-void App::addMarkerAtPlayhead() {
-    if (activeDocument().audio().empty() || !hasTracks()) return;
-    const auto& track = m_timeline.track(m_timeline.activeTrack());
-    const int64_t localFrame =
-        m_playhead - track.startFrame;
-    if (localFrame < 0 || localFrame > activeDocument().numFrames()) {
-        setStatus("Playhead is outside the active track");
-        return;
-    }
-    const int64_t frame = localFrame;
-    if (activeDocument().addMarker(frame, "Marker")) {
-        setStatus("Marker added at " + formatSeconds(
-                                       static_cast<double>(frame) /
-                                       std::max(1, activeDocument().sampleRate())));
-    }
-}
+void App::addMarkerAtPlayhead() { m_selection.addMarkerAtPlayhead(); }
 
 bool App::loadFile(const std::string& path) {
     const std::string extension =
@@ -1580,7 +1400,7 @@ bool App::loadFile(const std::string& path) {
 }
 
 bool App::loadAudio(const std::string& path) {
-    if (m_recording) stopRecording();
+    if (m_recordingController.recording()) stopRecording();
     m_player.stop();
     vwave::Audio audio;
     std::string error;
@@ -1617,7 +1437,7 @@ bool App::loadAudio(const std::string& path) {
 
 bool App::addTrackFile(const std::string& path) {
     if (m_timeline.empty()) return loadAudio(path);
-    if (m_recording) stopRecording();
+    if (m_recordingController.recording()) stopRecording();
     m_player.stop();
     vwave::Audio audio;
     std::string error;
@@ -1644,7 +1464,7 @@ bool App::addTrackFile(const std::string& path) {
 }
 
 bool App::loadProject(const std::string& path) {
-    if (m_recording) stopRecording();
+    if (m_recordingController.recording()) stopRecording();
     m_player.stop();
     cancelRenderJobs();
     vwave::Timeline timeline;

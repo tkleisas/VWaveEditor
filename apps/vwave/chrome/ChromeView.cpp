@@ -165,7 +165,7 @@ void App::drawMenuBar() {
                                    : "Track disarmed");
                }, tracks),
         separator(),
-        action(m_recording ? "Stop Recording" : "Record",
+        action(m_recordingController.recording() ? "Stop Recording" : "Record",
                [this] { toggleRecording(); }, true, "F9")};
     Menu process;
     process.title = "Process";
@@ -440,13 +440,12 @@ void App::drawFooter() {
     drawText(truncateText(left, fontSmall(), m_footerRect.w - 380),
              m_footerRect.x + 14, m_footerRect.y + 7,
              statusActive ? kAccent : kTextFaint, fontSmall());
-    if (m_recording) {
+    if (m_recordingController.recording()) {
         std::ostringstream recording;
-        const int64_t frames = m_recordedInterleaved.size() /
-                               std::max(1, m_recordedChannels);
+        const int64_t frames = m_recordingController.capturedFrames();
         recording << "REC " << formatSeconds(
             static_cast<double>(frames) /
-            std::max(1, m_recordedSampleRate));
+            std::max(1, m_recordingController.capturedSampleRate()));
         const std::string text = recording.str();
         drawText(text, m_footerRect.w - textWidth(text, fontSmall()) - 14,
                  m_footerRect.y + 7, kRed, fontSmall());

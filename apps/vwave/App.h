@@ -8,6 +8,8 @@
 #include "controllers/ClipController.h"
 #include "controllers/LoopController.h"
 #include "controllers/PlaybackController.h"
+#include "controllers/RecordingController.h"
+#include "controllers/SelectionController.h"
 #include "controllers/StereoController.h"
 #include "controllers/TrackController.h"
 #include "services/AnalysisService.h"
@@ -298,13 +300,6 @@ private:
     uint64_t m_wavetableRequest = 0;
     AudioPlayer m_player;
     vwave::app::StereoController m_stereo;
-    AudioRecorder m_recorder;
-    bool m_recording = false;
-    int64_t m_recordStartFrame = 0;
-    int m_recordTarget = -1;
-    std::vector<float> m_recordedInterleaved;
-    int m_recordedChannels = 0;
-    int m_recordedSampleRate = 0;
     vwave::EditorTab m_tab = vwave::EditorTab::Waveform;
     vwave::WaveformViewport m_view;
     vwave::SpectralViewport m_spectralView;
@@ -378,6 +373,7 @@ private:
     vwave::app::TrackController m_tracks;
     vwave::app::LoopController m_loop;
     vwave::app::PlaybackController m_playback;
+    vwave::app::RecordingController m_recordingController;
     bool m_spectrumClickCandidate = false;
     int m_spectrumClickX = 0;
     int m_spectrumClickY = 0;
@@ -406,6 +402,7 @@ private:
     vwave::ParameterSlider m_normalizePeak;
     vwave::ParameterSlider m_stretchRatio;
     vwave::app::ClipController m_clips;
+    vwave::app::SelectionController m_selection;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;
     vwave::ParameterSlider m_sliceSensitivity;
