@@ -13,6 +13,7 @@
 #include "controllers/ImageController.h"
 #include "controllers/MasteringController.h"
 #include "controllers/ScopeController.h"
+#include "controllers/WavetableController.h"
 #include "controllers/SpectralController.h"
 #include "views/WaveformPeakCache.h"
 #include "controllers/StereoController.h"
@@ -296,21 +297,15 @@ private:
     vwave::Document m_emptyDocument;
     vwave::app::UiDispatcher m_dispatcher;
     vwave::JobSystem m_jobs;
-    vwave::JobHandle m_wavetableJob;
     vwave::app::AnalysisService m_analysis;
     vwave::app::AnalysisController m_analysisData;
     std::shared_ptr<const vwave::Audio> m_audioSnapshot;
-    uint64_t m_wavetableRequest = 0;
     AudioPlayer m_player;
     vwave::app::StereoController m_stereo;
     vwave::EditorTab m_tab = vwave::EditorTab::Waveform;
     vwave::WaveformViewport m_view;
     vwave::SpectralViewport m_spectralView;
-    vwave::Wavetable m_wavetable;
-    vwave::WavetableViewport m_wavetableView;
     SDL_Rect m_scopeArea{};
-    std::vector<double> m_frameWeights;
-    bool m_freeBlend = false;
     vwave::Spectrogram m_spectrogram;
     vwave::PhaseSpectrogram m_phaseSpectrogram;
     bool m_phaseSpectrogramDirty = true;
@@ -386,6 +381,7 @@ private:
     vwave::app::MasteringController m_masteringController;
     vwave::app::ImageController m_imageController;
     vwave::app::ScopeController m_scopeController;
+    vwave::app::WavetableController m_wavetableController;
     vwave::app::WaveformPeakCache m_peakCache;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;

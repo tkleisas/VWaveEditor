@@ -187,7 +187,7 @@ void App::drawSidebar() {
             for (const auto& item : items) {
                 const int bx = 18 + column * (buttonWidth + gap);
                 addButton(item.first, bx, y, buttonWidth, buttonHeight,
-                          item.second, false, false, m_wavetable.valid());
+                          item.second, false, false, m_wavetableController.table().valid());
                 ++column;
                 if (column == 2) {
                     column = 0;
@@ -199,7 +199,7 @@ void App::drawSidebar() {
         auto wtFullButton = [&](const std::string& label,
                                 std::function<void()> action) {
             addButton(label, 18, y, buttonWidth * 2 + gap, buttonHeight,
-                      std::move(action), false, false, m_wavetable.valid());
+                      std::move(action), false, false, m_wavetableController.table().valid());
             y += buttonHeight + 6;
         };
         drawSection("WAVETABLE", y);
@@ -229,21 +229,21 @@ void App::drawSidebar() {
                                true);
                 }},
                {"Normalize", [this] {
-                    if (!m_wavetable.valid()) return;
-                    m_wavetable.normalizeFrames();
+                    if (!m_wavetableController.table().valid()) return;
+                    m_wavetableController.table().normalizeFrames();
                     setStatus("Wavetable normalized");
                 }}});
-        if (m_wavetable.valid()) {
+        if (m_wavetableController.table().valid()) {
             drawSection("DESIGN", y);
             wtGrid({{std::string("Morph: ") +
                        kMorphModeNames[static_cast<int>(
-                           m_wavetable.morphMode())],
+                           m_wavetableController.table().morphMode())],
                    [this] { cycleWavetableMorphMode(); }},
                   {std::string("Interp: ") +
                        kInterpolationNames[static_cast<int>(
-                           m_wavetable.interpolation())],
+                           m_wavetableController.table().interpolation())],
                    [this] { cycleWavetableInterpolation(); }}});
-            wtGrid({{"Oversample: " + std::to_string(m_wavetable.oversampling()) +
+            wtGrid({{"Oversample: " + std::to_string(m_wavetableController.table().oversampling()) +
                        "x",
                    [this] { cycleWavetableOversampling(); }},
                   {"Add Frame", [this] { addWavetableFrame(false); }}});
@@ -256,25 +256,25 @@ void App::drawSidebar() {
                          [this] { addHarmonicWavetableFrame(); });
             addSlider("Position", formatMorph(m_framePositionControl.value), 18,
                       y, 256, m_framePositionControl, [this](double value) {
-                          if (!m_wavetable.valid()) return;
-                          m_wavetable.setFramePosition(
-                              m_wavetableView.selectedFrame, value);
+                          if (!m_wavetableController.table().valid()) return;
+                          m_wavetableController.table().setFramePosition(
+                              m_wavetableController.view().selectedFrame, value);
                       });
             y += 30;
             addSlider("Table root", formatMidiNote(m_tableRootControl.value), 18,
                       y, 256, m_tableRootControl, [this](double value) {
-                          if (m_wavetable.valid())
-                              m_wavetable.setRootNote(value);
+                          if (m_wavetableController.table().valid())
+                              m_wavetableController.table().setRootNote(value);
                       });
             y += 30;
             wtGrid({{"Align Phases", [this] {
-                       if (!m_wavetable.valid()) return;
-                       m_wavetable.phaseAlignFrames();
+                       if (!m_wavetableController.table().valid()) return;
+                       m_wavetableController.table().phaseAlignFrames();
                        setStatus("Wavetable frames phase aligned");
                    }},
                   {"Band Limit", [this] {
-                       if (!m_wavetable.valid()) return;
-                       m_wavetable.bandLimitFrames(
+                       if (!m_wavetableController.table().valid()) return;
+                       m_wavetableController.table().bandLimitFrames(
                            static_cast<int>(std::lround(m_harmonicLimit.value)));
                        setStatus("Wavetable band limited");
                    }}});
@@ -285,38 +285,38 @@ void App::drawSidebar() {
                       256, m_quantizeBits);
             y += 30;
             wtGrid({{"Apply Quantize", [this] {
-                       if (!m_wavetable.valid()) return;
-                       m_wavetable.quantizeFrames(
+                       if (!m_wavetableController.table().valid()) return;
+                       m_wavetableController.table().quantizeFrames(
                            static_cast<int>(std::lround(m_quantizeBits.value)));
                        setStatus("Wavetable quantized");
                    }},
                   {"Random Phases", [this] {
-                       if (!m_wavetable.valid()) return;
-                       m_wavetable.randomizePhases(1);
+                       if (!m_wavetableController.table().valid()) return;
+                       m_wavetableController.table().randomizePhases(1);
                        setStatus("Wavetable phases randomized");
                    }}});
             drawSection("FREE BLEND", y);
             wtGrid({{std::string("Free Blend: ") +
-                       (m_freeBlend ? "On" : "Off"),
-                   [this] { m_freeBlend = !m_freeBlend; }},
+                       (m_wavetableController.freeBlend() ? "On" : "Off"),
+                   [this] { m_wavetableController.toggleFreeBlend(); }},
                   {"Reset Weights", [this] {
-                       if (!m_wavetable.valid()) return;
-                       m_frameWeights.assign(
-                           static_cast<size_t>(m_wavetable.frameCount()), 1.0);
+                       if (!m_wavetableController.table().valid()) return;
+                       m_wavetableController.weights().assign(
+                           static_cast<size_t>(m_wavetableController.table().frameCount()), 1.0);
                        syncWavetableDesignControls();
                    }}});
             addSlider("Frame weight", formatMorph(m_frameWeightControl.value),
                       18, y, 256, m_frameWeightControl, [this](double value) {
-                          if (!m_wavetable.valid()) return;
-                          if (static_cast<int>(m_frameWeights.size()) !=
-                              m_wavetable.frameCount())
-                              m_frameWeights.assign(
-                                  static_cast<size_t>(m_wavetable.frameCount()),
+                          if (!m_wavetableController.table().valid()) return;
+                          if (static_cast<int>(m_wavetableController.weights().size()) !=
+                              m_wavetableController.table().frameCount())
+                              m_wavetableController.weights().assign(
+                                  static_cast<size_t>(m_wavetableController.table().frameCount()),
                                   1.0);
-                          const int frame = m_wavetableView.selectedFrame;
+                          const int frame = m_wavetableController.view().selectedFrame;
                           if (frame >= 0 &&
-                              frame < static_cast<int>(m_frameWeights.size()))
-                              m_frameWeights[static_cast<size_t>(frame)] =
+                              frame < static_cast<int>(m_wavetableController.weights().size()))
+                              m_wavetableController.weights()[static_cast<size_t>(frame)] =
                                   value;
                       });
             y += 30;
@@ -342,15 +342,15 @@ void App::drawSidebar() {
         y += 30;
         wtFullButton("Render Note", [this] { renderWavetableNote(); });
         wtGrid({{"Prev Frame", [this] {
-                   if (!m_wavetable.valid()) return;
-                   --m_wavetableView.selectedFrame;
-                   m_wavetableView.clamp(m_wavetable.frameCount());
+                   if (!m_wavetableController.table().valid()) return;
+                   --m_wavetableController.view().selectedFrame;
+                   m_wavetableController.view().clamp(m_wavetableController.table().frameCount());
                    syncWavetableDesignControls();
                }},
               {"Next Frame", [this] {
-                   if (!m_wavetable.valid()) return;
-                   ++m_wavetableView.selectedFrame;
-                   m_wavetableView.clamp(m_wavetable.frameCount());
+                   if (!m_wavetableController.table().valid()) return;
+                   ++m_wavetableController.view().selectedFrame;
+                   m_wavetableController.view().clamp(m_wavetableController.table().frameCount());
                    syncWavetableDesignControls();
                }}});
     } else if (m_tab == vwave::EditorTab::Mastering) {

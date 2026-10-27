@@ -19,7 +19,7 @@ void App::drawWavetable(const SDL_Rect& area) {
                         m_wavetableArea.y + m_wavetableArea.h + 10,
                         area.w - 20,
                         area.h - m_wavetableArea.h - 50};
-    if (!m_wavetable.valid()) {
+    if (!m_wavetableController.table().valid()) {
         drawText("No wavetable loaded", m_wavetableArea.x + 20,
                  m_wavetableArea.y + 20, kTextDim, fontNormal());
         drawText("Select audio and press Extract, or use the CLI/Lua API.",
@@ -27,7 +27,7 @@ void App::drawWavetable(const SDL_Rect& area) {
                  fontSmall());
         return;
     }
-    m_wavetableView.clamp(m_wavetable.frameCount());
+    m_wavetableController.view().clamp(m_wavetableController.table().frameCount());
     SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b, 255);
     SDL_RenderFillRect(m_renderer, &m_wavetableArea);
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
@@ -48,7 +48,7 @@ void App::drawWavetable(const SDL_Rect& area) {
                        m_wavetableArea.x + m_wavetableArea.w, center);
 
     const std::vector<float>& frame =
-        m_wavetable.frame(m_wavetableView.selectedFrame);
+        m_wavetableController.table().frame(m_wavetableController.view().selectedFrame);
     const int frameSize = static_cast<int>(frame.size());
     SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 240);
     for (int x = 0; x < m_wavetableArea.w; ++x) {
@@ -64,8 +64,8 @@ void App::drawWavetable(const SDL_Rect& area) {
     }
 
     std::ostringstream info;
-    info << "Frame " << (m_wavetableView.selectedFrame + 1) << '/'
-         << m_wavetable.frameCount() << "   " << frameSize << " samples   "
+    info << "Frame " << (m_wavetableController.view().selectedFrame + 1) << '/'
+         << m_wavetableController.table().frameCount() << "   " << frameSize << " samples   "
          << "Drag to draw";
     drawText(info.str(), m_wavetableArea.x + 8, m_wavetableArea.y + 8,
              kTextDim, fontSmall());
@@ -76,13 +76,13 @@ void App::drawWavetable(const SDL_Rect& area) {
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
     SDL_RenderDrawRect(m_renderer, &m_frameStripArea);
     const int cellWidth = std::max(
-        2, m_frameStripArea.w / std::max(1, m_wavetable.frameCount()));
+        2, m_frameStripArea.w / std::max(1, m_wavetableController.table().frameCount()));
     const int stripCenter = m_frameStripArea.y + m_frameStripArea.h / 2;
-    for (int frameIndex = 0; frameIndex < m_wavetable.frameCount();
+    for (int frameIndex = 0; frameIndex < m_wavetableController.table().frameCount();
          ++frameIndex) {
         const int x = m_frameStripArea.x + frameIndex * cellWidth;
         if (x >= m_frameStripArea.x + m_frameStripArea.w) break;
-        if (frameIndex == m_wavetableView.selectedFrame) {
+        if (frameIndex == m_wavetableController.view().selectedFrame) {
             SDL_SetRenderDrawColor(m_renderer, kAccentDark.r, kAccentDark.g,
                                    kAccentDark.b, 255);
             SDL_Rect highlight{x, m_frameStripArea.y + 2,
@@ -91,10 +91,10 @@ void App::drawWavetable(const SDL_Rect& area) {
             SDL_RenderFillRect(m_renderer, &highlight);
         }
         SDL_SetRenderDrawColor(m_renderer, kTextDim.r, kTextDim.g, kTextDim.b,
-                               frameIndex == m_wavetableView.selectedFrame
+                               frameIndex == m_wavetableController.view().selectedFrame
                                    ? 255
                                    : 130);
-        const auto& data = m_wavetable.frame(frameIndex);
+        const auto& data = m_wavetableController.table().frame(frameIndex);
         for (int sub = 0; sub < cellWidth && x + sub < m_frameStripArea.x +
                                                        m_frameStripArea.w;
              ++sub) {
