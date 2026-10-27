@@ -515,4 +515,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   rendering, and edit transformations. `Document.cpp` is under 1.8k lines.
 - Extracted Session command helpers and clip command handlers into
   `src/session/`; `Session.cpp` is down from 2,092 to 1,722 lines.
+- Split track command handling into `SessionTrackCommands`; `Session.cpp` is
+  down to 1,537 lines.
 - Next: split remaining Session command domains and `Document` internals.
