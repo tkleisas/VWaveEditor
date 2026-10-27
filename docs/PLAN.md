@@ -504,4 +504,6 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Added copy-on-write `Audio` storage, making analysis snapshots cheap and
   isolating worker reads from UI edits.
 - Extracted `ClipController` for clip-tool state and clip editing actions.
+- Extracted `AnalysisController` and moved beat/pitch analysis to background
+  jobs with cached results.
 - Next: extract transport/track controllers, then split `Session` and `Document`.

@@ -34,7 +34,7 @@ main thread through a dispatcher instead of touching SDL or live documents from
 worker threads.
 
 The editor uses the pool for image-to-spectrogram, scope-path, wavetable-note,
-overview, spectrogram, and phase-spectrogram work. Workers return results
+overview, spectrogram, phase-spectrogram, beat, and pitch work. Workers return results
 through `UiDispatcher`, and only the main thread mutates the timeline or creates
 SDL textures. `AnalysisService` owns request tokens and task handles so stale
 results are discarded after edits or track changes. Image rendering supports

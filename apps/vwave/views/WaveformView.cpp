@@ -367,11 +367,11 @@ void App::drawWaveform(const SDL_Rect& area) {
         }
     }
 
-    if (m_hasBeats && hasTracks()) {
+    if (m_analysisData.hasBeats() && hasTracks()) {
         const auto& active = m_timeline.track(m_timeline.activeTrack());
-        for (size_t i = 0; i < m_beats.beats.size(); ++i) {
+        for (size_t i = 0; i < m_analysisData.beats().beats.size(); ++i) {
             const int64_t beat =
-                m_beats.beats[i] + active.startFrame;
+                m_analysisData.beats().beats[i] + active.startFrame;
             if (beat < m_view.startFrame ||
                 beat > m_view.startFrame + m_view.visibleFrames)
                 continue;

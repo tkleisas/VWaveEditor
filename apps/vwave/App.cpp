@@ -27,6 +27,8 @@ using namespace vwave::ui;
 
 App::App()
     : m_analysis(m_jobs, m_dispatcher),
+      m_analysisData(
+          m_analysis, [this](const std::string& status) { setStatus(status); }),
       m_clips(
           m_timeline, m_playhead, m_stretchRatio,
           [this](const std::function<bool(std::string*)>& edit,
@@ -1497,10 +1499,7 @@ void App::markEdited() {
     m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
     m_overviewDirty = true;
     m_spectrogramDirty = true;
-    m_hasBeats = false;
-    m_hasPitch = false;
-    m_beats = {};
-    m_pitch = {};
+    m_analysisData.clear();
     m_spectralRegion.clear();
     updateWindowTitle();
 }
@@ -1510,52 +1509,31 @@ void App::clearAnalysis() {
     m_phaseSpectrogramDirty = true;
     m_audioSnapshot.reset();
     m_analysis.cancelAll();
-    m_hasBeats = false;
-    m_hasPitch = false;
-    m_beats = {};
-    m_pitch = {};
+    m_analysisData.clear();
     m_overviewDirty = true;
     m_spectrogramDirty = true;
     m_spectralRegion.clear();
 }
 
 void App::analyzeBeats() {
-    if (activeDocument().audio().empty()) {
+    const auto audio = activeAudioSnapshot();
+    if (!audio || audio->empty()) {
         setStatus("Open an audio file first");
         return;
     }
-    setStatus("Analyzing beats...", 60000);
-    m_beats = vwave::analyzeBeats(activeDocument().audio(),
-                                  m_beatSensitivity.value);
-    m_hasBeats = true;
-    if (m_beats.bpm > 0.0) {
-        std::ostringstream out;
-        out << "Detected " << std::fixed << std::setprecision(1)
-            << m_beats.bpm << " BPM";
-        setStatus(out.str());
-    } else {
-        setStatus("No tempo found");
-    }
+    m_analysisData.analyzeBeats(audio, m_beatSensitivity.value);
 }
 
 void App::detectPitch() {
-    if (activeDocument().audio().empty()) {
+    const auto audio = activeAudioSnapshot();
+    if (!audio || audio->empty()) {
         setStatus("Open an audio file first");
         return;
     }
     const vwave::Range range = activeDocument().selection().active
                                    ? activeDocument().selectedRange()
                                    : vwave::Range{};
-    m_pitch = vwave::detectPitch(activeDocument().audio(), range);
-    m_hasPitch = true;
-    if (m_pitch.frequency > 0.0) {
-        std::ostringstream out;
-        out << "Pitch " << std::fixed << std::setprecision(2)
-            << m_pitch.frequency << " Hz";
-        setStatus(out.str());
-    } else {
-        setStatus("No stable pitch found");
-    }
+    m_analysisData.detectPitch(audio, range);
 }
 
 void App::sliceCurrent() {
@@ -1569,11 +1547,11 @@ void App::sliceCurrent() {
             activeDocument().audio(), m_sliceSensitivity.value,
             m_minSliceMs.value / 1000.0);
     } else if (m_sliceMode == 1) {
-        const vwave::BeatAnalysis analysis = m_hasBeats
-                                                 ? m_beats
-                                                 : vwave::analyzeBeats(
-                                                       activeDocument().audio(),
-                                                       m_beatSensitivity.value);
+        const vwave::BeatAnalysis analysis =
+            m_analysisData.hasBeats()
+                ? m_analysisData.beats()
+                : vwave::analyzeBeats(
+                      activeDocument().audio(), m_beatSensitivity.value);
         if (analysis.bpm <= 0.0) {
             setStatus("No tempo available for beat slicing");
             return;

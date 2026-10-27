@@ -4,6 +4,7 @@
 #include "AudioRecorder.h"
 
 #include "ui/UiRenderer.h"
+#include "controllers/AnalysisController.h"
 #include "controllers/ClipController.h"
 #include "controllers/LoopController.h"
 #include "services/AnalysisService.h"
@@ -289,6 +290,7 @@ private:
     vwave::JobHandle m_scopeJob;
     vwave::JobHandle m_wavetableJob;
     vwave::app::AnalysisService m_analysis;
+    vwave::app::AnalysisController m_analysisData;
     std::shared_ptr<const vwave::Audio> m_audioSnapshot;
     uint64_t m_imageRequest = 0;
     uint64_t m_scopeRequest = 0;
@@ -305,10 +307,6 @@ private:
     vwave::WaveformViewport m_view;
     vwave::SpectralViewport m_spectralView;
     vwave::SpectralRegion m_spectralRegion;
-    vwave::BeatAnalysis m_beats;
-    vwave::PitchEstimate m_pitch;
-    bool m_hasBeats = false;
-    bool m_hasPitch = false;
     vwave::Wavetable m_wavetable;
     vwave::WavetableViewport m_wavetableView;
     vwave::MasteringAnalysis m_mastering;

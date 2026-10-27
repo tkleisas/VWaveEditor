@@ -13,6 +13,8 @@ AnalysisService::~AnalysisService() {
     m_overviewJob.wait();
     m_spectrogramJob.wait();
     m_phaseJob.wait();
+    m_beatJob.wait();
+    m_pitchJob.wait();
 }
 
 void AnalysisService::requestOverview(
@@ -116,13 +118,55 @@ void AnalysisService::requestPhase(
         });
 }
 
+void AnalysisService::requestBeats(
+    std::shared_ptr<const vwave::Audio> audio, double sensitivity,
+    std::function<void(vwave::BeatAnalysis)> callback) {
+    const uint64_t token = ++m_beatToken;
+    if (m_beatJob.valid()) m_beatJob.cancel();
+    m_beatJob = m_jobs.submit(
+        [this, token, audio = std::move(audio), sensitivity,
+         callback = std::move(callback)](vwave::JobControl& control) mutable {
+            if (!audio || audio->empty() || control.cancelled()) return;
+            auto beats = vwave::analyzeBeats(*audio, sensitivity);
+            if (control.cancelled()) return;
+            m_dispatcher.post([this, token, beats = std::move(beats),
+                               callback = std::move(callback)]() mutable {
+                if (token != m_beatToken) return;
+                callback(beats);
+            });
+        });
+}
+
+void AnalysisService::requestPitch(
+    std::shared_ptr<const vwave::Audio> audio, vwave::Range range,
+    std::function<void(vwave::PitchEstimate)> callback) {
+    const uint64_t token = ++m_pitchToken;
+    if (m_pitchJob.valid()) m_pitchJob.cancel();
+    m_pitchJob = m_jobs.submit(
+        [this, token, audio = std::move(audio), range,
+         callback = std::move(callback)](vwave::JobControl& control) mutable {
+            if (!audio || audio->empty() || control.cancelled()) return;
+            auto pitch = vwave::detectPitch(*audio, range);
+            if (control.cancelled()) return;
+            m_dispatcher.post([this, token, pitch = std::move(pitch),
+                               callback = std::move(callback)]() mutable {
+                if (token != m_pitchToken) return;
+                callback(pitch);
+            });
+        });
+}
+
 void AnalysisService::cancelAll() {
     ++m_overviewToken;
     ++m_spectrogramToken;
     ++m_phaseToken;
+    ++m_beatToken;
+    ++m_pitchToken;
     if (m_overviewJob.valid()) m_overviewJob.cancel();
     if (m_spectrogramJob.valid()) m_spectrogramJob.cancel();
     if (m_phaseJob.valid()) m_phaseJob.cancel();
+    if (m_beatJob.valid()) m_beatJob.cancel();
+    if (m_pitchJob.valid()) m_pitchJob.cancel();
 }
 
 } // namespace vwave::app

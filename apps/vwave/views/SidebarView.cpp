@@ -78,15 +78,15 @@ void App::drawSidebar() {
                  fontSmall());
     }
     y += 18;
-    if (m_hasBeats || m_hasPitch) {
+    if (m_analysisData.hasBeats() || m_analysisData.hasPitch()) {
         std::ostringstream analysis;
-        if (m_hasBeats) {
-            analysis << std::fixed << std::setprecision(1) << m_beats.bpm
+        if (m_analysisData.hasBeats()) {
+            analysis << std::fixed << std::setprecision(1) << m_analysisData.beats().bpm
                      << " BPM";
         }
-        if (m_hasPitch) {
-            if (m_hasBeats) analysis << "  ";
-            analysis << std::fixed << std::setprecision(1) << m_pitch.frequency
+        if (m_analysisData.hasPitch()) {
+            if (m_analysisData.hasBeats()) analysis << "  ";
+            analysis << std::fixed << std::setprecision(1) << m_analysisData.pitch().frequency
                      << " Hz";
         }
         drawText(analysis.str(), 18, y, kOrange, fontSmall());
