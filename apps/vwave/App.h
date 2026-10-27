@@ -10,6 +10,7 @@
 #include "controllers/PlaybackController.h"
 #include "controllers/RecordingController.h"
 #include "controllers/SelectionController.h"
+#include "controllers/SettingsController.h"
 #include "controllers/ImageController.h"
 #include "controllers/MasteringController.h"
 #include "controllers/ScopeController.h"
@@ -234,14 +235,6 @@ private:
     void startRecording();
     void stopRecording();
     void updateRecording();
-    void loadSettings();
-    void saveSettings();
-    void openSettings();
-    void closeSettings();
-    void refreshAudioDevices();
-    void cycleOutputDevice(int direction);
-    void cycleInputDevice(int direction);
-    void setTheme(std::string theme);
     void syncTrackControls();
     void syncSelectionFromActive();
     void updateMixer();
@@ -272,13 +265,6 @@ private:
     int m_openMenu = -1;
     SDL_Rect m_openMenuRect{};
     std::vector<SDL_Rect> m_menuItemRects;
-    vwave::AppSettings m_settings;
-    std::string m_settingsPath;
-    bool m_settingsOpen = false;
-    std::vector<std::string> m_inputDevices;
-    std::vector<std::string> m_outputDevices;
-    int m_inputDeviceIndex = 0;
-    int m_outputDeviceIndex = 0;
     SDL_Rect m_settingsOutputPrev{};
     SDL_Rect m_settingsOutputNext{};
     SDL_Rect m_settingsInputPrev{};
@@ -382,6 +368,7 @@ private:
     vwave::app::ImageController m_imageController;
     vwave::app::ScopeController m_scopeController;
     vwave::app::WavetableController m_wavetableController;
+    vwave::app::SettingsController m_settingsController;
     vwave::app::WaveformPeakCache m_peakCache;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;

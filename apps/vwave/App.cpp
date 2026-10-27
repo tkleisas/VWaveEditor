@@ -152,7 +152,10 @@ App::App()
               clearAnalysis();
               setTab(vwave::EditorTab::Waveform);
               updateWindowTitle();
-          }) {
+          }),
+      m_settingsController(
+          m_player, [this](const std::string& status) { setStatus(status); },
+          [this](const std::string& theme) { applyPalette(theme); }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
             applyDialog(mode, path);
@@ -302,130 +305,19 @@ bool App::init(const std::string& initialPath) {
     m_ui.setRenderer(m_renderer);
     m_ui.setFonts(m_fontSmall, m_font, m_fontBold, m_fontTitle);
 
-    m_settingsPath = defaultSettingsPath();
-    loadSettings();
-    m_player.setOutputDevice(m_settings.outputDevice);
-    if (!m_player.open() && !m_settings.outputDevice.empty()) {
-        m_settings.outputDevice.clear();
-        m_player.setOutputDevice("");
+    m_settingsController.load();
+    m_player.setOutputDevice(
+        m_settingsController.settings().outputDevice);
+    if (!m_player.open() &&
+        !m_settingsController.settings().outputDevice.empty()) {
+        m_settingsController.clearOutputDevice();
         m_player.open();
-        saveSettings();
     }
     m_view.fit(1);
     updateWindowTitle();
     setStatus("Drop audio/image or press Ctrl+O", 6000);
     if (!initialPath.empty()) loadFile(initialPath);
     return true;
-}
-
-void App::loadSettings() {
-    std::string error;
-    if (!vwave::AppSettings::load(m_settingsPath, m_settings, &error)) {
-        m_settings = {};
-    }
-    applyPalette(m_settings.theme);
-}
-
-void App::saveSettings() {
-    try {
-        const std::filesystem::path path(m_settingsPath);
-        if (path.has_parent_path())
-            std::filesystem::create_directories(path.parent_path());
-    } catch (...) {
-    }
-    std::string error;
-    if (!m_settings.save(m_settingsPath, &error) && !error.empty())
-        setStatus("Settings save failed: " + error, 6000);
-}
-
-void App::refreshAudioDevices() {
-    m_outputDevices.clear();
-    m_inputDevices.clear();
-    m_outputDevices.push_back("");
-    m_inputDevices.push_back("");
-    const int outputCount = SDL_GetNumAudioDevices(0);
-    for (int i = 0; i < outputCount; ++i) {
-        const char* name = SDL_GetAudioDeviceName(i, 0);
-        if (name && std::find(m_outputDevices.begin(), m_outputDevices.end(),
-                              name) == m_outputDevices.end())
-            m_outputDevices.emplace_back(name);
-    }
-    const int inputCount = SDL_GetNumAudioDevices(1);
-    for (int i = 0; i < inputCount; ++i) {
-        const char* name = SDL_GetAudioDeviceName(i, 1);
-        if (name && std::find(m_inputDevices.begin(), m_inputDevices.end(),
-                              name) == m_inputDevices.end())
-            m_inputDevices.emplace_back(name);
-    }
-    m_outputDeviceIndex = 0;
-    m_inputDeviceIndex = 0;
-    for (size_t i = 0; i < m_outputDevices.size(); ++i) {
-        if (m_outputDevices[i] == m_settings.outputDevice) {
-            m_outputDeviceIndex = static_cast<int>(i);
-            break;
-        }
-    }
-    for (size_t i = 0; i < m_inputDevices.size(); ++i) {
-        if (m_inputDevices[i] == m_settings.inputDevice) {
-            m_inputDeviceIndex = static_cast<int>(i);
-            break;
-        }
-    }
-}
-
-void App::openSettings() {
-    m_openMenu = -1;
-    refreshAudioDevices();
-    m_settingsOpen = true;
-}
-
-void App::closeSettings() { m_settingsOpen = false; }
-
-void App::cycleOutputDevice(int direction) {
-    if (m_outputDevices.empty()) return;
-    const int count = static_cast<int>(m_outputDevices.size());
-    m_outputDeviceIndex =
-        (m_outputDeviceIndex + direction + count) % count;
-    m_settings.outputDevice = m_outputDevices[static_cast<size_t>(
-        m_outputDeviceIndex)];
-    saveSettings();
-    m_player.stop();
-    m_player.close();
-    m_player.setOutputDevice(m_settings.outputDevice);
-    if (!m_player.open()) {
-        m_settings.outputDevice.clear();
-        m_outputDeviceIndex = 0;
-        saveSettings();
-        m_player.setOutputDevice("");
-        if (!m_player.open())
-            setStatus("Cannot open any audio output device");
-        else
-            setStatus("Output device unavailable; using System Default");
-    } else {
-        setStatus("Output: " + (m_settings.outputDevice.empty()
-                                    ? std::string("System Default")
-                                    : m_settings.outputDevice));
-    }
-}
-
-void App::cycleInputDevice(int direction) {
-    if (m_inputDevices.empty()) return;
-    const int count = static_cast<int>(m_inputDevices.size());
-    m_inputDeviceIndex = (m_inputDeviceIndex + direction + count) % count;
-    m_settings.inputDevice = m_inputDevices[static_cast<size_t>(
-        m_inputDeviceIndex)];
-    saveSettings();
-    setStatus("Input: " + (m_settings.inputDevice.empty()
-                               ? std::string("System Default")
-                               : m_settings.inputDevice));
-}
-
-void App::setTheme(std::string theme) {
-    if (theme != "dark" && theme != "light") return;
-    m_settings.theme = std::move(theme);
-    applyPalette(m_settings.theme);
-    saveSettings();
-    setStatus("Theme: " + m_settings.theme);
 }
 
 int App::run() {
@@ -512,7 +404,7 @@ void App::draw() {
     drawFooter();
     drawMenuDropdown();
     drawContextMenu();
-    if (m_settingsOpen) drawSettingsDialog();
+    if (m_settingsController.isOpen()) drawSettingsDialog();
     if (m_dialog.isOpen())
         m_dialog.draw(m_ui, m_toolbarRect.w,
                       m_footerRect.y + m_footerRect.h);
@@ -602,11 +494,11 @@ void App::cancelRenderJobs() {
 }
 
 void App::toggleRecording() {
-    m_recordingController.toggle(m_settings.inputDevice);
+    m_recordingController.toggle(m_settingsController.settings().inputDevice);
 }
 
 void App::startRecording() {
-    m_recordingController.start(m_settings.inputDevice);
+    m_recordingController.start(m_settingsController.settings().inputDevice);
 }
 
 void App::updateRecording() { m_recordingController.update(); }
@@ -1399,7 +1291,7 @@ void App::renderWavetableNote() {
 void App::openDialog(DialogMode mode, const std::string& title,
                      const std::string& initialPath, bool save) {
     m_openMenu = -1;
-    m_settingsOpen = false;
+    m_settingsController.close();
     m_dialog.open(mode, title, initialPath, save);
 }
 
@@ -1506,8 +1398,8 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         m_dialog.handleKey(event);
         return;
     }
-    if (m_settingsOpen) {
-        if (key == SDLK_ESCAPE) closeSettings();
+    if (m_settingsController.isOpen()) {
+        if (key == SDLK_ESCAPE) m_settingsController.close();
         return;
     }
     if (key == SDLK_ESCAPE && m_contextMenuOpen) {
@@ -1521,7 +1413,7 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
     const bool ctrl = (event.keysym.mod & KMOD_CTRL) != 0;
     const bool shift = (event.keysym.mod & KMOD_SHIFT) != 0;
     if (ctrl && key == SDLK_COMMA) {
-        openSettings();
+        m_settingsController.open();
     } else if (ctrl && key == SDLK_o) {
         openDialog(DialogMode::Open, "Open audio, project, or image", "", false);
     } else if (ctrl && shift && key == SDLK_s) {
@@ -1647,22 +1539,26 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
 
 void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
     if (m_dialog.handleMouseDown(event.x, event.y)) return;
-    if (m_settingsOpen) {
+    if (m_settingsController.isOpen()) {
         if (event.button != SDL_BUTTON_LEFT) return;
         SDL_Point point{event.x, event.y};
-        if (SDL_PointInRect(&point, &m_settingsCloseRect)) closeSettings();
+        if (SDL_PointInRect(&point, &m_settingsCloseRect)) m_settingsController.close();
         else if (SDL_PointInRect(&point, &m_settingsOutputPrev))
-            cycleOutputDevice(-1);
+            m_settingsController.cycleOutputDevice(-1);
         else if (SDL_PointInRect(&point, &m_settingsOutputNext))
-            cycleOutputDevice(1);
+            m_settingsController.cycleOutputDevice(1);
         else if (SDL_PointInRect(&point, &m_settingsInputPrev))
-            cycleInputDevice(-1);
+            m_settingsController.cycleInputDevice(-1);
         else if (SDL_PointInRect(&point, &m_settingsInputNext))
-            cycleInputDevice(1);
+            m_settingsController.cycleInputDevice(1);
         else if (SDL_PointInRect(&point, &m_settingsThemePrev))
-            setTheme(m_settings.theme == "dark" ? "light" : "dark");
+            m_settingsController.setTheme(
+            m_settingsController.settings().theme == "dark" ? "light"
+                                                              : "dark");
         else if (SDL_PointInRect(&point, &m_settingsThemeNext))
-            setTheme(m_settings.theme == "dark" ? "light" : "dark");
+            m_settingsController.setTheme(
+            m_settingsController.settings().theme == "dark" ? "light"
+                                                              : "dark");
         return;
     }
     if (event.button == SDL_BUTTON_RIGHT) {

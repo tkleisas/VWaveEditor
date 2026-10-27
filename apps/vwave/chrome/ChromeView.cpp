@@ -250,12 +250,12 @@ void App::drawMenuBar() {
     Menu settings;
     settings.title = "Settings";
     settings.items = {
-        action("Settings...", [this] { openSettings(); }, true, "Ctrl+,"),
+        action("Settings...", [this] { m_settingsController.open(); }, true, "Ctrl+,"),
         separator(),
-        action("Dark Theme", [this] { setTheme("dark"); },
-               m_settings.theme != "dark"),
-        action("Light Theme", [this] { setTheme("light"); },
-               m_settings.theme != "light")};
+        action("Dark Theme", [this] { m_settingsController.setTheme("dark"); },
+               m_settingsController.settings().theme != "dark"),
+        action("Light Theme", [this] { m_settingsController.setTheme("light"); },
+               m_settingsController.settings().theme != "light")};
     m_menus = {file, edit, track, process, view, settings};
 
     SDL_SetRenderDrawColor(m_renderer, kMenu.r, kMenu.g, kMenu.b, 255);
@@ -495,20 +495,20 @@ void App::drawSettingsDialog() {
     };
 
     const std::string output =
-        m_outputDeviceIndex > 0 &&
-                m_outputDeviceIndex < static_cast<int>(m_outputDevices.size())
-            ? m_outputDevices[static_cast<size_t>(m_outputDeviceIndex)]
+        m_settingsController.outputIndex() > 0 &&
+                m_settingsController.outputIndex() < static_cast<int>(m_settingsController.outputDevices().size())
+            ? m_settingsController.outputDevices()[static_cast<size_t>(m_settingsController.outputIndex())]
             : "System Default";
     const std::string input =
-        m_inputDeviceIndex > 0 &&
-                m_inputDeviceIndex < static_cast<int>(m_inputDevices.size())
-            ? m_inputDevices[static_cast<size_t>(m_inputDeviceIndex)]
+        m_settingsController.inputIndex() > 0 &&
+                m_settingsController.inputIndex() < static_cast<int>(m_settingsController.inputDevices().size())
+            ? m_settingsController.inputDevices()[static_cast<size_t>(m_settingsController.inputIndex())]
             : "System Default";
     drawRow(0, "Audio output", output, m_settingsOutputPrev,
             m_settingsOutputNext);
     drawRow(1, "Audio input", input, m_settingsInputPrev,
             m_settingsInputNext);
-    drawRow(2, "Theme", m_settings.theme == "light" ? "Light" : "Dark",
+    drawRow(2, "Theme", m_settingsController.settings().theme == "light" ? "Light" : "Dark",
             m_settingsThemePrev, m_settingsThemeNext);
 
     Button close;
@@ -517,7 +517,7 @@ void App::drawSettingsDialog() {
     close.accent = true;
     m_settingsCloseRect = close.rect;
     drawButton(close);
-    drawText(m_settingsPath, box.x + 24, box.y + box.h - 34, kTextFaint,
+    drawText(m_settingsController.path(), box.x + 24, box.y + box.h - 34, kTextFaint,
              fontSmall());
 }
 
