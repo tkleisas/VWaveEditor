@@ -38,6 +38,10 @@ public:
     static std::vector<std::string> commandNames();
 
 private:
+    nlohmann::json executeClipCommands(const std::string& command,
+                                       const nlohmann::json& params,
+                                       std::string* error);
+
     Timeline m_timeline;
     Document m_emptyDocument;
 };

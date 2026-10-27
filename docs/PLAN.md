@@ -513,4 +513,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   playback ranges; loop state remains in `LoopController`.
 - Extracted `ClipArrangement`; `Document` now delegates clip validation,
   rendering, and edit transformations. `Document.cpp` is under 1.8k lines.
-- Next: split `Session` command handlers and remaining `Document` internals.
+- Extracted Session command helpers and clip command handlers into
+  `src/session/`; `Session.cpp` is down from 2,092 to 1,722 lines.
+- Next: split remaining Session command domains and `Document` internals.

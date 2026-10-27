@@ -6,7 +6,7 @@
 ┌──────────────────────────────────────────────────────────────┐
 │ SDL2 editor │ CLI │ Lua 5.4 │ MCP stdio │ YAWN embedding     │
 ├──────────────────────────────────────────────────────────────┤
-│ Session JSON command layer                                   │
+│ Session JSON command layer + command helpers/handlers         │
 ├──────────────────────────────────────────────────────────────┤
 │ Timeline: tracks, routing, offsets, mixdown, recording state │
 │ Document: immutable source, operation history, undo/redo     │
