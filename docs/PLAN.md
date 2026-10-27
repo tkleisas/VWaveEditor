@@ -523,4 +523,10 @@ automation presets; the cut-up arrangement model itself is implemented.
   `Session.cpp` is down to 1,185 lines.
 - Split generator/analyzer command handling into `SessionGeneratorCommands`;
   `Session.cpp` is down to 448 lines.
-- Next: split remaining Session IO/stereo commands and `Document` internals.
+- Extracted `SpectralController`, `MasteringController`, `ImageController`,
+  `ScopeController`, `WavetableController`, and `SettingsController`.
+- Split SDL event dispatch, keyboard input, and mouse press/up/motion/wheel
+  handling into `apps/vwave/input/`.
+- Current major files: `App.cpp` 1,352 lines, `Session.cpp` 327,
+  `Document.cpp` 227, `Timeline.cpp` 157.
+- Next: remaining async/performance work and broader editor smoke coverage.
