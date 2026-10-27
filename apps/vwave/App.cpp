@@ -30,6 +30,9 @@ App::App()
       m_fileLoader(
           m_jobs, m_dispatcher,
           [this](const std::string& status) { setStatus(status); }),
+      m_fileSaver(
+          m_jobs, m_dispatcher,
+          [this](const std::string& status) { setStatus(status); }),
       m_analysisData(
           m_analysis, [this](const std::string& status) { setStatus(status); }),
       m_stereo(
@@ -1202,32 +1205,19 @@ bool App::loadProject(const std::string& path) {
 }
 
 void App::saveAudio(const std::string& path) {
-    const std::string target = withExtension(path, ".wav");
-    const vwave::Audio mix = m_timeline.mixdown();
-    if (mix.empty()) {
-        setStatus("Nothing to export");
-        return;
-    }
-    std::string error;
-    if (!vwave::writeAudio(target, mix, {}, &error)) {
-        setStatus("Save failed: " + error, 6000);
-        return;
-    }
-    m_audioPath = target;
-    updateWindowTitle();
-    setStatus("Saved " + baseName(target));
+    m_fileSaver.saveAudio(
+        m_timeline, path, [this](const std::string& target) {
+            m_audioPath = target;
+            updateWindowTitle();
+        });
 }
 
 void App::saveProject(const std::string& path) {
-    const std::string target = withExtension(path, ".vwdoc");
-    std::string error;
-    if (!m_timeline.saveProject(target, &error)) {
-        setStatus("Save failed: " + error, 6000);
-        return;
-    }
-    m_projectPath = target;
-    updateWindowTitle();
-    setStatus("Saved project " + baseName(target));
+    m_fileSaver.saveProject(
+        m_timeline, path, [this](const std::string& target) {
+            m_projectPath = target;
+            updateWindowTitle();
+        });
 }
 
 void App::exportSlices(const std::string& directory) {
@@ -1235,20 +1225,15 @@ void App::exportSlices(const std::string& directory) {
         setStatus("Create slices first");
         return;
     }
-    vwave::SliceExportOptions options;
-    options.prefix = baseName(m_audioPath).empty()
-                         ? "slice"
-                         : std::filesystem::path(baseName(m_audioPath))
-                               .stem()
-                               .string();
-    vwave::SliceExportResult result;
-    std::string error;
-    if (!vwave::exportSlices(activeDocument().audio(), activeDocument().slices(),
-                             directory, options, &result, &error)) {
-        setStatus("Export failed: " + error, 6000);
-        return;
-    }
-    setStatus("Exported " + std::to_string(result.files.size()) + " slices");
+    std::string prefix = baseName(m_audioPath).empty()
+                             ? "slice"
+                             : std::filesystem::path(baseName(m_audioPath))
+                                   .stem()
+                                   .string();
+    m_fileSaver.exportSlices(
+        activeDocument().audio(), activeDocument().slices(), directory,
+        std::move(prefix),
+        [](size_t, const std::string&) {});
 }
 
 void App::extractWavetable() {

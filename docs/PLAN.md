@@ -539,4 +539,6 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Moved audio and project reads off the main thread via
   `FileLoadController`; callbacks apply results only when still current and
   document edits cancel pending loads.
+- Moved mixdown export, project save, and slice export onto background jobs
+  via `FileSaveController`.
 - Next: remaining async/performance work.

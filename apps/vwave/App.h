@@ -21,6 +21,7 @@
 #include "controllers/TrackController.h"
 #include "services/AnalysisService.h"
 #include "services/FileLoadController.h"
+#include "services/FileSaveController.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
 #include "ui/Widgets.h"
@@ -296,6 +297,7 @@ private:
     vwave::JobSystem m_jobs;
     vwave::app::AnalysisService m_analysis;
     vwave::app::FileLoadController m_fileLoader;
+    vwave::app::FileSaveController m_fileSaver;
     vwave::app::AnalysisController m_analysisData;
     std::shared_ptr<const vwave::Audio> m_audioSnapshot;
     AudioPlayer m_player;
