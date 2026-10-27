@@ -123,7 +123,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-release is `v0.0.7`; untagged build trees fall back to `0.0.7`.
+release is `v0.0.8`; untagged build trees fall back to `0.0.8`.
 
 Artifacts land in `build/bin`:
 
@@ -389,7 +389,7 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.7** includes the multi-track editing core, track-aware desktop
+Version **0.0.8** includes the multi-track editing core, track-aware desktop
 editor, recording, settings, CLI, Lua, MCP, C ABI, the wavetable designer,
 YAWN wavetable import, mastering analysis and processing, the phase-aware 3D
 spectrum, image-to-spectrogram synthesis, oscilloscope music, reproducible
@@ -397,7 +397,10 @@ track recipes, and the standalone editor described above. The current editing
 stage also adds undoable range move/copy/repeat, selection and track handles,
 whole-track stretch, zero-cross cutting, stereo/mono track conversion, and
 non-destructive clip arrangements with gaps, independent part moves, clip
-stretch/repeat, gain/fades, and document-shared undo.
+stretch/repeat, gain/fades, and document-shared undo. Version 0.0.8 also
+splits the desktop editor into focused controllers, services, views, and input
+handlers, and moves audio/project/image/wavetable loading plus mastering and
+image rendering onto background workers with stale-result rejection.
 
 All planned feature phases are implemented: wavetable design and YAWN interop,
 mastering analysis and processing, the phase-aware 3D spectrum,

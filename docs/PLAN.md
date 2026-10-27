@@ -287,7 +287,7 @@ Deferred:
 
 ## Implementation status
 
-As of the v0.0.7 development line:
+As of the v0.0.8 development line:
 
 - Phases 0–8 are implemented and test-green.
 - Multi-track Timeline, track controls, multi-track playback/export, recording,

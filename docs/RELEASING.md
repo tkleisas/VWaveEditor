@@ -49,8 +49,8 @@ The Windows build uses MSYS2 MINGW64.
 4. Create an annotated version tag:
 
    ```sh
-   git tag -a v0.0.7 -m "VWaveEditor v0.0.7"
-   git push --atomic origin master v0.0.7
+   git tag -a v0.0.8 -m "VWaveEditor v0.0.8"
+   git push --atomic origin master v0.0.8
    ```
 
 5. The `release` workflow builds both platforms, runs the test suite, uploads
