@@ -423,7 +423,7 @@ void App::drawSidebar() {
             y += 18;
         }
     } else if (m_tab == vwave::EditorTab::Image) {
-        const bool hasImage = m_image.valid();
+        const bool hasImage = m_imageController.valid();
         auto imageGrid = [&](std::initializer_list<std::pair<
                                  std::string, std::function<void()>>> items) {
             int column = 0;
@@ -453,8 +453,10 @@ void App::drawSidebar() {
         y += 32;
         if (hasImage) {
             std::ostringstream info;
-            info << m_image.width << " x " << m_image.height << "   "
-                 << truncateText(baseName(m_imagePath), fontSmall(), 180);
+            info << m_imageController.image().width << " x "
+                 << m_imageController.image().height << "   "
+                 << truncateText(baseName(m_imageController.path()),
+                                 fontSmall(), 180);
             drawText(info.str(), 18, y, kTextDim, fontSmall());
             y += 18;
         }
@@ -468,41 +470,36 @@ void App::drawSidebar() {
                   m_imageMaxHz);
         y += 30;
         imageGrid({{std::string("Freq: ") +
-                        kImageFrequencyNames[m_imageFrequencyScale],
+                        kImageFrequencyNames[m_imageController.frequencyScale()],
                     [this] {
                         cycleImageFrequencyScale();
                     }},
                    {std::string("Time: ") +
-                        kImageTimeNames[m_imageTimeMapping],
+                        kImageTimeNames[m_imageController.timeMapping()],
                     [this] { cycleImageTimeMapping(); }}});
         imageGrid({{std::string("Phase: ") +
-                        kImagePhaseNames[m_imagePhaseMode],
+                        kImagePhaseNames[m_imageController.phaseMode()],
                     [this] { cycleImagePhaseMode(); }},
-                   {"FFT: " + std::to_string(kFrameSizes[m_imageFftIndex]),
-                    [this] {
-                        m_imageFftIndex =
-                            (m_imageFftIndex + 1) %
-                            static_cast<int>(sizeof(kFrameSizes) /
-                                             sizeof(kFrameSizes[0]));
-                    }}});
+                   {"FFT: " + std::to_string(kFrameSizes[m_imageController.fftIndex()]),
+                    [this] { m_imageController.cycleFftIndex(); }}});
         imageGrid({{std::string("Channels: ") +
-                        (m_imageStereo ? "Stereo" : "Mono"),
-                    [this] { m_imageStereo = !m_imageStereo; }},
+                        (m_imageController.stereo() ? "Stereo" : "Mono"),
+                    [this] { m_imageController.toggleStereo(); }},
                    {std::string("Invert: ") +
-                        (m_imageInvert ? "On" : "Off"),
-                    [this] { m_imageInvert = !m_imageInvert; }}});
+                        (m_imageController.invert() ? "On" : "Off"),
+                    [this] { m_imageController.toggleInvert(); }}});
         imageGrid({{std::string("Alpha: ") +
-                        (m_imageUseAlpha ? "On" : "Off"),
-                    [this] { m_imageUseAlpha = !m_imageUseAlpha; }},
+                        (m_imageController.useAlpha() ? "On" : "Off"),
+                    [this] { m_imageController.toggleUseAlpha(); }},
                    {std::string("Normalize: ") +
-                        (m_imageNormalize ? "On" : "Off"),
-                    [this] { m_imageNormalize = !m_imageNormalize; }}});
+                        (m_imageController.normalize() ? "On" : "Off"),
+                    [this] { m_imageController.toggleNormalize(); }}});
         imageGrid({{std::string("Flip H: ") +
-                        (m_imageFlipHorizontal ? "On" : "Off"),
-                    [this] { m_imageFlipHorizontal = !m_imageFlipHorizontal; }},
+                        (m_imageController.flipHorizontal() ? "On" : "Off"),
+                    [this] { m_imageController.toggleFlipHorizontal(); }},
                    {std::string("Flip V: ") +
-                        (m_imageFlipVertical ? "On" : "Off"),
-                    [this] { m_imageFlipVertical = !m_imageFlipVertical; }}});
+                        (m_imageController.flipVertical() ? "On" : "Off"),
+                    [this] { m_imageController.toggleFlipVertical(); }}});
         addSlider("Loops", formatInt(m_imageLoops.value), 18, y, 256,
                   m_imageLoops);
         y += 30;

@@ -123,6 +123,17 @@ App::App()
               clearAnalysis();
               setTab(vwave::EditorTab::Waveform);
               updateWindowTitle();
+          }),
+      m_imageController(
+          m_renderer, m_jobs, m_dispatcher, m_timeline, m_player,
+          [this](const std::string& status) { setStatus(status); },
+          [this](int64_t start) {
+              syncTrackControls();
+              m_view.fit(m_timeline.lengthFrames());
+              m_playhead = start;
+              clearAnalysis();
+              setTab(vwave::EditorTab::Waveform);
+              updateWindowTitle();
           }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
@@ -185,7 +196,7 @@ App::App()
 App::~App() {
     m_player.close();
     if (m_spectrogramTexture) SDL_DestroyTexture(m_spectrogramTexture);
-    if (m_imageTexture) SDL_DestroyTexture(m_imageTexture);
+    m_imageController.close();
     TTF_Font* fonts[] = {m_fontSmall, m_font, m_fontBold, m_fontTitle};
     for (int i = 0; i < 4; ++i) {
         if (!fonts[i]) continue;
@@ -567,10 +578,9 @@ std::shared_ptr<const vwave::Audio> App::activeAudioSnapshot() {
 }
 
 void App::cancelRenderJobs() {
-    ++m_imageRequest;
+    m_imageController.cancel();
     ++m_scopeRequest;
     ++m_wavetableRequest;
-    if (m_imageJob.valid()) m_imageJob.cancel();
     if (m_scopeJob.valid()) m_scopeJob.cancel();
     if (m_wavetableJob.valid()) m_wavetableJob.cancel();
 }
@@ -808,131 +818,30 @@ void App::setLoopRegion(int64_t start, int64_t end) {
 }
 
 
-void App::cycleImagePhaseMode() {
-    m_imagePhaseMode = (m_imagePhaseMode + 1) % 5;
-}
+void App::cycleImagePhaseMode() { m_imageController.cyclePhaseMode(); }
 
 void App::cycleImageFrequencyScale() {
-    m_imageFrequencyScale = (m_imageFrequencyScale + 1) % 2;
+    m_imageController.cycleFrequencyScale();
 }
 
-void App::cycleImageTimeMapping() {
-    m_imageTimeMapping = (m_imageTimeMapping + 1) % 3;
-}
+void App::cycleImageTimeMapping() { m_imageController.cycleTimeMapping(); }
 
 void App::loadImage(const std::string& path) {
-    vwave::ImageData image;
-    std::string error;
-    if (!vwave::loadImageFile(path, image, &error)) {
-        setStatus(error.empty() ? "Image load failed" : error, 6000);
-        return;
-    }
-    if (m_imageTexture) {
-        SDL_DestroyTexture(m_imageTexture);
-        m_imageTexture = nullptr;
-    }
-    m_image = std::move(image);
-    m_imagePath = path;
-    m_imageTexture = SDL_CreateTexture(
-        m_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
-        m_image.width, m_image.height);
-    if (m_imageTexture) {
-        SDL_UpdateTexture(m_imageTexture, nullptr, m_image.pixels.data(),
-                          m_image.width * 4);
-        SDL_SetTextureBlendMode(m_imageTexture, SDL_BLENDMODE_BLEND);
-    }
-    setTab(vwave::EditorTab::Image);
-    setStatus("Loaded image " + baseName(path));
+    if (m_imageController.load(path)) setTab(vwave::EditorTab::Image);
 }
 
 void App::renderImageToTrack() {
-    if (!m_image.valid()) {
-        setStatus("Load an image first");
-        return;
-    }
-    vwave::ImageSpectrogramOptions options;
-    options.sampleRate =
-        m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;
-    options.fftSize = kFrameSizes[m_imageFftIndex];
-    options.hopSize = std::max(64, options.fftSize / 4);
-    options.duration = m_imageDuration.value;
-    options.minHz = m_imageMinHz.value;
-    options.maxHz = m_imageMaxHz.value;
-    options.frequencyScale = static_cast<vwave::ImageFrequencyScale>(
-        m_imageFrequencyScale);
-    options.timeMapping = static_cast<vwave::ImageTimeMapping>(
-        m_imageTimeMapping);
-    options.loops = static_cast<int>(std::lround(m_imageLoops.value));
-    options.flipHorizontal = m_imageFlipHorizontal;
-    options.flipVertical = m_imageFlipVertical;
-    options.invert = m_imageInvert;
-    options.gamma = m_imageGamma.value;
-    options.contrast = m_imageContrast.value;
-    options.threshold = m_imageThreshold.value;
-    options.useAlpha = m_imageUseAlpha;
-    options.phaseMode = static_cast<vwave::ImagePhaseMode>(m_imagePhaseMode);
-    options.iterations =
+    vwave::app::ImageRenderParams params;
+    params.duration = m_imageDuration.value;
+    params.minHz = m_imageMinHz.value;
+    params.maxHz = m_imageMaxHz.value;
+    params.gamma = m_imageGamma.value;
+    params.contrast = m_imageContrast.value;
+    params.threshold = m_imageThreshold.value;
+    params.loops = static_cast<int>(std::lround(m_imageLoops.value));
+    params.iterations =
         static_cast<int>(std::lround(m_imageIterations.value));
-    options.channels = m_imageStereo ? 2 : 1;
-    options.normalize = m_imageNormalize;
-    options.peak = 0.9;
-
-    const vwave::ImageSpectrogramOptions recipeOptions = options;
-    const vwave::ImageData image = m_image;
-    const std::string imagePath = m_imagePath;
-    const int64_t start = clampFrame(m_playhead, m_timeline.lengthFrames());
-    std::string name = std::filesystem::path(imagePath).stem().string();
-    if (name.empty()) name = "Image";
-    const uint64_t request = ++m_imageRequest;
-    if (m_imageJob.valid()) m_imageJob.cancel();
-
-    m_imageJob = m_jobs.submit(
-        [this, request, image, options, recipeOptions, imagePath, start,
-         name](vwave::JobControl& control) mutable {
-            options.cancelled = [&control] { return control.cancelled(); };
-            options.progress = [&control](double value) {
-                control.setProgress(value);
-            };
-            std::string error;
-            vwave::ImageSpectrogramResult generated;
-            try {
-                generated = vwave::imageToSpectrogram(image, options, &error);
-            } catch (const std::exception& exception) {
-                error = exception.what();
-            }
-            if (control.cancelled()) return;
-            m_dispatcher.post(
-                [this, request, generated = std::move(generated),
-                 error = std::move(error), imagePath, recipeOptions, start,
-                 name]() mutable {
-                    if (request != m_imageRequest) return;
-                    if (generated.audio.empty()) {
-                        setStatus(error.empty() ? "Image render failed" : error,
-                                  6000);
-                        return;
-                    }
-                    m_player.stop();
-                    std::string addError;
-                    if (!m_timeline.addAudioTrack(name, generated.audio, start,
-                                                  &addError)) {
-                        setStatus("Cannot add image track: " + addError);
-                        return;
-                    }
-                    const int trackIndex = m_timeline.trackCount() - 1;
-                    m_timeline.track(trackIndex).recipe =
-                        vwave::makeImageTrackRecipe(imagePath, recipeOptions);
-                    m_timeline.setActiveTrack(trackIndex);
-                    syncTrackControls();
-                    m_view.fit(m_timeline.lengthFrames());
-                    m_playhead = start;
-                    clearAnalysis();
-                    setTab(vwave::EditorTab::Waveform);
-                    updateWindowTitle();
-                    setStatus("Rendered image to track (" +
-                              formatSeconds(generated.duration) + ")");
-                });
-        });
-    setStatus("Rendering image in background...", 60000);
+    m_imageController.render(m_playhead, params);
 }
 
 void App::generateScopePath() {
@@ -1330,7 +1239,7 @@ bool App::loadFile(const std::string& path) {
     }
     if (isImagePath(path)) {
         loadImage(path);
-        return m_image.valid();
+        return m_imageController.valid();
     }
     return loadAudio(path);
 }

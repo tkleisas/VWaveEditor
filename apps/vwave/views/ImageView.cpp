@@ -12,7 +12,8 @@
 using namespace vwave::ui;
 
 void App::drawImage(const SDL_Rect& area) {
-    if (!m_image.valid()) {
+    const auto& image = m_imageController.image();
+    if (!image.valid()) {
         drawText("No image loaded", area.x + 40, area.y + 54, kTextDim,
                  fontTitle());
         drawText("Load a PNG, JPEG, BMP, TGA, GIF, PPM, PGM, or HDR image.",
@@ -24,25 +25,25 @@ void App::drawImage(const SDL_Rect& area) {
     drawText("Image to spectrogram", area.x + 20, area.y + 10, kAccent,
              fontBold());
     std::ostringstream info;
-    info << m_image.width << " x " << m_image.height << "   "
-         << kImageFrequencyNames[m_imageFrequencyScale] << " frequency   "
-         << kImageTimeNames[m_imageTimeMapping] << " time   "
-         << kImagePhaseNames[m_imagePhaseMode];
+    info << image.width << " x " << image.height << "   "
+         << kImageFrequencyNames[m_imageController.frequencyScale()] << " frequency   "
+         << kImageTimeNames[m_imageController.timeMapping()] << " time   "
+         << kImagePhaseNames[m_imageController.phaseMode()];
     drawText(info.str(), area.x + 20, area.y + 28, kTextFaint, fontSmall());
 
     const int availableW = area.w - 40;
     const int availableH = area.h - 72;
     const double scale = std::min(
-        static_cast<double>(availableW) / std::max(1, m_image.width),
-        static_cast<double>(availableH) / std::max(1, m_image.height));
-    const int drawW = std::max(1, static_cast<int>(m_image.width * scale));
-    const int drawH = std::max(1, static_cast<int>(m_image.height * scale));
+        static_cast<double>(availableW) / std::max(1, image.width),
+        static_cast<double>(availableH) / std::max(1, image.height));
+    const int drawW = std::max(1, static_cast<int>(image.width * scale));
+    const int drawH = std::max(1, static_cast<int>(image.height * scale));
     SDL_Rect target{area.x + (area.w - drawW) / 2,
                     area.y + 46 + (availableH - drawH) / 2, drawW, drawH};
     SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b, 255);
     SDL_RenderFillRect(m_renderer, &target);
-    if (m_imageTexture) {
-        SDL_RenderCopy(m_renderer, m_imageTexture, nullptr, &target);
+    if (m_imageController.texture()) {
+        SDL_RenderCopy(m_renderer, m_imageController.texture(), nullptr, &target);
     }
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
     SDL_RenderDrawRect(m_renderer, &target);

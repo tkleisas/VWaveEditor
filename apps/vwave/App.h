@@ -10,6 +10,7 @@
 #include "controllers/PlaybackController.h"
 #include "controllers/RecordingController.h"
 #include "controllers/SelectionController.h"
+#include "controllers/ImageController.h"
 #include "controllers/MasteringController.h"
 #include "controllers/SpectralController.h"
 #include "views/WaveformPeakCache.h"
@@ -292,13 +293,11 @@ private:
     vwave::Document m_emptyDocument;
     vwave::app::UiDispatcher m_dispatcher;
     vwave::JobSystem m_jobs;
-    vwave::JobHandle m_imageJob;
     vwave::JobHandle m_scopeJob;
     vwave::JobHandle m_wavetableJob;
     vwave::app::AnalysisService m_analysis;
     vwave::app::AnalysisController m_analysisData;
     std::shared_ptr<const vwave::Audio> m_audioSnapshot;
-    uint64_t m_imageRequest = 0;
     uint64_t m_scopeRequest = 0;
     uint64_t m_wavetableRequest = 0;
     AudioPlayer m_player;
@@ -308,26 +307,13 @@ private:
     vwave::SpectralViewport m_spectralView;
     vwave::Wavetable m_wavetable;
     vwave::WavetableViewport m_wavetableView;
-    vwave::ImageData m_image;
     vwave::ScopePath m_scopePath;
     SDL_Rect m_scopeArea{};
-    std::string m_imagePath;
-    SDL_Texture* m_imageTexture = nullptr;
     int m_scopeShape = 2;
     int m_scopeDirection = 0;
     int m_scopeOversampling = 2;
     bool m_scopeBandLimited = true;
     bool m_scopeNormalize = true;
-    int m_imageFrequencyScale = 1;
-    int m_imageTimeMapping = 0;
-    int m_imagePhaseMode = 1;
-    int m_imageFftIndex = 3;
-    bool m_imageInvert = false;
-    bool m_imageUseAlpha = true;
-    bool m_imageStereo = false;
-    bool m_imageNormalize = true;
-    bool m_imageFlipHorizontal = false;
-    bool m_imageFlipVertical = false;
     std::vector<double> m_frameWeights;
     bool m_freeBlend = false;
     vwave::Spectrogram m_spectrogram;
@@ -403,6 +389,7 @@ private:
     vwave::app::SelectionController m_selection;
     vwave::app::SpectralController m_spectralController;
     vwave::app::MasteringController m_masteringController;
+    vwave::app::ImageController m_imageController;
     vwave::app::WaveformPeakCache m_peakCache;
     vwave::ParameterSlider m_pitchSemitones;
     vwave::ParameterSlider m_beatSensitivity;
