@@ -227,11 +227,13 @@ nlohmann::json Session::execute(const std::string& command,
                     {"active_track", m_timeline.activeTrack()}};
         }
         if (command == "oscilloscope_render" ||
-            command == "image_spectrogram" ||
-            command == "mastering_analysis" ||
-            command == "mastering_render" ||
-            command == "regenerate_track")
-            return executeGeneratorCommands(command, params, error);
+            command == "image_spectrogram")
+            return executeImageScopeCommands(command, params, error);
+        if (command == "mastering_analysis" ||
+            command == "mastering_render")
+            return executeMasteringCommands(command, params, error);
+        if (command == "regenerate_track")
+            return executeRecipeCommands(command, params, error);
 
         if (command == "add_track" || command == "add_empty_track" ||
             command == "remove_track" || command == "select_track" ||
@@ -283,9 +285,10 @@ nlohmann::json Session::execute(const std::string& command,
             return executeAnalysisCommands(command, params, error);
 
         if (command == "wavetable" || command == "harmonics_wavetable" ||
-            command == "wavetable_design" || command == "synth_note" ||
-            command == "generate_sweep" || command == "deconvolve")
-            return executeGeneratorCommands(command, params, error);
+            command == "wavetable_design" || command == "synth_note")
+            return executeWavetableCommands(command, params, error);
+        if (command == "generate_sweep" || command == "deconvolve")
+            return executeCaptureCommands(command, params, error);
 
         setError(error, "unknown command: " + command);
         return nullptr;

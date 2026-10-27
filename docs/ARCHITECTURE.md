@@ -115,6 +115,9 @@ operation again and restores its post-operation selection.
 
 Supported operation classes:
 
+Operation construction and serialization live in `Operation.cpp`; shared
+document JSON/selection helpers live in `DocumentInternal.h`.
+
 | Class | Operations |
 | --- | --- |
 | Process | gain, normalize, fades, reverse, invert, silence, DC removal, stretch, pitch, spectral, convolution |

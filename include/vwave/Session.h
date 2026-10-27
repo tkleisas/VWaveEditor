@@ -47,9 +47,21 @@ private:
     nlohmann::json executeEditCommands(const std::string& command,
                                        const nlohmann::json& params,
                                        std::string* error);
-    nlohmann::json executeGeneratorCommands(const std::string& command,
+    nlohmann::json executeImageScopeCommands(const std::string& command,
+                                             const nlohmann::json& params,
+                                             std::string* error);
+    nlohmann::json executeMasteringCommands(const std::string& command,
                                             const nlohmann::json& params,
                                             std::string* error);
+    nlohmann::json executeRecipeCommands(const std::string& command,
+                                         const nlohmann::json& params,
+                                         std::string* error);
+    nlohmann::json executeWavetableCommands(const std::string& command,
+                                            const nlohmann::json& params,
+                                            std::string* error);
+    nlohmann::json executeCaptureCommands(const std::string& command,
+                                          const nlohmann::json& params,
+                                          std::string* error);
     nlohmann::json executeIoCommands(const std::string& command,
                                      const nlohmann::json& params,
                                      std::string* error);
