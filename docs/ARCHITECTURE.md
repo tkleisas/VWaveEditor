@@ -66,6 +66,12 @@ connects the worker pool through a main-thread dispatcher.
 
 ## Audio model
 
+The target non-destructive model separates immutable audio blocks from the
+region arrangement that places them on a timeline. Splits reference existing
+blocks; sample edits create new blocks only for the affected range. The core
+block store and region arrangement are implemented, while the document and UI
+migration is staged. See `docs/AUDIO_MODEL.md`.
+
 `vwave::Audio` owns planar, non-interleaved 32-bit float channels:
 
 ```text
@@ -104,7 +110,11 @@ unselected prefix/suffix) or rendering the processed selection to a new track at
 its timeline position. Whole-track stretch always edits the active track in
 place.
 
-## Non-destructive document
+## Non-destructive document (current v1)
+
+The current document implementation is the v1 operation-replay model described
+below. It is being replaced by the block/region model in `docs/AUDIO_MODEL.md`;
+the existing project format remains readable during the migration.
 
 A document stores:
 
