@@ -550,4 +550,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   signals retain the single-block FFT path.
 - Added unified timeline/document undo with structural snapshots, routing
   coalescing, and cross-track ordering.
-- Next: broader performance and adoption work.
+- Started an SDL-free retained-mode UI core with normalized pointer/key/text
+  events, hover/capture/focus routing, cursor shapes, and headless tests.
+- Next: command registry, SDL adapter, and migration of toolbar/sidebar/timeline
+  controls to the widget layer.

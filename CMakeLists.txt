@@ -107,6 +107,16 @@ if(VWAVE_BUILD_MCP)
 endif()
 set_target_properties(vwave_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+add_library(vwave_ui_core STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/Widget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/WidgetHost.cpp
+)
+add_library(vwave::ui_core ALIAS vwave_ui_core)
+vwave_set_warnings(vwave_ui_core)
+target_include_directories(vwave_ui_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave)
+set_target_properties(vwave_ui_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 if(VWAVE_BUILD_EXAMPLES)
     add_executable(vwave_embed_example examples/yawn_embed.cpp)
     vwave_set_warnings(vwave_embed_example)
@@ -187,7 +197,7 @@ if(VWAVE_BUILD_TESTS)
     add_executable(vwave_tests ${VWAVE_TEST_SOURCES})
     vwave_set_warnings(vwave_tests)
     target_include_directories(vwave_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-    target_link_libraries(vwave_tests PRIVATE vwave::core)
+    target_link_libraries(vwave_tests PRIVATE vwave::core vwave::ui_core)
     foreach(test_source ${VWAVE_TEST_SOURCES})
         get_filename_component(test_file "${test_source}" NAME)
         if(test_file STREQUAL "test_main.cpp")

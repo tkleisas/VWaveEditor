@@ -366,6 +366,15 @@ exposes the entire command surface; dedicated tools provide clearer schemas for
 common workflows. The server is local stdio only and executes with the
 permissions of the user running it.
 
+### UI event and widget core
+
+A toolkit-neutral `vwave_ui_core` library owns the retained widget tree,
+normalized pointer/key/text/window events, pointer capture, hover state, focus
+traversal, and semantic cursor shapes. It has no SDL dependency and is covered
+by headless tests. A thin SDL adapter will translate OS events and paint the
+widget tree; the editor keeps custom canvas widgets for waveform, spectrum,
+wavetable, image, and timeline rendering.
+
 ### Standalone editor
 
 The SDL2 editor holds the canonical `Timeline` on the UI thread. It renders
