@@ -12,6 +12,7 @@ namespace vwtest {
 
 struct TestCase {
     std::string name;
+    std::string file;
     std::function<void()> fn;
 };
 
@@ -26,8 +27,8 @@ inline int& failures() {
 }
 
 struct Reg {
-    Reg(const char* name, std::function<void()> fn) {
-        registry().push_back({name, std::move(fn)});
+    Reg(const char* name, const char* file, std::function<void()> fn) {
+        registry().push_back({name, file, std::move(fn)});
     }
 };
 
@@ -42,9 +43,14 @@ inline void fail(const char* file, int line, const std::string& message) {
     throw Failure(out.str());
 }
 
-inline int runAll() {
+inline int runAll(const std::string& fileFilter = {}) {
     int passed = 0;
+    int total = 0;
     for (const auto& test : registry()) {
+        if (!fileFilter.empty() &&
+            test.file.find(fileFilter) == std::string::npos)
+            continue;
+        ++total;
         failures() = 0;
         try {
             test.fn();
@@ -59,8 +65,8 @@ inline int runAll() {
             std::cout << "[ FAIL ] " << test.name << "\n         unknown exception\n";
         }
     }
-    std::cout << '\n' << passed << '/' << registry().size() << " tests passed\n";
-    return passed == static_cast<int>(registry().size()) ? 0 : 1;
+    std::cout << '\n' << passed << '/' << total << " tests passed\n";
+    return total > 0 && passed == total ? 0 : 1;
 }
 
 } // namespace vwtest
@@ -69,7 +75,8 @@ inline int runAll() {
 #define VWTEST_CONCAT(a, b) VWTEST_CONCAT_INNER(a, b)
 #define VWTEST(name) \
     static void VWTEST_CONCAT(vwtest_fn_, __LINE__)(); \
-    static vwtest::Reg VWTEST_CONCAT(vwtest_reg_, __LINE__)(name, VWTEST_CONCAT(vwtest_fn_, __LINE__)); \
+    static vwtest::Reg VWTEST_CONCAT(vwtest_reg_, __LINE__)( \
+        name, __FILE__, VWTEST_CONCAT(vwtest_fn_, __LINE__)); \
     static void VWTEST_CONCAT(vwtest_fn_, __LINE__)()
 
 #define CHECK(expr) \
