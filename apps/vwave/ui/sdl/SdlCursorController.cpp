@@ -24,9 +24,14 @@ size_t SdlCursorController::indexFor(CursorShape shape) {
     return static_cast<size_t>(shape);
 }
 
-SdlCursorController::~SdlCursorController() {
-    for (SDL_Cursor* cursor : m_cursors)
+SdlCursorController::~SdlCursorController() { clear(); }
+
+void SdlCursorController::clear() {
+    for (SDL_Cursor*& cursor : m_cursors) {
         if (cursor) SDL_FreeCursor(cursor);
+        cursor = nullptr;
+    }
+    m_current = CursorShape::Arrow;
 }
 
 SDL_Cursor* SdlCursorController::cursorFor(CursorShape shape) {

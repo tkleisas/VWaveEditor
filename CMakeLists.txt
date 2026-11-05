@@ -108,7 +108,7 @@ endif()
 set_target_properties(vwave_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(vwave_ui_core STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/Button.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/PushButton.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/CommandRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/Layout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/ScrollView.cpp
@@ -187,6 +187,7 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/StereoController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/TrackController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ContextMenu.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/chrome/ToolbarView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/AnalysisService.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/FileLoadController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/FileSaveController.cpp
@@ -207,7 +208,8 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
     vwave_set_warnings(vwave_editor)
     target_include_directories(vwave_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave)
     target_link_libraries(vwave_editor PRIVATE
-        vwave::core PkgConfig::SDL2 PkgConfig::SDL2_TTF
+        vwave::core vwave::ui_core vwave::ui_sdl
+        PkgConfig::SDL2 PkgConfig::SDL2_TTF
     )
 endif()
 

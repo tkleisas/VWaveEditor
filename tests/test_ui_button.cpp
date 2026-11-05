@@ -1,6 +1,6 @@
 #include "test_framework.h"
 
-#include "ui/framework/Button.h"
+#include "ui/framework/PushButton.h"
 #include "ui/framework/WidgetHost.h"
 
 #include <memory>
@@ -19,7 +19,7 @@ KeyEvent keyDown(Key key) {
 } // namespace
 
 VWTEST("button click activates on release inside") {
-    Button button;
+    PushButton button;
     button.bounds = {10, 10, 40, 20};
     button.label = "Apply";
     int clicks = 0;
@@ -36,7 +36,7 @@ VWTEST("button click activates on release inside") {
 }
 
 VWTEST("button release outside or cancellation does not activate") {
-    Button button;
+    PushButton button;
     button.bounds = {10, 10, 40, 20};
     int clicks = 0;
     button.onClick = [&] { ++clicks; };
@@ -54,7 +54,7 @@ VWTEST("button release outside or cancellation does not activate") {
 }
 
 VWTEST("button activates with space or enter when focused") {
-    Button button;
+    PushButton button;
     button.bounds = {10, 10, 40, 20};
     int clicks = 0;
     button.onClick = [&] { ++clicks; };
@@ -69,7 +69,7 @@ VWTEST("button activates with space or enter when focused") {
 }
 
 VWTEST("disabled button ignores clicks and focus") {
-    Button button;
+    PushButton button;
     button.bounds = {10, 10, 40, 20};
     button.enabled = false;
     int clicks = 0;
@@ -86,7 +86,7 @@ VWTEST("disabled button ignores clicks and focus") {
 }
 
 VWTEST("button reports hover and hand cursor") {
-    Button button;
+    PushButton button;
     button.bounds = {10, 10, 40, 20};
 
     WidgetHost host;

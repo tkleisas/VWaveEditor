@@ -567,5 +567,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   clamping, and unhandled-wheel bubbling through parent widgets.
 - Added column/row/stack layout helpers with inset/spacing and content-size
   reporting for scroll containers.
-- Next: migrate toolbar/sidebar/timeline controls to the widget layer and add
-  canvas hit targets/cursor handles.
+- Migrated the editor toolbar to retained `PushButton` widgets rendered through
+  the SDL painter, with SDL-adapter event routing and system cursor feedback.
+- Next: migrate sidebar controls, then add timeline canvas hit targets and
+  cursor handles.

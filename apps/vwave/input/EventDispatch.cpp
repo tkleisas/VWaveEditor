@@ -9,12 +9,54 @@
 #include <cmath>
 #include <filesystem>
 #include <string>
+#include <variant>
 #include <vector>
 
 using namespace vwave::app;
 using namespace vwave::ui;
 
+bool App::handleToolbarInput(const SDL_Event& event) {
+    if (!m_toolbarRoot) return false;
+    const bool modal = m_dialog.isOpen() || m_settingsController.isOpen() ||
+                       m_contextMenuOpen || m_openMenu >= 0;
+    if (modal) {
+        if (m_toolbarHost.captured() || m_toolbarHost.hovered()) {
+            m_toolbarHost.handleEvent(
+                WindowEvent{WindowEvent::Type::FocusLost});
+            m_cursorController.apply(m_toolbarHost.cursor());
+        }
+        return false;
+    }
+
+    const std::optional<Event> translated = m_uiEventAdapter.translate(event);
+    if (!translated) return false;
+
+    if (const auto* pointer = std::get_if<PointerEvent>(&*translated)) {
+        SDL_Point point{pointer->position.x, pointer->position.y};
+        const bool inToolbar =
+            SDL_PointInRect(&point, &m_toolbarRect) != 0;
+        const bool captured = m_toolbarHost.captured() != nullptr;
+        const bool hovered = m_toolbarHost.hovered() != nullptr;
+        if (!inToolbar && !captured && !hovered) return false;
+
+        m_toolbarHost.handleEvent(*translated);
+        m_cursorController.apply(m_toolbarHost.cursor());
+        if (event.type == SDL_MOUSEBUTTONDOWN ||
+            event.type == SDL_MOUSEBUTTONUP ||
+            event.type == SDL_MOUSEMOTION)
+            return inToolbar || captured;
+        return false;
+    }
+
+    if (std::holds_alternative<WindowEvent>(*translated)) {
+        m_toolbarHost.handleEvent(*translated);
+        m_cursorController.apply(m_toolbarHost.cursor());
+    }
+    return false;
+}
+
 void App::handleEvent(const SDL_Event& event) {
+    if (handleToolbarInput(event)) return;
     switch (event.type) {
     case SDL_QUIT:
         m_running = false;

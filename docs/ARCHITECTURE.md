@@ -371,9 +371,10 @@ permissions of the user running it.
 A toolkit-neutral `vwave_ui_core` library owns the retained widget tree,
 normalized pointer/key/text/window events, pointer capture, hover state, focus
 traversal, and semantic cursor shapes. It has no SDL dependency and is covered
-by headless tests. A thin SDL adapter will translate OS events and paint the
-widget tree; the editor keeps custom canvas widgets for waveform, spectrum,
-wavetable, image, and timeline rendering.
+by headless tests. A thin SDL adapter translates OS events, paints the widget
+tree, and applies cached system cursors. The editor toolbar is migrated to
+retained widgets; sidebar and custom canvas widgets remain in the legacy UI
+until their migration is complete.
 
 ### Standalone editor
 

@@ -166,7 +166,10 @@ App::App()
           }),
       m_settingsController(
           m_player, [this](const std::string& status) { setStatus(status); },
-          [this](const std::string& theme) { applyPalette(theme); }) {
+          [this](const std::string& theme) {
+              applyPalette(theme);
+              if (m_uiPainter) m_uiPainter->clearTextCache();
+          }) {
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
             applyDialog(mode, path);
@@ -227,6 +230,8 @@ App::App()
 
 App::~App() {
     m_player.close();
+    m_uiPainter.reset();
+    m_cursorController.clear();
     if (m_spectrogramTexture) SDL_DestroyTexture(m_spectrogramTexture);
     m_imageController.close();
     TTF_Font* fonts[] = {m_fontSmall, m_font, m_fontBold, m_fontTitle};
@@ -315,6 +320,8 @@ bool App::init(const std::string& initialPath) {
     if (!m_fontTitle) m_fontTitle = m_fontBold;
     m_ui.setRenderer(m_renderer);
     m_ui.setFonts(m_fontSmall, m_font, m_fontBold, m_fontTitle);
+    m_uiPainter = std::make_unique<vwave::ui::SdlPainter>(
+        m_renderer, m_fontSmall, m_font, m_fontBold, m_fontTitle);
 
     m_settingsController.load();
     m_player.setOutputDevice(
@@ -365,6 +372,19 @@ int App::run() {
             m_timeline.trackCount() != baseTracks + 1)
             return 1;
         if (!m_timeline.undo()) return 1;
+        layout();
+        createToolbarWidgets();
+        SDL_Event buttonDown{};
+        buttonDown.type = SDL_MOUSEBUTTONDOWN;
+        buttonDown.button.x = 254 + 48;
+        buttonDown.button.y = m_toolbarRect.y + 13 + 14;
+        buttonDown.button.button = SDL_BUTTON_LEFT;
+        handleEvent(buttonDown);
+        SDL_Event buttonUp = buttonDown;
+        buttonUp.type = SDL_MOUSEBUTTONUP;
+        handleEvent(buttonUp);
+        if (m_tab != vwave::EditorTab::Spectrum) return 1;
+        setTab(vwave::EditorTab::Waveform);
         auto waitForFile = [this](const std::filesystem::path& target) {
             const Uint32 deadline = SDL_GetTicks() + 5000;
             while (SDL_GetTicks() < deadline) {

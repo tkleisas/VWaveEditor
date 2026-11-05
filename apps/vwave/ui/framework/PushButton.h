@@ -7,7 +7,7 @@
 
 namespace vwave::ui {
 
-class Button : public Widget {
+class PushButton : public Widget {
 public:
     std::string label;
     std::function<void()> onClick;

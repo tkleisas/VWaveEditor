@@ -19,6 +19,7 @@ public:
     SdlCursorController& operator=(const SdlCursorController&) = delete;
 
     void apply(CursorShape shape);
+    void clear();
     CursorShape current() const { return m_current; }
 
 private:

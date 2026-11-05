@@ -1,14 +1,14 @@
-#include "ui/framework/Button.h"
+#include "ui/framework/PushButton.h"
 
 namespace vwave::ui {
 
-bool Button::onPointerDown(const PointerEvent& event) {
+bool PushButton::onPointerDown(const PointerEvent& event) {
     if (!enabled || event.button != 1) return false;
     pressed = true;
     return true;
 }
 
-bool Button::onPointerUp(const PointerEvent& event) {
+bool PushButton::onPointerUp(const PointerEvent& event) {
     if (!pressed) return false;
     const bool inside = bounds.contains(event.position);
     pressed = false;
@@ -16,18 +16,18 @@ bool Button::onPointerUp(const PointerEvent& event) {
     return true;
 }
 
-bool Button::onKeyDown(const KeyEvent& event) {
+bool PushButton::onKeyDown(const KeyEvent& event) {
     if (!enabled) return false;
     if (event.key != Key::Space && event.key != Key::Enter) return false;
     activate();
     return true;
 }
 
-void Button::activate() {
+void PushButton::activate() {
     if (enabled && onClick) onClick();
 }
 
-void Button::paint(Painter& painter) {
+void PushButton::paint(Painter& painter) {
     ColorRole fill = ColorRole::PanelRaised;
     if (!enabled) fill = ColorRole::Disabled;
     else if (accent || active || pressed) fill = ColorRole::AccentDark;

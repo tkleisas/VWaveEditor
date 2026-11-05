@@ -1,6 +1,6 @@
 #include "test_framework.h"
 
-#include "ui/framework/Button.h"
+#include "ui/framework/PushButton.h"
 #include "ui/framework/Painter.h"
 #include "ui/framework/Slider.h"
 
@@ -57,7 +57,7 @@ struct RecordingPainter : Painter {
 } // namespace
 
 VWTEST("button paints background border and centered label") {
-    Button button;
+    PushButton button;
     button.bounds = {10, 20, 80, 24};
     button.label = "Apply";
 
@@ -77,7 +77,7 @@ VWTEST("button paints background border and centered label") {
 }
 
 VWTEST("button paint reflects pressed disabled and accent states") {
-    Button button;
+    PushButton button;
     button.bounds = {0, 0, 50, 20};
     button.label = "Go";
     button.accent = true;

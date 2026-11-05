@@ -24,6 +24,11 @@
 #include "services/FileSaveController.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
+#include "ui/framework/PushButton.h"
+#include "ui/framework/WidgetHost.h"
+#include "ui/sdl/SdlCursorController.h"
+#include "ui/sdl/SdlEventAdapter.h"
+#include "ui/sdl/SdlPainter.h"
 #include "ui/Widgets.h"
 
 #include "vwave/JobSystem.h"
@@ -86,6 +91,9 @@ private:
     void drawMenuDropdown();
     void drawSettingsDialog();
     void drawToolbar();
+    void createToolbarWidgets();
+    void syncToolbarWidgets();
+    bool handleToolbarInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);
@@ -252,9 +260,37 @@ private:
     void updateMixer();
     void drawTrackHeader(const SDL_Rect& header, int index);
 
+    enum class ToolbarButton {
+        Waveform,
+        Spectrum,
+        Wavetable,
+        Mastering,
+        Image,
+        Scope,
+        Open,
+        AddTrack,
+        SaveWav,
+        Project,
+        Play,
+        Stop,
+        ZoomOut,
+        ZoomIn,
+        Fit,
+        Start,
+        End,
+        Time,
+        Count
+    };
+
     SDL_Window* m_window = nullptr;
     SDL_Renderer* m_renderer = nullptr;
     vwave::ui::UiRenderer m_ui;
+    std::unique_ptr<vwave::ui::SdlPainter> m_uiPainter;
+    vwave::ui::WidgetHost m_toolbarHost;
+    std::unique_ptr<vwave::ui::Widget> m_toolbarRoot;
+    std::vector<vwave::ui::PushButton*> m_toolbarButtons;
+    vwave::ui::SdlEventAdapter m_uiEventAdapter;
+    vwave::ui::SdlCursorController m_cursorController;
     TTF_Font* m_fontSmall = nullptr;
     TTF_Font* m_font = nullptr;
     TTF_Font* m_fontBold = nullptr;
