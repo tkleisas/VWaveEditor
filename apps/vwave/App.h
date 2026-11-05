@@ -25,6 +25,7 @@
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
 #include "ui/editor/ControlPanel.h"
+#include "ui/editor/MenuPopup.h"
 #include "ui/editor/TimelineCanvas.h"
 #include "ui/editor/SidebarSlider.h"
 #include "ui/framework/PushButton.h"
@@ -106,6 +107,7 @@ private:
     bool handleSidebarInput(const SDL_Event& event);
     bool handleTrackHeaderInput(const SDL_Event& event);
     bool handleSettingsInput(const SDL_Event& event);
+    bool handleMenuInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);
@@ -315,6 +317,9 @@ private:
     mutable vwave::ui::TimelineCanvas m_timelineCanvas;
     mutable vwave::ui::TimelineCanvasLayout m_timelineCanvasLayout;
     vwave::ui::ControlPanel m_settingsControls;
+    vwave::ui::ControlPanel m_menuBarControls;
+    vwave::ui::MenuPopup m_menuPopup;
+    vwave::ui::WidgetHost m_menuHost;
     vwave::ui::SdlEventAdapter m_uiEventAdapter;
     vwave::ui::SdlCursorController m_cursorController;
     TTF_Font* m_fontSmall = nullptr;
@@ -338,7 +343,6 @@ private:
     std::vector<Menu> m_menus;
     int m_openMenu = -1;
     SDL_Rect m_openMenuRect{};
-    std::vector<SDL_Rect> m_menuItemRects;
     double m_sidebarScroll = 0.0;
     int m_sidebarContentHeight = 0;
 

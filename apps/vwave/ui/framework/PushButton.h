@@ -27,6 +27,8 @@ public:
     bool pressed = false;
     bool accent = false;
     bool active = false;
+    bool flat = false;
+    FontRole font = FontRole::Small;
 
 protected:
     void paint(Painter& painter) override;

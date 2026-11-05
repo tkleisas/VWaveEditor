@@ -170,6 +170,7 @@ App::App()
               applyPalette(theme);
               if (m_uiPainter) m_uiPainter->clearTextCache();
           }) {
+    m_menuHost.setRoot(&m_menuPopup);
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
             applyDialog(mode, path);
@@ -472,6 +473,31 @@ int App::run() {
         closeUp.type = SDL_MOUSEBUTTONUP;
         handleEvent(closeUp);
         if (m_settingsController.isOpen()) return 1;
+        drawMenuBar();
+        vwave::ui::PushButton* viewMenuButton = nullptr;
+        for (auto* button : m_menuBarControls.buttons()) {
+            if (button->visible && button->label == "View") {
+                viewMenuButton = button;
+                break;
+            }
+        }
+        if (!viewMenuButton) return 1;
+        SDL_Event menuDown{};
+        menuDown.type = SDL_MOUSEBUTTONDOWN;
+        menuDown.button.x =
+            viewMenuButton->bounds.x + viewMenuButton->bounds.w / 2;
+        menuDown.button.y =
+            viewMenuButton->bounds.y + viewMenuButton->bounds.h / 2;
+        menuDown.button.button = SDL_BUTTON_LEFT;
+        handleEvent(menuDown);
+        SDL_Event menuUp = menuDown;
+        menuUp.type = SDL_MOUSEBUTTONUP;
+        handleEvent(menuUp);
+        if (m_openMenu < 0) return 1;
+        drawMenuDropdown();
+        handleEvent(menuDown);
+        handleEvent(menuUp);
+        if (m_openMenu >= 0) return 1;
         auto waitForFile = [this](const std::filesystem::path& target) {
             const Uint32 deadline = SDL_GetTicks() + 5000;
             while (SDL_GetTicks() < deadline) {

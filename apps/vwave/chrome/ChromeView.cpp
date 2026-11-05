@@ -266,24 +266,29 @@ void App::drawMenuBar() {
     SDL_RenderDrawLine(m_renderer, 0, m_menubarRect.y + m_menubarRect.h - 1,
                        m_menubarRect.w, m_menubarRect.y + m_menubarRect.h - 1);
     drawText("VWAVE", 14, 4, kAccent, fontBold());
+    m_menuBarControls.begin(
+        {m_menubarRect.x, m_menubarRect.y, m_menubarRect.w,
+         m_menubarRect.h});
     int x = 78;
     for (int index = 0; index < static_cast<int>(m_menus.size()); ++index) {
         Menu& menu = m_menus[static_cast<size_t>(index)];
         const int width = textWidth(menu.title, fontNormal()) + 22;
         menu.titleRect = {x, 0, width, m_menubarRect.h};
-        if (index == m_openMenu) {
-            SDL_SetRenderDrawColor(m_renderer, kPanelRaised.r, kPanelRaised.g,
-                                   kPanelRaised.b, 255);
-            SDL_RenderFillRect(m_renderer, &menu.titleRect);
-        }
-        drawTextCentered(menu.title, menu.titleRect, kText, fontNormal());
+        auto& button = m_menuBarControls.addButton(
+            menu.title, {x, 0, width, m_menubarRect.h},
+            [this, index] {
+                m_openMenu = m_openMenu == index ? -1 : index;
+            },
+            false, index == m_openMenu, true);
+        button.flat = true;
+        button.font = FontRole::Normal;
         x += width + 2;
     }
     if (m_openMenu >= static_cast<int>(m_menus.size())) m_openMenu = -1;
+    m_menuBarControls.end(m_uiPainter.get());
 }
 
 void App::drawMenuDropdown() {
-    m_menuItemRects.clear();
     m_openMenuRect = {};
     if (m_openMenu < 0 || m_openMenu >= static_cast<int>(m_menus.size()))
         return;
@@ -304,44 +309,17 @@ void App::drawMenuDropdown() {
     m_openMenuRect = {menu.titleRect.x, m_menubarRect.h, width, height};
     if (m_openMenuRect.x + m_openMenuRect.w > m_menubarRect.w)
         m_openMenuRect.x = m_menubarRect.w - m_openMenuRect.w;
-    SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
-    SDL_RenderFillRect(m_renderer, &m_openMenuRect);
-    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
-    SDL_RenderDrawRect(m_renderer, &m_openMenuRect);
 
-    int mouseX = 0;
-    int mouseY = 0;
-    SDL_GetMouseState(&mouseX, &mouseY);
-    SDL_Point mouse{mouseX, mouseY};
-    int y = m_openMenuRect.y + 8;
-    m_menuItemRects.resize(menu.items.size());
-    for (size_t index = 0; index < menu.items.size(); ++index) {
-        const MenuItem& item = menu.items[index];
-        if (item.separator) {
-            SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g,
-                                   kBorder.b, 100);
-            SDL_RenderDrawLine(m_renderer, m_openMenuRect.x + 8, y + 3,
-                               m_openMenuRect.x + m_openMenuRect.w - 8, y + 3);
-            m_menuItemRects[index] = {};
-            y += 7;
-            continue;
-        }
-        SDL_Rect row{m_openMenuRect.x + 1, y, m_openMenuRect.w - 2, 24};
-        m_menuItemRects[index] = row;
-        if (item.enabled && SDL_PointInRect(&mouse, &row)) {
-            SDL_SetRenderDrawColor(m_renderer, kAccentDark.r, kAccentDark.g,
-                                   kAccentDark.b, 255);
-            SDL_RenderFillRect(m_renderer, &row);
-        }
-        const SDL_Color color = item.enabled ? kText : kTextFaint;
-        drawText(item.label, row.x + 12, row.y + 4, color, fontNormal());
-        if (!item.shortcut.empty()) {
-            const int shortcutWidth = textWidth(item.shortcut, fontSmall());
-            drawText(item.shortcut, row.x + row.w - shortcutWidth - 10,
-                     row.y + 5, kTextFaint, fontSmall());
-        }
-        y += 24;
-    }
+    std::vector<PopupItem> items;
+    items.reserve(menu.items.size());
+    for (const auto& item : menu.items)
+        items.push_back(
+            {item.label, item.shortcut, item.action, item.enabled,
+             item.separator});
+    m_menuPopup.bounds = {m_openMenuRect.x, m_openMenuRect.y,
+                          m_openMenuRect.w, m_openMenuRect.h};
+    m_menuPopup.setItems(std::move(items));
+    if (m_uiPainter) m_menuPopup.draw(*m_uiPainter);
 }
 
 void App::drawFooter() {

@@ -60,6 +60,78 @@ bool App::handleToolbarInput(const SDL_Event& event) {
     return false;
 }
 
+bool App::handleMenuInput(const SDL_Event& event) {
+    if (m_dialog.isOpen() || m_contextMenuOpen ||
+        m_settingsController.isOpen())
+        return false;
+
+    const std::optional<Event> translated = m_uiEventAdapter.translate(event);
+    if (!translated) return false;
+
+    if (const auto* pointer = std::get_if<PointerEvent>(&*translated)) {
+        SDL_Point point{pointer->position.x, pointer->position.y};
+        const bool inMenuBar =
+            SDL_PointInRect(&point, &m_menubarRect) != 0;
+        const bool barCaptured = m_menuBarControls.captured() != nullptr;
+        const bool barHovered = m_menuBarControls.hovered() != nullptr;
+        if (inMenuBar || barCaptured || barHovered) {
+            const bool handled = m_menuBarControls.handleEvent(*translated);
+            m_cursorController.apply(m_menuBarControls.cursor());
+            if (handled) return true;
+            if (inMenuBar) {
+                if (event.type == SDL_MOUSEBUTTONDOWN ||
+                    event.type == SDL_MOUSEBUTTONUP) {
+                    if (m_openMenu >= 0) {
+                        m_openMenu = -1;
+                        m_cursorController.apply(CursorShape::Arrow);
+                    }
+                }
+                return true;
+            }
+            if (!m_openMenu) return false;
+        }
+
+        if (m_openMenu < 0) return false;
+
+        const bool inPopup =
+            SDL_PointInRect(&point, &m_openMenuRect) != 0;
+        const bool popupCaptured = m_menuHost.captured() != nullptr;
+        const bool popupHovered = m_menuHost.hovered() != nullptr;
+        if (event.type == SDL_MOUSEMOTION) {
+            m_menuHost.handleEvent(*translated);
+            m_cursorController.apply(m_menuHost.cursor());
+            if (!inPopup && !popupCaptured && !popupHovered)
+                m_cursorController.apply(CursorShape::Arrow);
+            return true;
+        }
+        if (event.type == SDL_MOUSEBUTTONDOWN ||
+            event.type == SDL_MOUSEBUTTONUP) {
+            if (inPopup || popupCaptured) {
+                m_menuHost.handleEvent(*translated);
+                m_cursorController.apply(m_menuHost.cursor());
+                if (event.type == SDL_MOUSEBUTTONUP) {
+                    m_openMenu = -1;
+                    m_cursorController.apply(CursorShape::Arrow);
+                }
+                return true;
+            }
+            m_menuHost.handleEvent(
+                WindowEvent{WindowEvent::Type::FocusLost});
+            m_openMenu = -1;
+            m_cursorController.apply(CursorShape::Arrow);
+            return true;
+        }
+        return false;
+    }
+
+    if (std::holds_alternative<WindowEvent>(*translated)) {
+        m_menuBarControls.handleEvent(*translated);
+        m_menuHost.handleEvent(*translated);
+        m_cursorController.apply(CursorShape::Arrow);
+    }
+    return false;
+}
+
 bool App::handleSettingsInput(const SDL_Event& event) {
     if (!m_settingsController.isOpen()) return false;
     const std::optional<Event> translated = m_uiEventAdapter.translate(event);
@@ -176,6 +248,7 @@ void App::handleEvent(const SDL_Event& event) {
     if (handleSidebarInput(event)) return;
     if (handleTrackHeaderInput(event)) return;
     if (handleSettingsInput(event)) return;
+    if (handleMenuInput(event)) return;
     switch (event.type) {
     case SDL_QUIT:
         m_running = false;

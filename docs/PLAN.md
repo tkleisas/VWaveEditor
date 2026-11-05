@@ -595,5 +595,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   waveform, ruler, spectrum, and loose drag previews now share it.
 - Migrated settings-dialog buttons to a retained `ControlPanel`; dialog input
   is modal through the widget host and legacy rectangle hit tests are gone.
-- Next: migrate menu dropdown items and finish the remaining legacy hit-test
-  paths.
+- Migrated menu-bar titles to flat retained buttons and dropdowns to a custom
+  retained `MenuPopup` with hover, separators, shortcuts, disabled items, and
+  action dispatch. Settings-dialog buttons are retained and modal.
+- Next: migrate context menus and finish the remaining legacy hit-test paths.

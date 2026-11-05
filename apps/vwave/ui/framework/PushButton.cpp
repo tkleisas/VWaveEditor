@@ -31,14 +31,14 @@ void PushButton::paint(Painter& painter) {
     ColorRole fill = ColorRole::PanelRaised;
     if (!enabled) fill = ColorRole::Disabled;
     else if (accent || active || pressed) fill = ColorRole::AccentDark;
-    painter.fillRect(bounds, fill);
-    painter.strokeRect(bounds, enabled ? ColorRole::Border
-                                       : ColorRole::TextFaint);
+    if (!flat || pressed || active) painter.fillRect(bounds, fill);
+    if (!flat)
+        painter.strokeRect(bounds, enabled ? ColorRole::Border
+                                           : ColorRole::TextFaint);
     const ColorRole text =
         !enabled ? ColorRole::TextFaint
-                 : ((accent || active) ? ColorRole::AccentText
-                                       : ColorRole::Text);
-    painter.drawText(label, bounds, text, FontRole::Small, TextAlign::Center);
+                 : (accent ? ColorRole::AccentText : ColorRole::Text);
+    painter.drawText(label, bounds, text, font, TextAlign::Center);
 }
 
 } // namespace vwave::ui
