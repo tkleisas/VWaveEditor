@@ -600,5 +600,8 @@ automation presets; the cut-up arrangement model itself is implemented.
   action dispatch. Settings-dialog buttons are retained and modal.
 - Migrated track context menus to retained `MenuPopup` items with modal
   pointer routing, hover/pressed state, separators, and action dispatch.
-- Next: audit the remaining legacy hit-test paths and finish the UI event
-  migration/documentation.
+- Migrated file/dialog action buttons to a retained modal `ControlPanel`;
+  dialog pointer input now routes through the widget host.
+- The remaining direct rectangle checks are canvas-local interaction regions
+  (spectrum, wavetable, scope, wheel routing) rather than control hit tests.
+- Next: consolidate canvas-local input regions and finish UI migration docs.

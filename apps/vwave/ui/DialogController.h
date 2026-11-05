@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ui/UiRenderer.h"
+#include "ui/editor/ControlPanel.h"
+#include "ui/framework/Painter.h"
 
 #include <SDL.h>
 
@@ -45,16 +46,20 @@ public:
     void confirm();
     void handleTextInput(const std::string& text);
     void handleKey(const SDL_KeyboardEvent& event);
-    bool handleMouseDown(int x, int y);
-    void draw(UiRenderer& ui, int windowWidth, int windowHeight);
+    bool handleEvent(const Event& event) { return m_controls.handleEvent(event); }
+    CursorShape cursor() const { return m_controls.cursor(); }
+    const std::vector<PushButton*>& buttons() const {
+        return m_controls.buttons();
+    }
+    void draw(SDL_Renderer* renderer, Painter& painter, int windowWidth,
+              int windowHeight);
 
 private:
     Mode m_mode = Mode::None;
     std::string m_path;
     std::string m_title;
     bool m_save = false;
-    SDL_Rect m_confirmRect{};
-    SDL_Rect m_cancelRect{};
+    ControlPanel m_controls;
     ConfirmHandler m_confirm;
 };
 

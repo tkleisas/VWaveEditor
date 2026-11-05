@@ -30,6 +30,9 @@ public:
     void end(Painter* painter);
 
     bool handleEvent(const Event& event) { return m_host.handleEvent(event); }
+    void resetInteraction() {
+        m_host.handleEvent(WindowEvent{WindowEvent::Type::FocusLost});
+    }
     Widget* hovered() const { return m_host.hovered(); }
     Widget* captured() const { return m_host.captured(); }
     CursorShape cursor() const { return m_host.cursor(); }

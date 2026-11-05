@@ -15,6 +15,22 @@
 using namespace vwave::app;
 using namespace vwave::ui;
 
+bool App::handleDialogInput(const SDL_Event& event) {
+    if (!m_dialog.isOpen()) return false;
+    const std::optional<Event> translated = m_uiEventAdapter.translate(event);
+    if (!translated) return false;
+    if (std::holds_alternative<PointerEvent>(*translated)) {
+        m_dialog.handleEvent(*translated);
+        m_cursorController.apply(m_dialog.cursor());
+        return true;
+    }
+    if (std::holds_alternative<WindowEvent>(*translated)) {
+        m_dialog.handleEvent(*translated);
+        m_cursorController.apply(m_dialog.cursor());
+    }
+    return false;
+}
+
 bool App::handleToolbarInput(const SDL_Event& event) {
     if (!m_toolbarRoot) return false;
     const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
@@ -305,6 +321,7 @@ bool App::handleSidebarInput(const SDL_Event& event) {
 }
 
 void App::handleEvent(const SDL_Event& event) {
+    if (handleDialogInput(event)) return;
     if (handleToolbarInput(event)) return;
     if (handleSidebarInput(event)) return;
     if (handleTrackHeaderInput(event)) return;

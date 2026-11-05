@@ -109,6 +109,7 @@ private:
     bool handleSettingsInput(const SDL_Event& event);
     bool handleMenuInput(const SDL_Event& event);
     bool handleContextMenuInput(const SDL_Event& event);
+    bool handleDialogInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);

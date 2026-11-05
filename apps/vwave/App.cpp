@@ -486,6 +486,29 @@ int App::run() {
         closeUp.type = SDL_MOUSEBUTTONUP;
         handleEvent(closeUp);
         if (m_settingsController.isOpen()) return 1;
+        m_dialog.open(DialogMode::Open, "Open", "", false);
+        m_dialog.draw(m_renderer, *m_uiPainter, m_toolbarRect.w,
+                      m_footerRect.y + m_footerRect.h);
+        vwave::ui::PushButton* cancelDialogButton = nullptr;
+        for (auto* button : m_dialog.buttons()) {
+            if (button->visible && button->label == "Cancel") {
+                cancelDialogButton = button;
+                break;
+            }
+        }
+        if (!cancelDialogButton) return 1;
+        SDL_Event dialogDown{};
+        dialogDown.type = SDL_MOUSEBUTTONDOWN;
+        dialogDown.button.x =
+            cancelDialogButton->bounds.x + cancelDialogButton->bounds.w / 2;
+        dialogDown.button.y =
+            cancelDialogButton->bounds.y + cancelDialogButton->bounds.h / 2;
+        dialogDown.button.button = SDL_BUTTON_LEFT;
+        handleEvent(dialogDown);
+        SDL_Event dialogUp = dialogDown;
+        dialogUp.type = SDL_MOUSEBUTTONUP;
+        handleEvent(dialogUp);
+        if (m_dialog.isOpen()) return 1;
         drawMenuBar();
         vwave::ui::PushButton* viewMenuButton = nullptr;
         for (auto* button : m_menuBarControls.buttons()) {
@@ -636,8 +659,8 @@ void App::draw() {
     drawMenuDropdown();
     drawContextMenu();
     if (m_settingsController.isOpen()) drawSettingsDialog();
-    if (m_dialog.isOpen())
-        m_dialog.draw(m_ui, m_toolbarRect.w,
+    if (m_dialog.isOpen() && m_uiPainter)
+        m_dialog.draw(m_renderer, *m_uiPainter, m_toolbarRect.w,
                       m_footerRect.y + m_footerRect.h);
     SDL_RenderPresent(m_renderer);
 }
