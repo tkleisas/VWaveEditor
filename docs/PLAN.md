@@ -546,4 +546,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   identity phase locking in the phase vocoder.
 - Added real-input FFT packing and routed STFT analysis, onset detection,
   spectral processing, mastering analysis, and image phase analysis through it.
-- Next: partitioned convolution and timeline-level undo.
+- Added uniform partitioned overlap-add convolution for long outputs; short
+  signals retain the single-block FFT path.
+- Next: timeline-level undo and broader performance work.

@@ -520,6 +520,138 @@ Audio paulStretch(const Audio& audio, double ratio,
     return paulStretchInternal(audio, outFrames, ratio, options);
 }
 
+namespace {
+
+Audio convolveSingleBlock(const Audio& audio, const Audio& ir) {
+    const int64_t outputFrames = audio.numFrames() + ir.numFrames() - 1;
+    const int fftSize = nextPowerOfTwo(static_cast<int>(outputFrames));
+    FFT fft(fftSize);
+    Audio output(audio.numChannels(), outputFrames, audio.sampleRate());
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
+    std::vector<std::complex<float>> a(static_cast<size_t>(fftSize));
+    std::vector<std::vector<std::complex<float>>> irSpectra(
+        static_cast<size_t>(ir.numChannels()),
+        std::vector<std::complex<float>>(static_cast<size_t>(fftSize)));
+
+    for (int channel = 0; channel < ir.numChannels(); ++channel) {
+        std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
+        for (int64_t i = 0; i < ir.numFrames(); ++i)
+            timeBuffer[static_cast<size_t>(i)] = ir.sample(channel, i);
+        fft.forwardReal(timeBuffer, irSpectra[static_cast<size_t>(channel)]);
+    }
+
+    for (int ch = 0; ch < audio.numChannels(); ++ch) {
+        std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
+        for (int64_t i = 0; i < audio.numFrames(); ++i)
+            timeBuffer[static_cast<size_t>(i)] = audio.sample(ch, i);
+        fft.forwardReal(timeBuffer, a);
+        const int irChannel = ir.numChannels() == 1 ? 0 : ch;
+        const auto& irSpectrum = irSpectra[static_cast<size_t>(irChannel)];
+        for (int i = 0; i < fftSize; ++i)
+            a[static_cast<size_t>(i)] *= irSpectrum[static_cast<size_t>(i)];
+        fft.inverse(a);
+        for (int64_t i = 0; i < outputFrames; ++i)
+            output.sample(ch, i) = a[static_cast<size_t>(i)].real();
+    }
+    return output;
+}
+
+Audio convolvePartitioned(const Audio& audio, const Audio& ir) {
+    constexpr int kBlockSize = 16384;
+    constexpr int kFftSize = kBlockSize * 2;
+    const int64_t outputFrames = audio.numFrames() + ir.numFrames() - 1;
+    const int64_t partitionCount =
+        (ir.numFrames() + kBlockSize - 1) / kBlockSize;
+    const int64_t blockCount = (outputFrames + kBlockSize - 1) / kBlockSize;
+    FFT fft(kFftSize);
+    Audio output(audio.numChannels(), outputFrames, audio.sampleRate());
+
+    std::vector<float> timeBuffer(static_cast<size_t>(kFftSize), 0.0f);
+    std::vector<std::complex<float>> inputSpectrum(
+        static_cast<size_t>(kFftSize));
+    std::vector<std::complex<float>> accumulated(
+        static_cast<size_t>(kFftSize));
+    std::vector<float> overlap(static_cast<size_t>(kBlockSize), 0.0f);
+    std::vector<std::vector<std::complex<float>>> irSpectra(
+        static_cast<size_t>(ir.numChannels()),
+        std::vector<std::complex<float>>(
+            static_cast<size_t>(partitionCount) *
+                static_cast<size_t>(kFftSize)));
+
+    for (int channel = 0; channel < ir.numChannels(); ++channel) {
+        auto& spectra = irSpectra[static_cast<size_t>(channel)];
+        for (int64_t partition = 0; partition < partitionCount; ++partition) {
+            std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
+            const int64_t start = partition * kBlockSize;
+            const int64_t end =
+                std::min<int64_t>(start + kBlockSize, ir.numFrames());
+            for (int64_t i = start; i < end; ++i)
+                timeBuffer[static_cast<size_t>(i - start)] =
+                    ir.sample(channel, i);
+            auto* target =
+                spectra.data() + static_cast<size_t>(partition) * kFftSize;
+            std::vector<std::complex<float>> spectrum(
+                static_cast<size_t>(kFftSize));
+            fft.forwardReal(timeBuffer, spectrum);
+            std::copy(spectrum.begin(), spectrum.end(), target);
+        }
+    }
+
+    for (int ch = 0; ch < audio.numChannels(); ++ch) {
+        const int irChannel = ir.numChannels() == 1 ? 0 : ch;
+        const auto& spectra = irSpectra[static_cast<size_t>(irChannel)];
+        std::vector<std::vector<std::complex<float>>> history(
+            static_cast<size_t>(partitionCount),
+            std::vector<std::complex<float>>(static_cast<size_t>(kFftSize)));
+        std::fill(overlap.begin(), overlap.end(), 0.0f);
+
+        for (int64_t block = 0; block < blockCount; ++block) {
+            std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
+            const int64_t start = block * kBlockSize;
+            const int64_t end =
+                std::min<int64_t>(start + kBlockSize, audio.numFrames());
+            for (int64_t i = start; i < end; ++i)
+                timeBuffer[static_cast<size_t>(i - start)] =
+                    audio.sample(ch, i);
+            fft.forwardReal(timeBuffer, inputSpectrum);
+            auto& slot = history[static_cast<size_t>(block %
+                                                     partitionCount)];
+            slot = inputSpectrum;
+
+            std::fill(accumulated.begin(), accumulated.end(),
+                      std::complex<float>{0.0f, 0.0f});
+            for (int64_t partition = 0;
+                 partition < partitionCount && partition <= block;
+                 ++partition) {
+                const auto& delayed = history[static_cast<size_t>(
+                    (block - partition) % partitionCount)];
+                const auto* irSpectrum =
+                    spectra.data() + static_cast<size_t>(partition) *
+                                         kFftSize;
+                for (int i = 0; i < kFftSize; ++i)
+                    accumulated[static_cast<size_t>(i)] +=
+                        delayed[static_cast<size_t>(i)] *
+                        irSpectrum[static_cast<size_t>(i)];
+            }
+            fft.inverse(accumulated);
+
+            const int64_t outputStart = block * kBlockSize;
+            for (int i = 0; i < kBlockSize; ++i) {
+                const int64_t index = outputStart + i;
+                if (index >= outputFrames) break;
+                output.sample(ch, index) =
+                    accumulated[static_cast<size_t>(i)].real() + overlap[
+                        static_cast<size_t>(i)];
+                overlap[static_cast<size_t>(i)] =
+                    accumulated[static_cast<size_t>(kBlockSize + i)].real();
+            }
+        }
+    }
+    return output;
+}
+
+} // namespace
+
 Audio convolve(const Audio& audio, const Audio& impulseResponse,
                bool normalizeIr) {
     if (audio.empty() || impulseResponse.empty()) return Audio{};
@@ -542,35 +674,9 @@ Audio convolve(const Audio& audio, const Audio& impulseResponse,
     }
 
     const int64_t outputFrames = audio.numFrames() + ir.numFrames() - 1;
-    const int fftSize = nextPowerOfTwo(static_cast<int>(outputFrames));
-    FFT fft(fftSize);
-    Audio output(audio.numChannels(), outputFrames, audio.sampleRate());
-    std::vector<std::complex<float>> a(static_cast<size_t>(fftSize));
-    std::vector<std::vector<std::complex<float>>> irSpectra(
-        static_cast<size_t>(ir.numChannels()),
-        std::vector<std::complex<float>>(static_cast<size_t>(fftSize)));
-
-    for (int channel = 0; channel < ir.numChannels(); ++channel) {
-        auto& spectrum = irSpectra[static_cast<size_t>(channel)];
-        for (int64_t i = 0; i < ir.numFrames(); ++i)
-            spectrum[static_cast<size_t>(i)] = ir.sample(channel, i);
-        fft.forward(spectrum);
-    }
-
-    for (int ch = 0; ch < audio.numChannels(); ++ch) {
-        std::fill(a.begin(), a.end(), std::complex<float>{0.0f, 0.0f});
-        const int irChannel = ir.numChannels() == 1 ? 0 : ch;
-        for (int64_t i = 0; i < audio.numFrames(); ++i)
-            a[static_cast<size_t>(i)] = audio.sample(ch, i);
-        fft.forward(a);
-        const auto& irSpectrum = irSpectra[static_cast<size_t>(irChannel)];
-        for (int i = 0; i < fftSize; ++i)
-            a[static_cast<size_t>(i)] *= irSpectrum[static_cast<size_t>(i)];
-        fft.inverse(a);
-        for (int64_t i = 0; i < outputFrames; ++i)
-            output.sample(ch, i) = a[static_cast<size_t>(i)].real();
-    }
-    return output;
+    if (outputFrames <= 32768)
+        return convolveSingleBlock(audio, ir);
+    return convolvePartitioned(audio, ir);
 }
 
 Audio applyGain(const Audio& audio, double db) {

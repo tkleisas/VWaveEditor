@@ -218,6 +218,10 @@ normalization. It preserves DC and amplitude at band edges.
   overlap-adds the result to produce diffuse ambient textures while retaining
   perceived pitch.
 
+Convolution uses a single FFT block for short signals and uniform partitioned
+overlap-add for long outputs, keeping the transform size bounded by the
+partition size rather than the full project length.
+
 Pitch shifting time-stretches by the pitch ratio and resamples by its inverse,
 then fits the result back to the original frame count.
 

@@ -236,6 +236,49 @@ VWTEST("convolution uses per-channel impulse responses") {
     CHECK_NEAR(output.sample(0, 5), 0.0, 1e-6);
 }
 
+VWTEST("partitioned convolution preserves delayed partitions") {
+    Audio input(1, 40000, 48000);
+    input.sample(0, 0) = 1.0f;
+    input.sample(0, 20000) = 1.0f;
+    Audio ir(1, 20000, 48000);
+    ir.sample(0, 100) = 1.0f;
+    ir.sample(0, 17000) = 1.0f;
+    const Audio output = convolve(input, ir, false);
+    CHECK_EQ(output.numFrames(), int64_t{59999});
+    CHECK_NEAR(output.sample(0, 100), 1.0, 1e-5);
+    CHECK_NEAR(output.sample(0, 17000), 1.0, 1e-5);
+    CHECK_NEAR(output.sample(0, 20100), 1.0, 1e-5);
+    CHECK_NEAR(output.sample(0, 37000), 1.0, 1e-5);
+    CHECK_NEAR(output.sample(0, 500), 0.0, 1e-5);
+    CHECK_NEAR(output.sample(0, 25000), 0.0, 1e-5);
+}
+
+VWTEST("partitioned convolution matches direct convolution") {
+    Audio input(1, 40000, 48000);
+    for (int64_t i = 0; i < input.numFrames(); ++i)
+        input.sample(0, i) = static_cast<float>(
+            0.3 * std::sin(static_cast<double>(i) * 0.017)) +
+                              static_cast<float>(
+                                  0.1 * std::cos(static_cast<double>(i) * 0.031));
+    Audio ir(1, 257, 48000);
+    for (int64_t i = 0; i < ir.numFrames(); ++i)
+        ir.sample(0, i) = static_cast<float>(
+            0.02 * std::sin(static_cast<double>(i) * 0.11));
+    const Audio output = convolve(input, ir, false);
+    std::vector<float> expected(static_cast<size_t>(output.numFrames()), 0.0f);
+    for (int64_t i = 0; i < input.numFrames(); ++i)
+        for (int64_t k = 0; k < ir.numFrames(); ++k)
+            expected[static_cast<size_t>(i + k)] +=
+                input.sample(0, i) * ir.sample(0, k);
+    float maximumError = 0.0f;
+    for (int64_t i = 0; i < output.numFrames(); ++i)
+        maximumError = std::max(
+            maximumError,
+            std::abs(output.sample(0, i) -
+                     expected[static_cast<size_t>(i)]));
+    CHECK(maximumError < 1e-4f);
+}
+
 VWTEST("document time stretch changes length non-destructively") {
     Audio original(2, 1000, 48000);
     for (int64_t i = 0; i < 1000; ++i) {
