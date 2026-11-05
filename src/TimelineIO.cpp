@@ -94,6 +94,7 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
                 return false;
             timeline.setSelection(savedSelection.start, savedSelection.end);
             *this = std::move(timeline);
+            clearUndoHistory();
             return true;
         }
 
@@ -174,6 +175,7 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
             root.value("selection", nlohmann::json{}));
         loaded.setSelection(loaded.m_selection.start, loaded.m_selection.end);
         *this = std::move(loaded);
+        clearUndoHistory();
         return true;
     } catch (const std::exception& e) {
         setError(error, std::string("cannot load project: ") + e.what());

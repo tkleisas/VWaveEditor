@@ -127,12 +127,14 @@ bool Timeline::cropTrack(int index, Range range, std::string* error) {
     }
     const int64_t localStart = globalStart - trackStart;
     const int64_t localEnd = globalEnd - trackStart;
+    TimelineState before = captureState();
     item.document.setSelection(localStart, localEnd);
     if (!item.document.cropToSelection(error)) return false;
     item.startFrame = globalStart;
     item.recipe = {};
     m_selection.clear();
     syncSelectionToTracks();
+    recordUndoAfter(std::move(before), "Crop track");
     return true;
 }
 
@@ -149,6 +151,7 @@ bool Timeline::shiftTrack(int index, int64_t deltaFrames,
         setError(error, "track cannot start before zero");
         return false;
     }
+    recordUndo("Shift track");
     item.startFrame = shifted;
     syncSelectionToTracks();
     return true;

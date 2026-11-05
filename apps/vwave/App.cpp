@@ -356,6 +356,15 @@ int App::run() {
         std::error_code removeError;
         std::filesystem::remove(path, removeError);
         if (!hasTracks()) return 1;
+        const int baseTracks = m_timeline.trackCount();
+        if (!m_timeline.addEmptyTrack("Smoke undo", 0, &error)) return 1;
+        if (!m_timeline.undo() ||
+            m_timeline.trackCount() != baseTracks)
+            return 1;
+        if (!m_timeline.redo() ||
+            m_timeline.trackCount() != baseTracks + 1)
+            return 1;
+        if (!m_timeline.undo()) return 1;
         auto waitForFile = [this](const std::filesystem::path& target) {
             const Uint32 deadline = SDL_GetTicks() + 5000;
             while (SDL_GetTicks() < deadline) {
@@ -1160,6 +1169,7 @@ bool App::loadAudio(const std::string& path) {
                 return;
             }
             m_timeline = std::move(timeline);
+            m_timeline.clearUndoHistory();
             m_audioPath = loadedPath;
             m_projectPath.clear();
             m_clips.reset();

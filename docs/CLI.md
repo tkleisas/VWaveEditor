@@ -314,6 +314,10 @@ stored in the track's document undo history and saved in the project.
 
 ## Range editing commands
 
+`vwave command undo` and `redo` operate on the shared timeline history: the
+newest document edit across tracks or structural/routing change is undone
+first.
+
 The generic command bridge exposes undoable range edits:
 
 ```sh

@@ -3,6 +3,7 @@
 #include "vwave/Audio.h"
 #include "vwave/AudioIO.h"
 #include "vwave/ClipArrangement.h"
+#include "vwave/HistoryStamp.h"
 
 #include <nlohmann/json.hpp>
 
@@ -168,9 +169,12 @@ public:
     bool undo();
     bool redo();
     bool canUndo() const { return !m_history.empty(); }
-    bool canRedo() const { return !m_redo.empty(); }
+    bool canRedo() const;
     size_t undoCount() const { return m_history.size(); }
-    size_t redoCount() const { return m_redo.size(); }
+    size_t redoCount() const;
+    HistoryStamp latestUndoStamp() const;
+    HistoryStamp latestRedoStamp() const;
+    void discardStaleRedo();
     size_t checkpointCount() const { return m_checkpoints.size(); }
     std::string undoLabel() const;
     std::string redoLabel() const;
@@ -243,6 +247,7 @@ private:
         Operation operation;
         Selection before;
         Selection after;
+        HistoryStamp stamp;
     };
 
     struct Checkpoint {

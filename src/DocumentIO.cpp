@@ -149,7 +149,8 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
                 Selection before = selectionFromJson(
                     item.value("before", nlohmann::json{}));
                 loaded.m_history.push_back(
-                    {std::move(operation), before, after});
+                    {std::move(operation), before, after,
+                     nextHistoryStampForNewAction()});
                 loaded.captureCheckpoint(loaded.m_history.size(), working,
                                          clips, after);
             }

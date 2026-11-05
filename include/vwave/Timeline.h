@@ -2,6 +2,7 @@
 
 #include "vwave/Audio.h"
 #include "vwave/Document.h"
+#include "vwave/HistoryStamp.h"
 
 #include <nlohmann/json.hpp>
 
@@ -96,12 +97,52 @@ public:
 
     Audio mixdown(Range range = {}) const;
 
+    bool canUndo() const;
+    bool canRedo() const;
+    size_t undoCount() const;
+    size_t redoCount() const;
+    bool undo();
+    bool redo();
+    std::string undoLabel() const;
+    std::string redoLabel() const;
+    void clearUndoHistory();
+
     nlohmann::json toJson() const;
     bool saveProject(const std::string& path,
                      std::string* error = nullptr) const;
     bool loadProject(const std::string& path, std::string* error = nullptr);
 
 private:
+    struct TimelineState {
+        std::vector<TimelineTrack> tracks;
+        int sampleRate = 0;
+        int active = -1;
+        Selection selection;
+        SelectionScope selectionScope = SelectionScope::AllTracks;
+    };
+
+    struct UndoEntry {
+        HistoryStamp stamp;
+        TimelineState state;
+        std::string label;
+        std::string coalesceKey;
+    };
+
+    static constexpr size_t kMaxUndoEntries = 64;
+
+    TimelineState captureState() const;
+    void restoreState(TimelineState state);
+    bool recordUndo(const std::string& label,
+                    const std::string& coalesceKey = {});
+    void recordUndoAfter(TimelineState before, const std::string& label,
+                         const std::string& coalesceKey = {});
+    bool undoTimeline();
+    bool redoTimeline();
+    void discardStaleTimelineRedo() const;
+    void syncSelectionFromActiveDocument();
+    bool latestDocumentUndo(int& index, HistoryStamp& stamp) const;
+    bool latestDocumentRedo(int& index, HistoryStamp& stamp) const;
+
     bool validateSampleRate(const Audio& audio, std::string* error) const;
     void syncSelectionToTracks();
     bool trackAudible(const TimelineTrack& track) const;
@@ -111,6 +152,8 @@ private:
     int m_active = -1;
     Selection m_selection;
     SelectionScope m_selectionScope = SelectionScope::AllTracks;
+    std::vector<UndoEntry> m_undo;
+    mutable std::vector<UndoEntry> m_redo;
 };
 
 const char* stereoPaddingName(StereoPadding padding);

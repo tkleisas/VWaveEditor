@@ -156,18 +156,20 @@ void App::drawTrackSidebar(int& y) {
     drawSection("EDIT", y);
     grid({{"Undo", [this] {
                m_player.stop();
-               if (!activeDocument().undo()) {
+               if (!m_timeline.undo()) {
                    setStatus("Nothing to undo");
                } else {
+                   syncTrackControls();
                    markEdited();
                    setStatus("Undone");
                }
            }},
           {"Redo", [this] {
                m_player.stop();
-               if (!activeDocument().redo()) {
+               if (!m_timeline.redo()) {
                    setStatus("Nothing to redo");
                } else {
+                   syncTrackControls();
                    markEdited();
                    setStatus("Redone");
                }

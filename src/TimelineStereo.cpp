@@ -66,6 +66,7 @@ bool Timeline::splitStereoTrack(int index, bool keepOriginal,
     right.solo = source.solo;
     right.empty = false;
 
+    recordUndo("Split stereo track");
     if (keepOriginal)
         m_tracks[static_cast<size_t>(index)].muted = true;
     auto position = m_tracks.begin() + index + 1;
@@ -152,6 +153,7 @@ bool Timeline::combineMonoTracks(int leftIndex, int rightIndex,
         (void)back;
     };
 
+    recordUndo("Combine mono tracks");
     addChannel(0, left, leftAudio);
     addChannel(1, right, rightAudio);
 

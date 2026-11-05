@@ -41,6 +41,7 @@ bool Timeline::addTrack(std::string name, Document document,
     const Audio& audio = document.audio();
     if (!validateSampleRate(audio, error)) return false;
     if (name.empty()) name = trackName(trackCount());
+    recordUndo("Add track");
 
     if (m_tracks.empty()) m_sampleRate = document.sampleRate();
     TimelineTrack item;
@@ -86,6 +87,7 @@ bool Timeline::addEmptyTrack(std::string name, int64_t startFrame,
     }
     if (m_tracks.empty()) m_sampleRate = 48000;
     if (name.empty()) name = trackName(trackCount());
+    recordUndo("Add empty track");
     TimelineTrack item;
     item.name = std::move(name);
     item.startFrame = startFrame;
@@ -120,6 +122,7 @@ bool Timeline::setTrackAudio(int index, Audio audio, int64_t startFrame,
         setError(error, "cannot resample track audio");
         return false;
     }
+    recordUndo("Set track audio");
     auto& item = m_tracks[static_cast<size_t>(index)];
     item.document = Document::fromAudio(std::move(converted));
     item.startFrame = startFrame;
@@ -130,6 +133,7 @@ bool Timeline::setTrackAudio(int index, Audio audio, int64_t startFrame,
 
 bool Timeline::removeTrack(int index) {
     if (index < 0 || index >= trackCount()) return false;
+    recordUndo("Remove track");
     m_tracks.erase(m_tracks.begin() + index);
     if (m_tracks.empty()) {
         m_active = -1;
@@ -155,42 +159,49 @@ bool Timeline::removeTrack(int index) {
 bool Timeline::setTrackName(int index, std::string name) {
     if (index < 0 || index >= trackCount()) return false;
     if (name.empty()) name = trackName(index);
+    recordUndo("Rename track", "name:" + std::to_string(index));
     m_tracks[static_cast<size_t>(index)].name = std::move(name);
     return true;
 }
 
 bool Timeline::setTrackGainDb(int index, double db) {
     if (index < 0 || index >= trackCount() || !std::isfinite(db)) return false;
+    recordUndo("Track gain", "gain:" + std::to_string(index));
     m_tracks[static_cast<size_t>(index)].gainDb = std::clamp(db, -96.0, 24.0);
     return true;
 }
 
 bool Timeline::setTrackPan(int index, double pan) {
     if (index < 0 || index >= trackCount() || !std::isfinite(pan)) return false;
+    recordUndo("Track pan", "pan:" + std::to_string(index));
     m_tracks[static_cast<size_t>(index)].pan = std::clamp(pan, -1.0, 1.0);
     return true;
 }
 
 bool Timeline::setTrackMuted(int index, bool muted) {
     if (index < 0 || index >= trackCount()) return false;
+    recordUndo("Mute track", "muted:" + std::to_string(index));
     m_tracks[static_cast<size_t>(index)].muted = muted;
     return true;
 }
 
 bool Timeline::setTrackSolo(int index, bool solo) {
     if (index < 0 || index >= trackCount()) return false;
+    recordUndo("Solo track", "solo:" + std::to_string(index));
     m_tracks[static_cast<size_t>(index)].solo = solo;
     return true;
 }
 
 bool Timeline::setTrackArmed(int index, bool armed) {
     if (index < 0 || index >= trackCount()) return false;
+    recordUndo("Arm track", "armed:" + std::to_string(index));
     m_tracks[static_cast<size_t>(index)].armed = armed;
     return true;
 }
 
 bool Timeline::setTrackStartFrame(int index, int64_t frame) {
     if (index < 0 || index >= trackCount() || frame < 0) return false;
+    recordUndo("Move track", "start:" + std::to_string(index));
     m_tracks[static_cast<size_t>(index)].startFrame = frame;
     return true;
 }

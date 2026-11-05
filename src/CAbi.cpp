@@ -136,8 +136,10 @@ int vw_session_info(const VWSession* session, VWDocumentInfo* info) {
         info->sample_rate = document.sampleRate();
         info->channels = document.numChannels();
         info->frames = document.numFrames();
-        info->undo_count = static_cast<int32_t>(document.undoCount());
-        info->redo_count = static_cast<int32_t>(document.redoCount());
+        info->undo_count = static_cast<int32_t>(
+            session->session.timeline().undoCount());
+        info->redo_count = static_cast<int32_t>(
+            session->session.timeline().redoCount());
         info->selection_active = document.selection().active ? 1 : 0;
         info->selection_start = document.selection().start;
         info->selection_end = document.selection().end;
@@ -213,7 +215,7 @@ int vw_session_execute(VWSession* session, const char* command,
 int vw_session_undo(VWSession* session) {
     if (!session) return 1;
     try {
-        return session->session.document().undo() ? 0 : 1;
+        return session->session.timeline().undo() ? 0 : 1;
     } catch (...) {
         return 1;
     }
@@ -222,7 +224,7 @@ int vw_session_undo(VWSession* session) {
 int vw_session_redo(VWSession* session) {
     if (!session) return 1;
     try {
-        return session->session.document().redo() ? 0 : 1;
+        return session->session.timeline().redo() ? 0 : 1;
     } catch (...) {
         return 1;
     }

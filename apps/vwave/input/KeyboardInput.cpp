@@ -48,7 +48,8 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         m_running = false;
     } else if (ctrl && key == SDLK_z) {
         m_player.stop();
-        if (activeDocument().undo()) {
+        if (m_timeline.undo()) {
+            syncTrackControls();
             markEdited();
             setStatus("Undone");
         } else {
@@ -57,7 +58,8 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
     } else if (ctrl && (key == SDLK_y ||
                         (shift && key == SDLK_z))) {
         m_player.stop();
-        if (activeDocument().redo()) {
+        if (m_timeline.redo()) {
+            syncTrackControls();
             markEdited();
             setStatus("Redone");
         } else {

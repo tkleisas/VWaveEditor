@@ -33,6 +33,7 @@ Session::Session(Document document) {
                        .stem()
                        .string();
         m_timeline.addTrack(name, std::move(document), 0, nullptr);
+        m_timeline.clearUndoHistory();
     }
 }
 
@@ -74,6 +75,7 @@ bool Session::loadAudio(const std::string& path, std::string* error) {
     if (!timeline.addAudioTrack(name, audio, 0, error)) return false;
     timeline.track(0).document.setSourcePath(path);
     m_timeline = std::move(timeline);
+    m_timeline.clearUndoHistory();
     return true;
 }
 
@@ -162,10 +164,10 @@ nlohmann::json Session::info() {
     result["frames"] = doc.numFrames();
     result["duration"] = doc.duration();
     result["source_frames"] = doc.source().numFrames();
-    result["undo_count"] = doc.undoCount();
-    result["redo_count"] = doc.redoCount();
-    result["undo_label"] = doc.undoLabel();
-    result["redo_label"] = doc.redoLabel();
+    result["undo_count"] = m_timeline.undoCount();
+    result["redo_count"] = m_timeline.redoCount();
+    result["undo_label"] = m_timeline.undoLabel();
+    result["redo_label"] = m_timeline.redoLabel();
     result["clipboard_frames"] = doc.clipboard().numFrames();
     result["track_count"] = m_timeline.trackCount();
     result["active_track"] = m_timeline.activeTrack();

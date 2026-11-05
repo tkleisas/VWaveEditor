@@ -55,8 +55,8 @@ void App::drawSidebar() {
     y += 18;
     {
         std::string history = "No edits";
-        if (activeDocument().canUndo())
-            history = "Undo: " + activeDocument().undoLabel();
+        if (m_timeline.canUndo())
+            history = "Undo: " + m_timeline.undoLabel();
         drawText(truncateText(history, fontSmall(), 250), 18, y, kTextFaint,
                  fontSmall());
     }

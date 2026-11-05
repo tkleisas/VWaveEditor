@@ -58,11 +58,13 @@ bool Document::undo() {
     if (!rebuild()) return false;
     ++m_revision;
     m_selection = clampSelection(entry.before, m_rendered.numFrames());
+    noteUndoPerformed();
     return true;
 }
 
 bool Document::redo() {
     if (!m_cacheValid) rebuild();
+    discardStaleRedo();
     if (m_redo.empty()) return false;
     HistoryEntry entry = std::move(m_redo.back());
     m_redo.pop_back();
@@ -85,12 +87,47 @@ bool Document::redo() {
     return true;
 }
 
+bool Document::canRedo() const { return redoCount() > 0; }
+
+size_t Document::redoCount() const {
+    const uint64_t generation = currentHistoryGeneration();
+    size_t count = 0;
+    for (const auto& entry : m_redo)
+        if (entry.stamp.generation == generation) ++count;
+    return count;
+}
+
+HistoryStamp Document::latestUndoStamp() const {
+    return m_history.empty() ? HistoryStamp{} : m_history.back().stamp;
+}
+
+HistoryStamp Document::latestRedoStamp() const {
+    const uint64_t generation = currentHistoryGeneration();
+    for (auto it = m_redo.rbegin(); it != m_redo.rend(); ++it)
+        if (it->stamp.generation == generation) return it->stamp;
+    return {};
+}
+
+void Document::discardStaleRedo() {
+    const uint64_t generation = currentHistoryGeneration();
+    m_redo.erase(
+        std::remove_if(m_redo.begin(), m_redo.end(),
+                       [generation](const HistoryEntry& entry) {
+                           return entry.stamp.generation != generation;
+                       }),
+        m_redo.end());
+}
+
 std::string Document::undoLabel() const {
     return m_history.empty() ? std::string{} : m_history.back().operation.label;
 }
 
 std::string Document::redoLabel() const {
-    return m_redo.empty() ? std::string{} : m_redo.back().operation.label;
+    const uint64_t generation = currentHistoryGeneration();
+    for (auto it = m_redo.rbegin(); it != m_redo.rend(); ++it)
+        if (it->stamp.generation == generation)
+            return it->operation.label;
+    return {};
 }
 
 void Document::clearHistory() {

@@ -973,3 +973,33 @@ VWTEST("session clip arrangement commands are undoable") {
     CHECK(!session.document().hasClips());
     CHECK_EQ(session.document().undoLabel(), std::string("Flatten clips"));
 }
+
+VWTEST("session track structure and routing are undoable") {
+    TempDirectory directory;
+    const std::string first =
+        writeTempWave(directory, "first.wav", tone(220.0, 0.1));
+    const std::string second =
+        writeTempWave(directory, "second.wav", tone(330.0, 0.1));
+    Session session;
+    std::string error;
+    REQUIRE(!session.execute("load_audio", {{"path", first}}, &error).is_null());
+    REQUIRE(!session.execute("add_track", {{"path", second}}, &error).is_null());
+    CHECK_EQ(session.timeline().trackCount(), 2);
+
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    CHECK_EQ(session.timeline().trackCount(), 1);
+    REQUIRE(!session.execute("redo", json::object(), &error).is_null());
+    CHECK_EQ(session.timeline().trackCount(), 2);
+
+    REQUIRE(!session.execute("track_set",
+                             {{"index", 1}, {"gain_db", -6.0}}, &error)
+                 .is_null());
+    CHECK_NEAR(session.timeline().track(1).gainDb, -6.0, 1e-9);
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    CHECK_NEAR(session.timeline().track(1).gainDb, 0.0, 1e-9);
+
+    REQUIRE(!session.execute("remove_track", {{"index", 0}}, &error).is_null());
+    CHECK_EQ(session.timeline().trackCount(), 1);
+    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    CHECK_EQ(session.timeline().trackCount(), 2);
+}

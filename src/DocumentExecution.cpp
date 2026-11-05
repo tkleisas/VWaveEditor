@@ -618,7 +618,8 @@ bool Document::apply(const Operation& operation, std::string* error) {
         refreshArranged();
         ++m_revision;
         m_selection = clampSelection(m_selection, m_arranged.numFrames());
-        m_history.push_back({operation, before, m_selection});
+        m_history.push_back(
+            {operation, before, m_selection, nextHistoryStampForNewAction()});
         m_redo.clear();
         dropCheckpointsAtOrAfter(m_history.size());
         captureCheckpoint();
@@ -638,7 +639,8 @@ bool Document::apply(const Operation& operation, std::string* error) {
         m_cacheValid = true;
         ++m_revision;
         m_selection = clampSelection(m_selection, m_arranged.numFrames());
-        m_history.push_back({operation, before, m_selection});
+        m_history.push_back(
+            {operation, before, m_selection, nextHistoryStampForNewAction()});
         m_redo.clear();
         dropCheckpointsAtOrAfter(m_history.size());
         captureCheckpoint();
@@ -662,7 +664,8 @@ bool Document::apply(const Operation& operation, std::string* error) {
     m_arrangedValid = true;
     ++m_revision;
     m_selection = clampSelection(after, m_rendered.numFrames());
-    m_history.push_back({operation, before, m_selection});
+    m_history.push_back(
+        {operation, before, m_selection, nextHistoryStampForNewAction()});
     m_redo.clear();
     dropCheckpointsAtOrAfter(m_history.size());
     captureCheckpoint();

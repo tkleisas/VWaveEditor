@@ -43,14 +43,14 @@ nlohmann::json Session::executeEditCommands(const std::string& command,
         }
 
         if (command == "undo") {
-            if (!document().undo()) {
+            if (!m_timeline.undo()) {
                 setError(error, "nothing to undo");
                 return nullptr;
             }
             return info();
         }
         if (command == "redo") {
-            if (!document().redo()) {
+            if (!m_timeline.redo()) {
                 setError(error, "nothing to redo");
                 return nullptr;
             }

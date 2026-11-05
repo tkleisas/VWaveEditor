@@ -548,4 +548,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   spectral processing, mastering analysis, and image phase analysis through it.
 - Added uniform partitioned overlap-add convolution for long outputs; short
   signals retain the single-block FFT path.
-- Next: timeline-level undo and broader performance work.
+- Added unified timeline/document undo with structural snapshots, routing
+  coalescing, and cross-track ordering.
+- Next: broader performance and adoption work.

@@ -68,8 +68,9 @@ void App::drawMenuBar() {
         action("Undo",
                [this] {
                    m_player.stop();
-                   if (!activeDocument().undo()) setStatus("Nothing to undo");
+                   if (!m_timeline.undo()) setStatus("Nothing to undo");
                    else {
+                       syncTrackControls();
                        markEdited();
                        setStatus("Undone");
                    }
@@ -77,8 +78,9 @@ void App::drawMenuBar() {
         action("Redo",
                [this] {
                    m_player.stop();
-                   if (!activeDocument().redo()) setStatus("Nothing to redo");
+                   if (!m_timeline.redo()) setStatus("Nothing to redo");
                    else {
+                       syncTrackControls();
                        markEdited();
                        setStatus("Redone");
                    }

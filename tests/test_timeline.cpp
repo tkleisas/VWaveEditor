@@ -487,3 +487,142 @@ VWTEST("timeline uses clip arrangements for length and mixdown") {
     CHECK_EQ(timeline.lengthFrames(), int64_t{1200});
     CHECK_EQ(timeline.mixdown().numFrames(), int64_t{1200});
 }
+
+VWTEST("timeline undo restores added and removed tracks") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.1f)));
+    REQUIRE(timeline.addAudioTrack("two", constantAudio(100, 0.2f), 50));
+    CHECK_EQ(timeline.trackCount(), 2);
+
+    REQUIRE(timeline.undo());
+    CHECK_EQ(timeline.trackCount(), 1);
+    CHECK_EQ(timeline.track(0).name, std::string("one"));
+    REQUIRE(timeline.undo());
+    CHECK(timeline.empty());
+    CHECK(!timeline.canUndo());
+
+    REQUIRE(timeline.redo());
+    REQUIRE(timeline.redo());
+    CHECK_EQ(timeline.trackCount(), 2);
+    CHECK_EQ(timeline.track(1).name, std::string("two"));
+
+    REQUIRE(timeline.removeTrack(0));
+    CHECK_EQ(timeline.trackCount(), 1);
+    REQUIRE(timeline.undo());
+    CHECK_EQ(timeline.trackCount(), 2);
+    CHECK_EQ(timeline.track(0).name, std::string("one"));
+    REQUIRE(timeline.redo());
+    CHECK_EQ(timeline.trackCount(), 1);
+    CHECK_EQ(timeline.track(0).name, std::string("two"));
+}
+
+VWTEST("timeline routing edits coalesce into undo entries") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.1f)));
+    REQUIRE(timeline.setTrackGainDb(0, -3.0));
+    REQUIRE(timeline.setTrackGainDb(0, -6.0));
+    REQUIRE(timeline.setTrackGainDb(0, -9.0));
+    REQUIRE(timeline.setTrackPan(0, -0.5));
+    REQUIRE(timeline.setTrackMuted(0, true));
+
+    REQUIRE(timeline.undo());
+    CHECK(!timeline.track(0).muted);
+    REQUIRE(timeline.undo());
+    CHECK_NEAR(timeline.track(0).pan, 0.0, 1e-9);
+    REQUIRE(timeline.undo());
+    CHECK_NEAR(timeline.track(0).gainDb, 0.0, 1e-9);
+    CHECK(!timeline.canUndo() == false);
+    REQUIRE(timeline.undo());
+    CHECK(timeline.empty());
+}
+
+VWTEST("timeline undo interleaves document and structural edits") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.2f)));
+    auto& document = timeline.track(0).document;
+    document.setSelection(0, 100);
+    REQUIRE(document.gainDb(-6.0));
+    REQUIRE(timeline.setTrackGainDb(0, -3.0));
+
+    REQUIRE(timeline.undo());
+    CHECK_NEAR(timeline.track(0).gainDb, 0.0, 1e-9);
+    CHECK_NEAR(timeline.track(0).document.audio().sample(0, 0),
+               0.2 * std::pow(10.0, -6.0 / 20.0), 1e-6);
+    REQUIRE(timeline.undo());
+    CHECK_NEAR(timeline.track(0).document.audio().sample(0, 0), 0.2, 1e-6);
+    REQUIRE(timeline.undo());
+    CHECK(timeline.empty());
+
+    REQUIRE(timeline.redo());
+    CHECK_EQ(timeline.trackCount(), 1);
+    REQUIRE(timeline.redo());
+    CHECK_NEAR(timeline.track(0).document.audio().sample(0, 0),
+               0.2 * std::pow(10.0, -6.0 / 20.0), 1e-6);
+    REQUIRE(timeline.redo());
+    CHECK_NEAR(timeline.track(0).gainDb, -3.0, 1e-9);
+}
+
+VWTEST("timeline crop is one undoable structural action") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(1000, 0.1f)));
+    timeline.setSelection(200, 800);
+    REQUIRE(timeline.cropTrack(0));
+    CHECK_EQ(timeline.track(0).startFrame, int64_t{200});
+    CHECK_EQ(timeline.track(0).document.numFrames(), int64_t{600});
+
+    REQUIRE(timeline.undo());
+    CHECK_EQ(timeline.track(0).startFrame, int64_t{0});
+    CHECK_EQ(timeline.track(0).document.numFrames(), int64_t{1000});
+    REQUIRE(timeline.redo());
+    CHECK_EQ(timeline.track(0).startFrame, int64_t{200});
+    CHECK_EQ(timeline.track(0).document.numFrames(), int64_t{600});
+}
+
+VWTEST("timeline new actions discard structural redo") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.1f)));
+    REQUIRE(timeline.addAudioTrack("two", constantAudio(100, 0.2f)));
+    REQUIRE(timeline.undo());
+    CHECK_EQ(timeline.trackCount(), 1);
+    CHECK(timeline.canRedo());
+    REQUIRE(timeline.addAudioTrack("three", constantAudio(100, 0.3f)));
+    CHECK(!timeline.canRedo());
+    CHECK(!timeline.redo());
+}
+
+VWTEST("timeline undo picks the newest document across tracks") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.2f)));
+    REQUIRE(timeline.addAudioTrack("two", constantAudio(100, 0.1f)));
+    timeline.track(0).document.setSelection(0, 100);
+    timeline.track(1).document.setSelection(0, 100);
+    REQUIRE(timeline.track(0).document.gainDb(-6.0));
+    REQUIRE(timeline.track(1).document.gainDb(-12.0));
+
+    REQUIRE(timeline.undo());
+    CHECK_EQ(timeline.activeTrack(), 1);
+    CHECK_NEAR(timeline.track(1).document.audio().sample(0, 0), 0.1, 1e-6);
+    CHECK_NEAR(timeline.track(0).document.audio().sample(0, 0),
+               0.2 * std::pow(10.0, -6.0 / 20.0), 1e-6);
+    REQUIRE(timeline.undo());
+    CHECK_EQ(timeline.activeTrack(), 0);
+    CHECK_NEAR(timeline.track(0).document.audio().sample(0, 0), 0.2, 1e-6);
+}
+
+VWTEST("new actions invalidate redo across timeline and documents") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.2f)));
+    timeline.track(0).document.setSelection(0, 100);
+    REQUIRE(timeline.setTrackGainDb(0, -6.0));
+    REQUIRE(timeline.undo());
+    CHECK(timeline.canRedo());
+    REQUIRE(timeline.track(0).document.gainDb(-3.0));
+    CHECK(!timeline.canRedo());
+    CHECK(!timeline.redo());
+
+    REQUIRE(timeline.undo());
+    CHECK(timeline.track(0).document.canRedo());
+    REQUIRE(timeline.setTrackPan(0, 0.5));
+    CHECK(!timeline.track(0).document.canRedo());
+    CHECK(!timeline.track(0).document.redo());
+}

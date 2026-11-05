@@ -93,7 +93,11 @@ hard-panned mono tracks and compensates gain for the original stereo balance;
 the source is muted or removed. Mono combine creates a stereo track from two
 mono sources, applies source gain, preserves track offsets, and pads the shorter
 channel at the front, back, or both ends. `Timeline` owns these structural track
-changes; they are not part of `Document` history.
+changes and keeps a structural undo stack for adds, removals, routing, offsets,
+crops, and stereo conversions. `Timeline::undo()` chooses the newest action
+across all track `Document` histories and the structural stack, so undo works
+across tracks and edit kinds. Repeated routing changes on the same track and
+field coalesce into one undo entry.
 
 Time and pitch processing support two targets: in-place splicing (preserving the
 unselected prefix/suffix) or rendering the processed selection to a new track at
@@ -436,7 +440,8 @@ The suite covers:
 - Undo beyond the oldest retained checkpoint replays from the source.
 - Mixdown export warns on peaks above 0 dBFS but does not automatically limit;
   integer PCM output can clip if the warning is ignored.
-- Track addition/removal/routing is not part of track-document undo history.
+- Timeline structural undo keeps up to 64 snapshot entries; older structural
+  states are discarded.
 - Spectral operations process the selected region in memory.
 - Real-time spectral monitoring is not implemented.
 - The 3D spectrum is a CPU overview with capped frames/bins and no surface

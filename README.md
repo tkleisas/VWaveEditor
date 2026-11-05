@@ -375,7 +375,7 @@ SDL2 editor / CLI / Lua / MCP
 ```
 
 - Track sources are never modified by an edit.
-- Undo/redo replays a deterministic operation list for the active track.
+- Undo/redo covers document edits across tracks plus timeline structure and routing.
 - Timeline projects store every track, its history, selection, markers, slices,
   routing state, and the active track.
 - The GUI streams multi-track playback directly from immutable track buffers
