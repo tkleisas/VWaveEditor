@@ -42,6 +42,7 @@ public:
     AudioBlockId add(const Audio& audio, std::string name = {});
     bool restore(const AudioBlockInfo& info, const Audio& audio,
                  std::string* error = nullptr);
+    void retain(const std::set<AudioBlockId>& keep);
     bool contains(AudioBlockId id) const;
     bool tryGet(AudioBlockId id, Audio& out,
                 std::string* error = nullptr) const;

@@ -335,6 +335,17 @@ Audio AudioBlockStore::get(AudioBlockId id) const {
     return result;
 }
 
+void AudioBlockStore::retain(const std::set<AudioBlockId>& keep) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (auto it = m_entries.begin(); it != m_entries.end();) {
+        if (keep.find(it->first) != keep.end()) {
+            ++it;
+            continue;
+        }
+        it = m_entries.erase(it);
+    }
+}
+
 AudioBlockInfo AudioBlockStore::info(AudioBlockId id) const {
     std::lock_guard<std::mutex> lock(m_mutex);
     const Entry* entry = findEntry(id);

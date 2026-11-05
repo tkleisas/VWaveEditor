@@ -752,3 +752,19 @@ VWTEST("document edits a range inside a stretched region") {
     CHECK_EQ(doc.numFrames(), int64_t{100});
     CHECK(doc.audio().equals(original));
 }
+
+VWTEST("document history compaction bounds undo and block retention") {
+    Document doc = Document::fromAudio(makeRamp(100));
+    doc.setHistoryLimit(2);
+    doc.setSelection(10, 20);
+    REQUIRE(doc.gainDb(-1.0));
+    REQUIRE(doc.gainDb(-1.0));
+    REQUIRE(doc.gainDb(-1.0));
+    CHECK_EQ(doc.undoCount(), size_t{2});
+    CHECK(doc.blockCount() >= size_t{2});
+    REQUIRE(doc.undo());
+    REQUIRE(doc.undo());
+    CHECK(!doc.undo());
+    CHECK_EQ(doc.undoLabel(), std::string{});
+    CHECK_EQ(doc.numFrames(), int64_t{100});
+}

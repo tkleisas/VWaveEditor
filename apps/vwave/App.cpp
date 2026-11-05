@@ -557,9 +557,13 @@ int App::run() {
             std::filesystem::temp_directory_path() /
             "vwave_editor_smoke_saved.vwdoc";
         std::filesystem::remove(projectPath, removeError);
+        std::filesystem::remove_all(
+            projectPath.string() + ".blocks", removeError);
         saveProject(projectPath.string());
         const bool projectSaved = waitForFile(projectPath);
         std::filesystem::remove(projectPath, removeError);
+        std::filesystem::remove_all(
+            projectPath.string() + ".blocks", removeError);
         if (!projectSaved) return 1;
     }
     static const vwave::EditorTab kSmokeTabs[] = {

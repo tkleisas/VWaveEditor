@@ -375,7 +375,23 @@ bool Document::commitRegions(Operation operation,
     entry.afterSelection = m_selection;
     m_history.push_back(std::move(entry));
     m_redo.clear();
+    if (m_history.size() > m_historyLimit) {
+        const size_t drop = m_history.size() - m_historyLimit;
+        m_history.erase(m_history.begin(),
+                        m_history.begin() + static_cast<std::ptrdiff_t>(drop));
+    }
+    m_store.retain(referencedBlockIds());
     return true;
+}
+
+void Document::setHistoryLimit(size_t entries) {
+    m_historyLimit = std::max<size_t>(1, entries);
+    if (m_history.size() > m_historyLimit) {
+        const size_t drop = m_history.size() - m_historyLimit;
+        m_history.erase(m_history.begin(),
+                        m_history.begin() + static_cast<std::ptrdiff_t>(drop));
+    }
+    m_store.retain(referencedBlockIds());
 }
 
 void Document::clearHistory() {

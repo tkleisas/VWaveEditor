@@ -154,8 +154,9 @@ reference for as long as they use it.
 4. **Editor integration** (done for Make Clips): the editor no longer creates a
    clip mode. Region boundaries are always visible, region operations are
    ordinary track edits, and sample edits no longer require flattening.
-5. **Durability and scale** (next): history pruning/compaction, background
-   prefetch/write-back, autosave, and crash recovery testing.
+5. **Durability and scale** (in progress): bounded document history releases
+   unreferenced blocks; background prefetch/write-back, autosave, and crash
+   recovery testing remain.
 
 ## Tests
 

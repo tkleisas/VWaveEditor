@@ -135,6 +135,9 @@ public:
                              std::string* error = nullptr) const;
     void setBlockCacheLimitBytes(uint64_t bytes);
     uint64_t blockCacheBytes() const;
+    size_t blockCount() const { return m_store.size(); }
+    size_t historyLimit() const { return m_historyLimit; }
+    void setHistoryLimit(size_t entries);
 
     const Audio& source() const { return m_source; }
     const Audio& audio() const;
@@ -295,6 +298,7 @@ private:
     int m_sampleRate = 48000;
     std::vector<HistoryEntry> m_history;
     std::vector<HistoryEntry> m_redo;
+    size_t m_historyLimit = 1024;
     uint64_t m_revision = 0;
     Selection m_selection;
     Audio m_clipboard;

@@ -131,8 +131,10 @@ Rendering is a separate cache. `Document::audio()` mixes the arrangement and
 returns copy-on-write audio; editing never mutates a block.
 
 Undo/redo stores before/after arrangement snapshots, selections, labels, and
-history stamps. Blocks referenced by history and redo remain available until
-the stacks are cleared or compacted. Project format v2 stores arrangements and
+history stamps. Document history is bounded to 1024 entries by default; when
+the limit is exceeded the oldest entries are dropped and unreferenced in-memory
+blocks are released. Blocks referenced by history and redo remain available
+until the stacks are cleared or compacted. Project format v2 stores arrangements and
 history snapshots plus reachable blocks in a generation-based work-area sidecar.
 Legacy v1 projects are migrated on load by replaying their operation history
 into the region model; clip runs reference a shared legacy base block so
@@ -437,8 +439,9 @@ The suite covers:
 
 ## Known limitations
 
-- Undo history is retained in full; history pruning/compaction and autosave are
-  not yet implemented.
+- Undo history is bounded per document (1024 entries by default), but timeline
+  structural snapshots and the project file can still retain older blocks until
+  the next save/load cycle. Autosave is not yet implemented.
 - The disk work area is committed on explicit project save; live edits remain in
   RAM until the next save.
 - Mixdown export warns on peaks above 0 dBFS but does not automatically limit;
