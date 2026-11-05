@@ -569,5 +569,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   reporting for scroll containers.
 - Migrated the editor toolbar to retained `PushButton` widgets rendered through
   the SDL painter, with SDL-adapter event routing and system cursor feedback.
-- Next: migrate sidebar controls, then add timeline canvas hit targets and
-  cursor handles.
+- Added shared timeline cursor hit targets for rulers, overview, headers,
+  selection handles, clips, trim/stretch grips, and empty lanes; wired waveform
+  hover/drag states to system cursors.
+- Next: migrate sidebar controls and continue the timeline canvas extraction.

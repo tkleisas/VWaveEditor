@@ -15,6 +15,7 @@ using namespace vwave::app;
 using namespace vwave::ui;
 
 void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
+    updateUiCursor(event.x, event.y);
     if (m_sliderDragging) {
         setSliderFromX(m_activeSlider, event.x);
         return;

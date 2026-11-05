@@ -23,7 +23,7 @@ public:
     CursorShape current() const { return m_current; }
 
 private:
-    static constexpr size_t kCursorCount = 7;
+    static constexpr size_t kCursorCount = 8;
     static size_t indexFor(CursorShape shape);
     SDL_Cursor* cursorFor(CursorShape shape);
 

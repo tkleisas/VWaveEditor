@@ -14,6 +14,8 @@ SDL_SystemCursor systemCursorFor(CursorShape shape) {
         return SDL_SYSTEM_CURSOR_SIZENS;
     case CursorShape::SizeAll:
         return SDL_SYSTEM_CURSOR_SIZEALL;
+    case CursorShape::Crosshair:
+        return SDL_SYSTEM_CURSOR_CROSSHAIR;
     case CursorShape::Arrow:
     default:
         return SDL_SYSTEM_CURSOR_ARROW;

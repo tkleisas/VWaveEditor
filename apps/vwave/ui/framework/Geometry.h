@@ -27,6 +27,7 @@ enum class CursorShape {
     SizeWE,
     SizeNS,
     SizeAll,
+    Crosshair,
 };
 
 } // namespace vwave::ui

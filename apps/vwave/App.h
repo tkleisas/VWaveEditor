@@ -151,6 +151,8 @@ private:
     void handleWavetableMouseMotion(const SDL_MouseMotionEvent& event);
     void handleWaveformMouseUp(const SDL_MouseButtonEvent& event);
     void handleSpectrumMouseUp(const SDL_MouseButtonEvent& event);
+    vwave::ui::CursorShape waveformCursorAt(int x, int y) const;
+    void updateUiCursor(int x, int y);
     void handleWheel(const SDL_MouseWheelEvent& event);
 
     bool loadFile(const std::string& path);

@@ -373,8 +373,9 @@ normalized pointer/key/text/window events, pointer capture, hover state, focus
 traversal, and semantic cursor shapes. It has no SDL dependency and is covered
 by headless tests. A thin SDL adapter translates OS events, paints the widget
 tree, and applies cached system cursors. The editor toolbar is migrated to
-retained widgets; sidebar and custom canvas widgets remain in the legacy UI
-until their migration is complete.
+retained widgets. Timeline cursor hit targets are shared across ruler, overview,
+track headers, clips, selection handles, and trim/stretch grips; sidebar and
+custom canvas rendering remain in the legacy UI until migration is complete.
 
 ### Standalone editor
 

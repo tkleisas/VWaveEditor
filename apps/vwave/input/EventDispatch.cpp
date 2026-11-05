@@ -17,6 +17,11 @@ using namespace vwave::ui;
 
 bool App::handleToolbarInput(const SDL_Event& event) {
     if (!m_toolbarRoot) return false;
+    const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
+                          m_panningOverview || m_shiftingTrack ||
+                          m_sliderDragging || m_draggingSpectrum ||
+                          m_drawingWavetable;
+    if (dragging && !m_toolbarHost.captured()) return false;
     const bool modal = m_dialog.isOpen() || m_settingsController.isOpen() ||
                        m_contextMenuOpen || m_openMenu >= 0;
     if (modal) {

@@ -115,4 +115,6 @@ VWTEST("SDL cursor shapes map to system cursors") {
     CHECK(systemCursorFor(CursorShape::SizeWE) == SDL_SYSTEM_CURSOR_SIZEWE);
     CHECK(systemCursorFor(CursorShape::SizeNS) == SDL_SYSTEM_CURSOR_SIZENS);
     CHECK(systemCursorFor(CursorShape::SizeAll) == SDL_SYSTEM_CURSOR_SIZEALL);
+    CHECK(systemCursorFor(CursorShape::Crosshair) ==
+          SDL_SYSTEM_CURSOR_CROSSHAIR);
 }

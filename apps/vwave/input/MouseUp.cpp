@@ -34,4 +34,5 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
     if (m_draggingSpectrum) {
         handleSpectrumMouseUp(event);
     }
+    updateUiCursor(event.x, event.y);
 }
