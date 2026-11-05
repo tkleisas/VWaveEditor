@@ -20,14 +20,6 @@ struct Button {
     int area = 0;
 };
 
-struct SliderRef {
-    vwave::ParameterSlider* slider = nullptr;
-    SDL_Rect track{};
-    std::string label;
-    int area = 1;
-    std::function<void(double)> onChanged;
-};
-
 struct TrackControls {
     vwave::ParameterSlider gain;
     vwave::ParameterSlider pan;

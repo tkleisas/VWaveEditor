@@ -83,8 +83,6 @@ void App::updateUiCursor(int x, int y) {
         shape = CursorShape::ClosedHand;
     } else if (m_shiftingTrack) {
         shape = CursorShape::SizeAll;
-    } else if (m_sliderDragging) {
-        shape = CursorShape::SizeWE;
     } else if (m_waveDrag != WaveDragMode::None) {
         switch (m_waveDrag) {
         case WaveDragMode::ClipMove:

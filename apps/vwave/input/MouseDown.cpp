@@ -113,35 +113,6 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
         m_openMenu = -1;
         return;
     }
-    if (event.button == SDL_BUTTON_LEFT) {
-        SDL_Point point{event.x, event.y};
-        const bool inSidebar = SDL_PointInRect(&point, &m_sidebarRect) != 0;
-        const bool inToolbar = SDL_PointInRect(&point, &m_toolbarRect) != 0;
-        const bool inContent = SDL_PointInRect(&point, &m_contentRect) != 0;
-        const int area = inSidebar ? 1 : (inToolbar ? 0 : (inContent ? 2 : -1));
-        if (area >= 0) {
-            for (const auto& slider : m_ui.sliders()) {
-                if (slider.area != area) continue;
-                SDL_Rect hit{slider.track.x, slider.track.y - 12,
-                             slider.track.w, slider.track.h + 20};
-                if (SDL_PointInRect(&point, &hit)) {
-                    m_activeSlider = slider;
-                    m_sliderDragging = true;
-                    setSliderFromX(m_activeSlider, event.x);
-                    return;
-                }
-            }
-        }
-        if (area >= 0) {
-            for (const auto& button : m_ui.buttons()) {
-                if (button.enabled && button.area == area &&
-                    SDL_PointInRect(&point, &button.rect)) {
-                    button.action();
-                    return;
-                }
-            }
-        }
-    }
     SDL_Point clickPoint{event.x, event.y};
     if (!SDL_PointInRect(&clickPoint, &m_contentRect)) return;
     if (event.button == SDL_BUTTON_MIDDLE) {

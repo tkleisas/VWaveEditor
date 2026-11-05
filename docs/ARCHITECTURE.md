@@ -377,7 +377,8 @@ retained widgets. Sidebar buttons are pooled and repositioned from the existing
 manual layout, so scrolling and dynamic sections remain compatible during the
 transition. Timeline cursor hit targets are shared across ruler, overview,
 track headers, clips, selection handles, and trim/stretch grips. Sidebar sliders now use retained `SidebarSlider` controls as well, and
-  track-header buttons/sliders use a pooled retained `ControlPanel`. Custom
+  track-header buttons/sliders use a pooled retained `ControlPanel`. The legacy
+  immediate-mode button/slider registration path has been removed; custom
   canvas rendering remains on the legacy path until migration is complete.
 
 ### Standalone editor

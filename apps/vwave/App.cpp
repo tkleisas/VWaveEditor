@@ -535,7 +535,6 @@ void App::updateWindowTitle() {
 
 void App::draw() {
     layout();
-    m_ui.beginFrame();
     SDL_SetRenderDrawColor(m_renderer, kBackground.r, kBackground.g,
                            kBackground.b, kBackground.a);
     SDL_RenderClear(m_renderer);
@@ -599,11 +598,6 @@ void App::addSlider(const std::string& label, const std::string& valueText,
                                         slider, std::move(onChanged));
         return;
     }
-    m_ui.addSlider(label, valueText, x, y, w, slider, std::move(onChanged));
-}
-
-void App::setSliderFromX(SliderRef& slider, int x) {
-    m_ui.setSliderFromX(slider, x);
 }
 
 vwave::Document& App::activeDocument() {
@@ -725,8 +719,6 @@ void App::addButton(const std::string& label, int x, int y, int w, int h,
                                         enabled);
         return;
     }
-    m_ui.addButton(label, x, y, w, h, std::move(action), accent, active,
-                   enabled);
 }
 
 int App::textWidth(const std::string& text, TTF_Font* font) const {

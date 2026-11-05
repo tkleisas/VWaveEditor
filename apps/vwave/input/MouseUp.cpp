@@ -19,7 +19,6 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
     m_panningOverview = false;
     m_drawingWavetable = false;
     m_lastWavetableSample = -1;
-    m_sliderDragging = false;
     if (m_waveDrag != WaveDragMode::None) {
         handleWaveformMouseUp(event);
     }

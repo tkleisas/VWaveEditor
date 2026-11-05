@@ -6,11 +6,6 @@
 
 namespace vwave::ui {
 
-void UiRenderer::beginFrame() {
-    m_buttons.clear();
-    m_sliders.clear();
-}
-
 int UiRenderer::textWidth(const std::string& text, TTF_Font* font) const {
     if (!font || text.empty()) return 0;
     int width = 0;
@@ -61,54 +56,6 @@ void UiRenderer::drawButton(const Button& button) {
                                     ? kTextFaint
                                     : (button.accent ? kAccentText : kText);
     drawTextCentered(button.label, button.rect, textColor, m_fontSmall);
-}
-
-void UiRenderer::addButton(const std::string& label, int x, int y, int w,
-                           int h, std::function<void()> action, bool accent,
-                           bool active, bool enabled) {
-    Button button;
-    button.rect = {x, y, w, h};
-    button.label = label;
-    button.action = std::move(action);
-    button.accent = accent;
-    button.active = active;
-    button.enabled = enabled;
-    button.area = m_controlArea;
-    m_buttons.push_back(button);
-    drawButton(button);
-}
-
-void UiRenderer::addSlider(const std::string& label,
-                           const std::string& valueText, int x, int y, int w,
-                           vwave::ParameterSlider& slider,
-                           std::function<void(double)> onChanged) {
-    drawText(label, x, y, kTextDim, m_fontSmall);
-    const int valueWidth = textWidth(valueText, m_fontSmall);
-    drawText(valueText, x + w - valueWidth, y, kText, m_fontSmall);
-    SDL_Rect track{x, y + 17, w, 6};
-    SDL_SetRenderDrawColor(m_renderer, kContent.r, kContent.g, kContent.b, 255);
-    SDL_RenderFillRect(m_renderer, &track);
-    const double normalized = slider.normalized();
-    SDL_Rect filled{track.x, track.y, static_cast<int>(normalized * track.w),
-                    track.h};
-    SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 210);
-    SDL_RenderFillRect(m_renderer, &filled);
-    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
-    SDL_RenderDrawRect(m_renderer, &track);
-    const int handleX = track.x + static_cast<int>(normalized * track.w);
-    SDL_Rect handle{handleX - 3, track.y - 4, 7, track.h + 8};
-    SDL_SetRenderDrawColor(m_renderer, kText.r, kText.g, kText.b, 255);
-    SDL_RenderFillRect(m_renderer, &handle);
-    m_sliders.push_back({&slider, track, label, m_controlArea,
-                         std::move(onChanged)});
-}
-
-void UiRenderer::setSliderFromX(SliderRef& slider, int x) {
-    if (!slider.slider || slider.track.w <= 0) return;
-    const double position =
-        static_cast<double>(x - slider.track.x) / slider.track.w;
-    slider.slider->setNormalized(position);
-    if (slider.onChanged) slider.onChanged(slider.slider->value);
 }
 
 void UiRenderer::drawSection(const std::string& title, int sidebarWidth,

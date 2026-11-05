@@ -580,5 +580,6 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Migrated track-header buttons and volume/pan sliders through a reusable
   retained `ControlPanel`; sidebar/track controls now share pooling, painting,
   hit-testing, and cursor behavior.
-- Next: extract the timeline canvas interaction/rendering and remove the
-  remaining immediate-mode control path.
+- Removed the legacy immediate-mode button/slider registration and hit-testing
+  path now that toolbar, sidebar, and track-header controls are retained.
+- Next: extract the timeline canvas interaction/rendering.

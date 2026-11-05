@@ -16,10 +16,6 @@ using namespace vwave::ui;
 
 void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
     updateUiCursor(event.x, event.y);
-    if (m_sliderDragging) {
-        setSliderFromX(m_activeSlider, event.x);
-        return;
-    }
     if (m_shiftingTrack && m_shiftingTrackIndex >= 0 &&
         m_shiftingTrackIndex < m_timeline.trackCount()) {
         const double framesPerPixel =

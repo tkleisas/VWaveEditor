@@ -67,7 +67,6 @@ private:
     using Color = SDL_Color;
 
     using Button = vwave::ui::Button;
-    using SliderRef = vwave::ui::SliderRef;
     using MenuItem = vwave::ui::MenuItem;
     using Menu = vwave::ui::Menu;
 
@@ -123,7 +122,6 @@ private:
     void addSlider(const std::string& label, const std::string& valueText,
                    int x, int y, int w, vwave::ParameterSlider& slider,
                    std::function<void(double)> onChanged = {});
-    void setSliderFromX(SliderRef& slider, int x);
     vwave::StretchAlgorithm selectedStretchAlgorithm() const;
     vwave::Range spectralTimeRange() const;
     void sliceCurrent();
@@ -344,8 +342,6 @@ private:
     SDL_Rect m_settingsCloseRect{};
     std::vector<SDL_Rect> m_trackHeaderRects;
     std::vector<SDL_Rect> m_trackLaneRects;
-    SliderRef m_activeSlider;
-    bool m_sliderDragging = false;
     double m_sidebarScroll = 0.0;
     int m_sidebarContentHeight = 0;
 

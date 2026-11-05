@@ -19,7 +19,7 @@ bool App::handleToolbarInput(const SDL_Event& event) {
     if (!m_toolbarRoot) return false;
     const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
                           m_panningOverview || m_shiftingTrack ||
-                          m_sliderDragging || m_draggingSpectrum ||
+                          m_draggingSpectrum ||
                           m_drawingWavetable;
     if (dragging && !m_toolbarHost.captured()) return false;
     const bool modal = m_dialog.isOpen() || m_settingsController.isOpen() ||
@@ -64,7 +64,7 @@ bool App::handleTrackHeaderInput(const SDL_Event& event) {
     if (m_tab != vwave::EditorTab::Waveform) return false;
     const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
                           m_panningOverview || m_shiftingTrack ||
-                          m_sliderDragging || m_draggingSpectrum ||
+                          m_draggingSpectrum ||
                           m_drawingWavetable;
     if (dragging && !m_trackHeaderControls.captured()) return false;
 
@@ -112,7 +112,7 @@ bool App::handleSidebarInput(const SDL_Event& event) {
     if (!m_sidebarRoot) return false;
     const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
                           m_panningOverview || m_shiftingTrack ||
-                          m_sliderDragging || m_draggingSpectrum ||
+                          m_draggingSpectrum ||
                           m_drawingWavetable;
     if (dragging && !m_sidebarHost.captured()) return false;
 
