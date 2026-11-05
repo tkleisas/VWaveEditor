@@ -554,5 +554,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   events, hover/capture/focus routing, cursor shapes, and headless tests.
 - Added an SDL-free command/shortcut registry with stable IDs, dynamic enabled
   predicates, and shared actions for menus, buttons, and key bindings.
-- Next: basic widgets, SDL adapter, and migration of toolbar/sidebar/timeline
-  controls to the widget layer.
+- Added the first retained control, `Button`, with pointer, keyboard, hover,
+  disabled, and cancellation behavior covered by headless tests.
+- Next: slider/scroll controls, SDL adapter, and migration of toolbar/sidebar/
+  timeline controls to the widget layer.
