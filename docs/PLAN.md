@@ -542,4 +542,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   document edits cancel pending loads.
 - Moved mixdown export, project save, and slice export onto background jobs
   via `FileSaveController`.
+- Added checkpointed document undo (every 16 operations, capped at 32) and
+  identity phase locking in the phase vocoder.
 - Next: remaining async/performance work.

@@ -188,6 +188,11 @@ Audio phaseVocoderStretch(const Audio& input, int64_t outputFrames,
     Audio output(channels, outputFrames, input.sampleRate());
     std::vector<double> windowSum(static_cast<size_t>(outputFrames), 0.0);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<double> magnitudes(static_cast<size_t>(bins), 0.0);
+    std::vector<double> analysisPhase(static_cast<size_t>(bins), 0.0);
+    std::vector<double> synthesisPhase(static_cast<size_t>(bins), 0.0);
+    std::vector<int> peakOwner(static_cast<size_t>(bins), 0);
+    std::vector<int> peaks;
     std::vector<std::vector<double>> previousPhase(
         static_cast<size_t>(channels),
         std::vector<double>(static_cast<size_t>(bins), 0.0));
@@ -216,35 +221,106 @@ Audio phaseVocoderStretch(const Audio& input, int64_t outputFrames,
                 }
             }
             fft.forward(spectrum);
-
             for (int bin = 0; bin < bins; ++bin) {
                 const auto& value = spectrum[static_cast<size_t>(bin)];
-                const double magnitude = std::abs(value);
-                const double phase = std::atan2(value.imag(), value.real());
-                const double omega = 2.0 * kPi * static_cast<double>(bin) /
-                                     static_cast<double>(fftSize);
-                double synthesisPhase = phase;
-                if (firstFrame[static_cast<size_t>(ch)]) {
-                    sumPhase[static_cast<size_t>(ch)][static_cast<size_t>(bin)] =
-                        phase;
-                } else {
-                    const double expected = omega * analysisHop;
-                    const double delta = wrapPhase(
-                        phase -
-                        previousPhase[static_cast<size_t>(ch)][static_cast<size_t>(bin)] -
-                        expected);
-                    const double instantaneous =
-                        omega + delta / analysisHop;
-                    auto& accumulated =
-                        sumPhase[static_cast<size_t>(ch)][static_cast<size_t>(bin)];
-                    accumulated += instantaneous * static_cast<double>(hop);
-                    synthesisPhase = accumulated;
+                magnitudes[static_cast<size_t>(bin)] = std::abs(value);
+                analysisPhase[static_cast<size_t>(bin)] =
+                    std::atan2(value.imag(), value.real());
+            }
+
+            peaks.clear();
+            for (int bin = 1; bin + 1 < bins; ++bin) {
+                const double magnitude = magnitudes[static_cast<size_t>(bin)];
+                if (magnitude > 1e-9 &&
+                    magnitude > magnitudes[static_cast<size_t>(bin - 1)] &&
+                    magnitude >= magnitudes[static_cast<size_t>(bin + 1)])
+                    peaks.push_back(bin);
+            }
+
+            if (peaks.empty()) {
+                for (int bin = 0; bin < bins; ++bin) {
+                    const double omega = 2.0 * kPi *
+                                         static_cast<double>(bin) /
+                                         static_cast<double>(fftSize);
+                    if (firstFrame[static_cast<size_t>(ch)]) {
+                        sumPhase[static_cast<size_t>(ch)]
+                                [static_cast<size_t>(bin)] =
+                            analysisPhase[static_cast<size_t>(bin)];
+                    } else {
+                        const double expected = omega * analysisHop;
+                        const double delta = wrapPhase(
+                            analysisPhase[static_cast<size_t>(bin)] -
+                            previousPhase[static_cast<size_t>(ch)]
+                                         [static_cast<size_t>(bin)] -
+                            expected);
+                        sumPhase[static_cast<size_t>(ch)]
+                                [static_cast<size_t>(bin)] +=
+                            (omega + delta / analysisHop) *
+                            static_cast<double>(hop);
+                    }
+                    synthesisPhase[static_cast<size_t>(bin)] =
+                        sumPhase[static_cast<size_t>(ch)]
+                                [static_cast<size_t>(bin)];
                 }
-                previousPhase[static_cast<size_t>(ch)][static_cast<size_t>(bin)] =
-                    phase;
+            } else {
+                size_t owner = 0;
+                for (int bin = 0; bin < bins; ++bin) {
+                    while (owner + 1 < peaks.size() &&
+                           std::abs(bin - peaks[owner + 1]) <
+                               std::abs(bin - peaks[owner]))
+                        ++owner;
+                    peakOwner[static_cast<size_t>(bin)] =
+                        peaks[owner];
+                }
+                for (const int peak : peaks) {
+                    const double omega = 2.0 * kPi *
+                                         static_cast<double>(peak) /
+                                         static_cast<double>(fftSize);
+                    if (firstFrame[static_cast<size_t>(ch)]) {
+                        sumPhase[static_cast<size_t>(ch)]
+                                [static_cast<size_t>(peak)] =
+                            analysisPhase[static_cast<size_t>(peak)];
+                    } else {
+                        const double expected = omega * analysisHop;
+                        const double delta = wrapPhase(
+                            analysisPhase[static_cast<size_t>(peak)] -
+                            previousPhase[static_cast<size_t>(ch)]
+                                         [static_cast<size_t>(peak)] -
+                            expected);
+                        sumPhase[static_cast<size_t>(ch)]
+                                [static_cast<size_t>(peak)] +=
+                            (omega + delta / analysisHop) *
+                            static_cast<double>(hop);
+                    }
+                    synthesisPhase[static_cast<size_t>(peak)] =
+                        sumPhase[static_cast<size_t>(ch)]
+                                [static_cast<size_t>(peak)];
+                }
+                for (int bin = 0; bin < bins; ++bin) {
+                    const int peak =
+                        peakOwner[static_cast<size_t>(bin)];
+                    if (bin == peak) continue;
+                    synthesisPhase[static_cast<size_t>(bin)] =
+                        sumPhase[static_cast<size_t>(ch)]
+                                [static_cast<size_t>(peak)] +
+                        (analysisPhase[static_cast<size_t>(bin)] -
+                         analysisPhase[static_cast<size_t>(peak)]);
+                }
+            }
+
+            for (int bin = 0; bin < bins; ++bin) {
+                previousPhase[static_cast<size_t>(ch)]
+                             [static_cast<size_t>(bin)] =
+                    analysisPhase[static_cast<size_t>(bin)];
+                sumPhase[static_cast<size_t>(ch)][static_cast<size_t>(bin)] =
+                    synthesisPhase[static_cast<size_t>(bin)];
                 spectrum[static_cast<size_t>(bin)] = {
-                    static_cast<float>(magnitude * std::cos(synthesisPhase)),
-                    static_cast<float>(magnitude * std::sin(synthesisPhase))};
+                    static_cast<float>(
+                        magnitudes[static_cast<size_t>(bin)] *
+                        std::cos(synthesisPhase[static_cast<size_t>(bin)])),
+                    static_cast<float>(
+                        magnitudes[static_cast<size_t>(bin)] *
+                        std::sin(synthesisPhase[static_cast<size_t>(bin)]))};
                 if (bin > 0 && bin < fftSize / 2) {
                     spectrum[static_cast<size_t>(fftSize - bin)] =
                         std::conj(spectrum[static_cast<size_t>(bin)]);

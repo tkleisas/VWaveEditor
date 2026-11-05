@@ -114,8 +114,11 @@ A document stores:
 
 Editing applies an operation to the current rendered buffer, records the
 result, and keeps the source untouched. Undo removes the last history entry
-and replays the remaining operations from the source. Redo applies the
-operation again and restores its post-operation selection.
+and replays the remaining operations from the nearest checkpoint (or from the
+source when none is available). Redo applies the operation again and restores
+its post-operation selection. Checkpoints are captured every 16 operations and
+capped at 32, so recent undo work is bounded while snapshot memory remains
+bounded as well.
 
 Supported operation classes:
 
@@ -135,10 +138,10 @@ insert. Whole-track stretch is a normal time-stretch process over the full
 document range.
 
 This design makes undo exact, keeps the original file reference intact, and
-allows project files to preserve editing history. It is intentionally
-operation-replay rather than copy-on-write snapshots. Very long histories will
-eventually benefit from checkpoints; the current implementation prioritises
-correctness and simple project serialization.
+allows project files to preserve editing history. Checkpoints use copy-on-write
+audio buffers, so they are cheap to retain until a later operation mutates the
+working buffer. Project files store operations and reconstruct checkpoints on
+load rather than serializing snapshot data.
 
 ## Clip arrangement
 
@@ -204,8 +207,9 @@ normalization. It preserves DC and amplitude at band edges.
 - **WSOLA** uses overlapping Hann windows, cross-correlation search around the
   nominal analysis position, and normalized overlap-add. It preserves pitch
   and is transient-friendly.
-- **Phase vocoder** propagates phase using instantaneous-frequency estimates
-  and overlap-add with window-power normalization.
+- **Phase vocoder** propagates phase using instantaneous-frequency estimates,
+  applies identity phase locking around spectral peaks, and overlap-adds with
+  window-power normalization.
 - **PaulStretch** randomizes spectral phase independently on every frame and
   overlap-adds the result to produce diffuse ambient textures while retaining
   perceived pitch.
@@ -419,7 +423,7 @@ The suite covers:
 
 ## Known limitations
 
-- The full history is replayed after undo; checkpointing is future work.
+- Undo beyond the oldest retained checkpoint replays from the source.
 - Track addition/removal/routing is not part of track-document undo history.
 - Spectral operations process the selected region in memory.
 - Real-time spectral monitoring is not implemented.
