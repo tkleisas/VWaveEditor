@@ -73,6 +73,18 @@ void App::openTrackContextMenu(int trackIndex, int x, int y) {
         m_timeline.setActiveTrack(trackIndex);
         repeatActiveSelection(2);
     }, hasSelection);
+    add("Reverse Selection", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        runEdit([this](std::string* error) {
+            return activeDocument().reverseSelection(error);
+        }, "Reversed selection");
+    }, hasSelection);
+    add("Flip Phase", [this, trackIndex] {
+        m_timeline.setActiveTrack(trackIndex);
+        runEdit([this](std::string* error) {
+            return activeDocument().invertSelection(error);
+        }, "Flipped phase");
+    }, hasSelection);
     separator();
     add("Crop Track to Selection", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
