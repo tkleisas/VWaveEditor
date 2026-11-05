@@ -778,3 +778,39 @@ VWTEST("timeline edits spill into the live work area without corrupting the save
     CHECK(recovered.track(0).document.audio().equals(saved));
     CHECK(!std::filesystem::exists(generation / "live"));
 }
+
+VWTEST("timeline cleanup removes unreferenced work area generations") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "cleanup.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.2f), 0,
+                                   &error));
+    REQUIRE(timeline.saveProject(path, &error));
+    nlohmann::json firstRoot;
+    {
+        std::ifstream in(path);
+        in >> firstRoot;
+    }
+    const auto firstGeneration =
+        directory.path() / "cleanup.vwdoc.blocks" /
+        firstRoot["tracks"][0]["blockDirectory"].get<std::string>();
+    CHECK(std::filesystem::exists(firstGeneration));
+
+    REQUIRE(timeline.saveProject(path, &error));
+    nlohmann::json secondRoot;
+    {
+        std::ifstream in(path);
+        in >> secondRoot;
+    }
+    const auto secondGeneration =
+        directory.path() / "cleanup.vwdoc.blocks" /
+        secondRoot["tracks"][0]["blockDirectory"].get<std::string>();
+    CHECK(firstGeneration != secondGeneration);
+    CHECK(std::filesystem::exists(firstGeneration));
+
+    REQUIRE(Timeline::cleanupWorkArea(path, &error));
+    CHECK(!std::filesystem::exists(firstGeneration));
+    CHECK(std::filesystem::exists(secondGeneration));
+}

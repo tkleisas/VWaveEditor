@@ -153,6 +153,13 @@ directory without rewriting the saved manifest, so the last explicit save
 remains crash-safe. Loaded tracks use an LRU cache and reload evicted blocks
 from disk on demand. See `docs/AUDIO_MODEL.md`.
 
+Once a project has a path, edits schedule an asynchronous autosave snapshot at
+`<project>.vwdoc.autosave` after 2.5 seconds of inactivity. Recovery snapshots
+use their own generation work area; old generations are cleaned immediately.
+Opening the project enables **File → Recover Autosave** when a snapshot exists.
+An explicit project save removes the recovery snapshot and clears the modified
+title marker.
+
 Document-level audio import/export and project JSON persistence live in
 `DocumentIO.cpp`, operation execution in `DocumentExecution.cpp`, and history
 in `DocumentHistory.cpp`; shared JSON/selection helpers live in
@@ -444,9 +451,8 @@ The suite covers:
 - Undo history is bounded per document (1024 entries by default), but timeline
   structural snapshots and the project file can still retain older blocks until
   the next save/load cycle. Autosave is not yet implemented.
-- Live edit blocks spill to the session work area for cache eviction, but the
-  project manifest/state is committed only on explicit save; crash recovery of
-  unsaved arrangement changes is not implemented.
+- Autosave recovery is project-path based; unsaved audio that has never been
+  saved as a project has no recovery snapshot.
 - Mixdown export warns on peaks above 0 dBFS but does not automatically limit;
   integer PCM output can clip if the warning is ignored.
 - Timeline structural undo keeps up to 64 snapshot entries; older structural

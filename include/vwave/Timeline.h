@@ -111,6 +111,8 @@ public:
     bool saveProject(const std::string& path,
                      std::string* error = nullptr) const;
     bool loadProject(const std::string& path, std::string* error = nullptr);
+    static bool cleanupWorkArea(const std::string& path,
+                                std::string* error = nullptr);
 
 private:
     struct TimelineState {

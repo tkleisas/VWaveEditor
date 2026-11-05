@@ -35,6 +35,9 @@ void App::drawMenuBar() {
         return item;
     };
 
+    const bool recoveryAvailable =
+        !m_projectPath.empty() &&
+        std::filesystem::exists(m_projectPath + ".autosave");
     Menu file;
     file.title = "File";
     file.items = {
@@ -60,6 +63,8 @@ void App::drawMenuBar() {
                    openDialog(DialogMode::SaveProject, "Save project",
                               m_projectPath, true);
                }, tracks, "Ctrl+Shift+S"),
+        action("Recover Autosave",
+               [this] { recoverAutosave(); }, recoveryAvailable),
         separator(),
         action("Quit", [this] { m_running = false; }, true, "Ctrl+Q")};
     Menu edit;

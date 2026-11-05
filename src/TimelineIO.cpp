@@ -151,6 +151,66 @@ bool Timeline::saveProject(const std::string& path,
     }
 }
 
+bool Timeline::cleanupWorkArea(const std::string& path, std::string* error) {
+    if (error) error->clear();
+    try {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            setError(error, "cannot open project file");
+            return false;
+        }
+        nlohmann::json root;
+        in >> root;
+        if (root.value("format", std::string{}) != "vwave-timeline" ||
+            root.value("version", 0) < 2) {
+            setError(error, "project has no work area");
+            return false;
+        }
+        std::string workAreaName = root.value("workArea", std::string{});
+        if (workAreaName.empty())
+            workAreaName =
+                std::filesystem::path(path).filename().string() + ".blocks";
+        if (!safeDirectoryName(workAreaName)) {
+            setError(error, "project work area has an invalid name");
+            return false;
+        }
+        const auto workArea =
+            std::filesystem::path(path).parent_path() / workAreaName;
+        std::set<std::filesystem::path> keep;
+        if (root.contains("tracks") && root["tracks"].is_array()) {
+            for (const auto& trackJson : root["tracks"]) {
+                if (!trackJson.contains("blockDirectory")) continue;
+                const std::string name =
+                    trackJson["blockDirectory"].get<std::string>();
+                if (!safeDirectoryName(name)) {
+                    setError(error, "track work area has an invalid name");
+                    return false;
+                }
+                keep.insert(workArea / name);
+            }
+        }
+        std::error_code iteratorError;
+        for (const auto& entry :
+             std::filesystem::directory_iterator(workArea, iteratorError)) {
+            if (!entry.is_directory()) continue;
+            const std::string name = entry.path().filename().string();
+            if (name.rfind("track-", 0) != 0) continue;
+            if (keep.find(entry.path()) == keep.end()) {
+                std::filesystem::remove_all(entry.path(), iteratorError);
+            } else {
+                std::filesystem::remove_all(entry.path() / "live",
+                                            iteratorError);
+            }
+            iteratorError.clear();
+        }
+        return true;
+    } catch (const std::exception& e) {
+        setError(error, std::string("cannot clean project work area: ") +
+                            e.what());
+        return false;
+    }
+}
+
 bool Timeline::loadProject(const std::string& path, std::string* error) {
     if (error) error->clear();
     try {

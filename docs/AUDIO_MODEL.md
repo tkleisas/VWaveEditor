@@ -161,8 +161,9 @@ reference for as long as they use it.
    clip mode. Region boundaries are always visible, region operations are
    ordinary track edits, and sample edits no longer require flattening.
 5. **Durability and scale** (in progress): bounded document history releases
-   unreferenced blocks; background prefetch/write-back, autosave, and crash
-   recovery testing remain.
+   unreferenced blocks; asynchronous project autosave snapshots and an explicit
+   Recover Autosave action are implemented. Background prefetch and broader
+   crash-recovery testing remain.
 
 ## Tests
 

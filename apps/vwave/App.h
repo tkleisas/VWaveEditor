@@ -177,8 +177,13 @@ private:
     bool loadAudio(const std::string& path);
     bool addTrackFile(const std::string& path);
     bool loadProject(const std::string& path);
+    void applyLoadedProject(vwave::Timeline timeline,
+                            const std::string& projectPath);
     void saveAudio(const std::string& path);
     void saveProject(const std::string& path);
+    void updateAutosave();
+    void recoverAutosave();
+    void removeAutosaveFiles(const std::string& projectPath);
     void setTab(vwave::EditorTab tab);
     void togglePlay();
     void stopPlayback();
@@ -399,6 +404,12 @@ private:
 
     std::string m_audioPath;
     std::string m_projectPath;
+    bool m_modified = false;
+    bool m_autosavePending = false;
+    bool m_autosaveInProgress = false;
+    uint64_t m_editGeneration = 0;
+    Uint32 m_lastEditTicks = 0;
+    Uint32 m_autosaveRetryAfter = 0;
     std::string m_status;
     Uint32 m_statusUntil = 0;
     bool m_running = true;

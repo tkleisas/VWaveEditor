@@ -60,6 +60,8 @@ void FileSaveController::saveProject(vwave::Timeline timeline,
     const std::string target = withExtension(path, ".vwdoc");
     const uint64_t request = ++m_request;
     if (m_job.valid()) m_job.cancel();
+    ++m_autosaveRequest;
+    if (m_autosaveJob.valid()) m_autosaveJob.cancel();
     m_status("Saving project...");
     m_job = m_jobs.submit([this, request, timeline = std::move(timeline),
                            target, saved = std::move(saved)](
@@ -78,6 +80,30 @@ void FileSaveController::saveProject(vwave::Timeline timeline,
             m_status("Saved project " + baseName(target));
         });
     });
+}
+
+void FileSaveController::saveAutosave(vwave::Timeline timeline,
+                                       const std::string& path,
+                                       DoneSink done) {
+    const uint64_t request = ++m_autosaveRequest;
+    if (m_autosaveJob.valid()) m_autosaveJob.cancel();
+    m_autosaveJob = m_jobs.submit(
+        [this, request, timeline = std::move(timeline), path,
+         done = std::move(done)](vwave::JobControl& control) mutable {
+            std::string error;
+            const bool success = timeline.saveProject(path, &error);
+            if (success) {
+                std::string cleanupError;
+                vwave::Timeline::cleanupWorkArea(path, &cleanupError);
+            }
+            if (control.cancelled()) return;
+            m_dispatcher.post([this, request, success,
+                               error = std::move(error),
+                               done = std::move(done)]() mutable {
+                if (request != m_autosaveRequest) return;
+                done(success, error);
+            });
+        });
 }
 
 void FileSaveController::exportSlices(vwave::Audio audio,
@@ -116,7 +142,9 @@ void FileSaveController::exportSlices(vwave::Audio audio,
 
 void FileSaveController::cancel() {
     ++m_request;
+    ++m_autosaveRequest;
     if (m_job.valid()) m_job.cancel();
+    if (m_autosaveJob.valid()) m_autosaveJob.cancel();
 }
 
 } // namespace vwave::app

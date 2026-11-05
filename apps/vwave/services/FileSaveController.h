@@ -18,6 +18,8 @@ public:
     using PathSink = std::function<void(const std::string& path)>;
     using SliceSink = std::function<void(size_t count,
                                          const std::string& directory)>;
+    using DoneSink = std::function<void(bool success,
+                                        const std::string& error)>;
 
     FileSaveController(vwave::JobSystem& jobs, UiDispatcher& dispatcher,
                        StatusSink status);
@@ -26,6 +28,8 @@ public:
                    PathSink saved);
     void saveProject(vwave::Timeline timeline, const std::string& path,
                      PathSink saved);
+    void saveAutosave(vwave::Timeline timeline, const std::string& path,
+                      DoneSink done);
     void exportSlices(vwave::Audio audio, std::vector<vwave::Slice> slices,
                       const std::string& directory, std::string prefix,
                       SliceSink saved);
@@ -37,6 +41,8 @@ private:
     StatusSink m_status;
     vwave::JobHandle m_job;
     uint64_t m_request = 0;
+    vwave::JobHandle m_autosaveJob;
+    uint64_t m_autosaveRequest = 0;
 };
 
 } // namespace vwave::app

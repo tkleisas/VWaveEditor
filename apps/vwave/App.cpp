@@ -561,10 +561,29 @@ int App::run() {
             projectPath.string() + ".blocks", removeError);
         saveProject(projectPath.string());
         const bool projectSaved = waitForFile(projectPath);
+        if (!projectSaved) return 1;
+        const Uint32 pathDeadline = SDL_GetTicks() + 5000;
+        while (m_projectPath.empty() && SDL_GetTicks() < pathDeadline) {
+            m_dispatcher.drain();
+            SDL_Delay(2);
+        }
+        if (m_projectPath.empty()) return 1;
+        const auto recoveryPath =
+            std::filesystem::path(projectPath.string() + ".autosave");
+        std::filesystem::remove(recoveryPath, removeError);
+        std::filesystem::remove_all(
+            recoveryPath.string() + ".blocks", removeError);
+        markEdited();
+        m_lastEditTicks = SDL_GetTicks() - 3000;
+        updateAutosave();
+        const bool recoverySaved = waitForFile(recoveryPath);
+        std::filesystem::remove_all(
+            recoveryPath.string() + ".blocks", removeError);
+        std::filesystem::remove(recoveryPath, removeError);
         std::filesystem::remove(projectPath, removeError);
         std::filesystem::remove_all(
             projectPath.string() + ".blocks", removeError);
-        if (!projectSaved) return 1;
+        if (!recoverySaved) return 1;
     }
     static const vwave::EditorTab kSmokeTabs[] = {
         vwave::EditorTab::Waveform, vwave::EditorTab::Spectrum,
@@ -577,6 +596,7 @@ int App::run() {
         updatePlayback();
         updateRecording();
         m_dispatcher.drain();
+        updateAutosave();
         if (smokeTest) {
             constexpr int kTabCount =
                 static_cast<int>(sizeof(kSmokeTabs) / sizeof(kSmokeTabs[0]));
@@ -617,7 +637,8 @@ void App::updateWindowTitle() {
     std::string name = m_projectPath.empty() ? m_audioPath : m_projectPath;
     if (name.empty()) name = "Untitled";
     const std::string title =
-        "VWaveEditor " VWAVE_VERSION " - " + baseName(name);
+        std::string("VWaveEditor " VWAVE_VERSION " - ") +
+        (m_modified ? "*" : "") + baseName(name);
     SDL_SetWindowTitle(m_window, title.c_str());
 }
 
@@ -1113,6 +1134,10 @@ void App::markEdited() {
     m_spectrogramDirty = true;
     m_analysisData.clear();
     m_spectralController.clear();
+    ++m_editGeneration;
+    m_modified = true;
+    m_autosavePending = true;
+    m_lastEditTicks = SDL_GetTicks();
     updateWindowTitle();
 }
 
@@ -1339,6 +1364,9 @@ bool App::loadAudio(const std::string& path) {
     if (m_recordingController.recording()) stopRecording();
     m_player.stop();
     cancelRenderJobs();
+    m_fileSaver.cancel();
+    m_autosavePending = false;
+    m_autosaveInProgress = false;
     return m_fileLoader.loadAudio(
         path, [this](vwave::Audio audio, const std::string& loadedPath) {
             m_player.stop();
@@ -1355,6 +1383,10 @@ bool App::loadAudio(const std::string& path) {
             m_timeline.clearUndoHistory();
             m_audioPath = loadedPath;
             m_projectPath.clear();
+            m_modified = false;
+            m_autosavePending = false;
+            m_autosaveInProgress = false;
+            ++m_editGeneration;
             m_clips.reset();
             m_loop.clear();
             syncTrackControls();
@@ -1393,7 +1425,7 @@ bool App::addTrackFile(const std::string& path) {
             clearAnalysis();
             m_view.fit(m_timeline.lengthFrames());
             m_playhead = clampFrame(m_playhead, m_timeline.lengthFrames());
-            updateWindowTitle();
+            markEdited();
             setStatus("Added track " + name);
         });
 }
@@ -1402,26 +1434,41 @@ bool App::loadProject(const std::string& path) {
     if (m_recordingController.recording()) stopRecording();
     m_player.stop();
     cancelRenderJobs();
+    m_fileSaver.cancel();
+    m_autosavePending = false;
+    m_autosaveInProgress = false;
     return m_fileLoader.loadProject(
         path, [this](vwave::Timeline timeline, const std::string& loadedPath) {
-            m_player.stop();
-            m_timeline = std::move(timeline);
-            m_projectPath = loadedPath;
-            m_audioPath =
-                hasTracks() ? activeDocument().sourcePath() : std::string{};
-            m_clips.reset();
-            m_loop.clear();
-            m_wavetableController.clear();
-            syncTrackControls();
-            m_view.fit(m_timeline.lengthFrames());
-            m_spectralView.maxHz = std::min(
-                20000.0,
-                std::max(1000.0, m_timeline.sampleRate() / 2.0));
-            clearAnalysis();
-            m_playhead = 0;
-            updateWindowTitle();
-            setStatus("Loaded project " + baseName(loadedPath));
+            applyLoadedProject(std::move(timeline), loadedPath);
         });
+}
+
+void App::applyLoadedProject(vwave::Timeline timeline,
+                             const std::string& projectPath) {
+    m_player.stop();
+    m_timeline = std::move(timeline);
+    m_projectPath = projectPath;
+    m_audioPath =
+        hasTracks() ? activeDocument().sourcePath() : std::string{};
+    m_modified = false;
+    m_autosavePending = false;
+    m_autosaveInProgress = false;
+    ++m_editGeneration;
+    m_clips.reset();
+    m_loop.clear();
+    m_wavetableController.clear();
+    syncTrackControls();
+    m_view.fit(m_timeline.lengthFrames());
+    m_spectralView.maxHz = std::min(
+        20000.0,
+        std::max(1000.0, m_timeline.sampleRate() / 2.0));
+    clearAnalysis();
+    m_playhead = 0;
+    updateWindowTitle();
+    const bool recoveryAvailable =
+        std::filesystem::exists(m_projectPath + ".autosave");
+    setStatus("Loaded project " + baseName(projectPath) +
+              (recoveryAvailable ? " (autosave available)" : ""));
 }
 
 void App::saveAudio(const std::string& path) {
@@ -1433,10 +1480,84 @@ void App::saveAudio(const std::string& path) {
 }
 
 void App::saveProject(const std::string& path) {
+    const uint64_t generation = m_editGeneration;
+    m_autosavePending = false;
+    m_autosaveInProgress = false;
     m_fileSaver.saveProject(
-        m_timeline, path, [this](const std::string& target) {
+        m_timeline, path, [this, generation](const std::string& target) {
             m_projectPath = target;
+            if (generation == m_editGeneration) {
+                m_modified = false;
+                m_autosavePending = false;
+                removeAutosaveFiles(target);
+            } else {
+                m_autosavePending = true;
+            }
             updateWindowTitle();
+        });
+}
+
+void App::removeAutosaveFiles(const std::string& projectPath) {
+    if (projectPath.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove(projectPath + ".autosave", ec);
+    std::filesystem::remove_all(projectPath + ".autosave.blocks", ec);
+}
+
+void App::updateAutosave() {
+    if (!m_autosavePending || m_autosaveInProgress || m_projectPath.empty())
+        return;
+    const Uint32 now = SDL_GetTicks();
+    if (now < m_autosaveRetryAfter) return;
+    constexpr Uint32 kAutosaveDelayMs = 2500;
+    if (now - m_lastEditTicks < kAutosaveDelayMs) return;
+
+    const uint64_t generation = m_editGeneration;
+    const std::string target = m_projectPath + ".autosave";
+    m_autosaveInProgress = true;
+    m_fileSaver.saveAutosave(
+        m_timeline, target,
+        [this, target, generation](bool success, const std::string& error) {
+            m_autosaveInProgress = false;
+            if (target != m_projectPath + ".autosave") return;
+            if (success) {
+                if (generation == m_editGeneration)
+                    m_autosavePending = false;
+                setStatus("Autosave ready", 1200);
+            } else {
+                m_autosaveRetryAfter = SDL_GetTicks() + 5000;
+                if (!error.empty())
+                    setStatus("Autosave failed: " + error, 4000);
+            }
+        });
+}
+
+void App::recoverAutosave() {
+    if (m_projectPath.empty()) {
+        setStatus("Save the project before recovering");
+        return;
+    }
+    const std::string recovery = m_projectPath + ".autosave";
+    if (!std::filesystem::exists(recovery)) {
+        setStatus("No autosave available");
+        return;
+    }
+    const std::string projectPath = m_projectPath;
+    const std::string recoveryPath = recovery;
+    m_fileSaver.cancel();
+    m_autosavePending = false;
+    m_autosaveInProgress = false;
+    m_fileLoader.loadProject(
+        recoveryPath,
+        [this, projectPath](vwave::Timeline timeline,
+                            const std::string& /*loadedPath*/) {
+            applyLoadedProject(std::move(timeline), projectPath);
+            m_modified = true;
+            m_autosavePending = true;
+            ++m_editGeneration;
+            m_lastEditTicks = SDL_GetTicks();
+            updateWindowTitle();
+            setStatus("Recovered autosave; save project to keep changes", 6000);
         });
 }
 
