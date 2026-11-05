@@ -17,10 +17,15 @@ public:
     int size() const { return m_backend ? m_backend->size() : 0; }
 
     void forward(std::vector<std::complex<float>>& data) const;
+    void forwardReal(const std::vector<float>& input,
+                     std::vector<std::complex<float>>& output) const;
     void inverse(std::vector<std::complex<float>>& data) const;
 
 private:
     std::unique_ptr<FftBackend> m_backend;
+    std::unique_ptr<FftBackend> m_realBackend;
+    std::vector<std::complex<float>> m_realTwiddles;
+    mutable std::vector<std::complex<float>> m_realScratch;
 };
 
 void fftInPlace(float* real, float* imag, int size, bool inverse);

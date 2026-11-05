@@ -193,10 +193,12 @@ and Ogg Vorbis are supported; float/integer bit depths are selected through
 ### FFT
 
 A radix-2 Cooley-Tukey FFT with precomputed bit reversal and twiddle factors.
-Inverse transforms use conjugation and `1/N` scaling. FFT sizes are validated
-and rounded to powers of two at higher-level entry points. The `FftBackend`
-interface keeps the transform implementation replaceable for pffft/FFTW-style
-backends without changing DSP call sites.
+Inverse transforms use conjugation and `1/N` scaling. Real-input transforms
+pack even/odd samples through a half-size complex FFT, halving the work in STFT
+analysis and feature extraction. FFT sizes are validated and rounded to powers
+of two at higher-level entry points. The `FftBackend` interface keeps the
+transform implementation replaceable for pffft/FFTW-style backends without
+changing DSP call sites.
 
 ### Resampling
 

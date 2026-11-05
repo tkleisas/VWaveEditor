@@ -188,6 +188,7 @@ Audio phaseVocoderStretch(const Audio& input, int64_t outputFrames,
     Audio output(channels, outputFrames, input.sampleRate());
     std::vector<double> windowSum(static_cast<size_t>(outputFrames), 0.0);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
     std::vector<double> magnitudes(static_cast<size_t>(bins), 0.0);
     std::vector<double> analysisPhase(static_cast<size_t>(bins), 0.0);
     std::vector<double> synthesisPhase(static_cast<size_t>(bins), 0.0);
@@ -209,18 +210,16 @@ Audio phaseVocoderStretch(const Audio& input, int64_t outputFrames,
             std::llround(static_cast<double>(frameIndex) * analysisHop));
 
         for (int ch = 0; ch < channels; ++ch) {
-            std::fill(spectrum.begin(), spectrum.end(),
-                      std::complex<float>{0.0f, 0.0f});
+            std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
             for (int i = 0; i < fftSize; ++i) {
                 const int64_t source = inputStart + i;
                 if (source >= 0 && source < inputFrames) {
-                    spectrum[static_cast<size_t>(i)] = {
+                    timeBuffer[static_cast<size_t>(i)] =
                         readSample(input, ch, source) *
-                            window[static_cast<size_t>(i)],
-                        0.0f};
+                        window[static_cast<size_t>(i)];
                 }
             }
-            fft.forward(spectrum);
+            fft.forwardReal(timeBuffer, spectrum);
             for (int bin = 0; bin < bins; ++bin) {
                 const auto& value = spectrum[static_cast<size_t>(bin)];
                 magnitudes[static_cast<size_t>(bin)] = std::abs(value);
@@ -378,6 +377,7 @@ Audio paulStretchInternal(const Audio& input, int64_t outputFrames,
     Audio output(channels, outputFrames, input.sampleRate());
     std::vector<double> windowSum(static_cast<size_t>(outputFrames), 0.0);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
 
     const int64_t frameCount = (outputFrames + hop - 1) / hop;
     for (int64_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
@@ -391,18 +391,16 @@ Audio paulStretchInternal(const Audio& input, int64_t outputFrames,
                 0x9e3779b9u ^ static_cast<uint32_t>(ch * 7919) ^
                 static_cast<uint32_t>(frameIndex * 104729);
 
-            std::fill(spectrum.begin(), spectrum.end(),
-                      std::complex<float>{0.0f, 0.0f});
+            std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
             for (int i = 0; i < fftSize; ++i) {
                 const int64_t source = inputStart + i;
                 if (source >= 0 && source < inputFrames) {
-                    spectrum[static_cast<size_t>(i)] = {
+                    timeBuffer[static_cast<size_t>(i)] =
                         readSample(input, ch, source) *
-                            window[static_cast<size_t>(i)],
-                        0.0f};
+                        window[static_cast<size_t>(i)];
                 }
             }
-            fft.forward(spectrum);
+            fft.forwardReal(timeBuffer, spectrum);
 
             for (int bin = 0; bin < bins; ++bin) {
                 const auto& value = spectrum[static_cast<size_t>(bin)];

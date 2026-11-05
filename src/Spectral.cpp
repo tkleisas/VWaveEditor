@@ -57,22 +57,21 @@ Audio processSpectralRange(const Audio& audio, Range range, int requestedFft,
     Audio processed(channels, length, audio.sampleRate());
     std::vector<double> windowSum(static_cast<size_t>(length), 0.0);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
 
     for (int frame = 0; frame < frameCount; ++frame) {
         const int64_t start = static_cast<int64_t>(frame) * hop;
         for (int ch = 0; ch < channels; ++ch) {
-            std::fill(spectrum.begin(), spectrum.end(),
-                      std::complex<float>{0.0f, 0.0f});
+            std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
             for (int i = 0; i < fftSize; ++i) {
                 const int64_t index = start + i;
                 if (index >= 0 && index < length) {
-                    spectrum[static_cast<size_t>(i)] = {
+                    timeBuffer[static_cast<size_t>(i)] =
                         audio.sample(ch, selected.start + index) *
-                            window[static_cast<size_t>(i)],
-                        0.0f};
+                        window[static_cast<size_t>(i)];
                 }
             }
-            fft.forward(spectrum);
+            fft.forwardReal(timeBuffer, spectrum);
             processor(spectrum, ch, frame);
             for (int bin = 1; bin < bins - 1; ++bin) {
                 spectrum[static_cast<size_t>(fftSize - bin)] =
@@ -182,12 +181,11 @@ Spectrogram computeSpectrogram(const Audio& audio, int requestedFft,
     const std::vector<float> window = hannWindow(fftSize);
     FFT fft(fftSize);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
     double maxDb = -120.0;
 
     for (int frame = 0; frame < frames; ++frame) {
         const int64_t start = static_cast<int64_t>(frame) * hop;
-        for (int bin = 0; bin < bins; ++bin)
-            spectrum[static_cast<size_t>(bin)] = {0.0f, 0.0f};
         for (int i = 0; i < fftSize; ++i) {
             const int64_t index = start + i;
             double value = 0.0;
@@ -196,11 +194,10 @@ Spectrogram computeSpectrogram(const Audio& audio, int requestedFft,
                     value += audio.sample(ch, selected.start + index);
                 value /= static_cast<double>(audio.numChannels());
             }
-            spectrum[static_cast<size_t>(i)] = {
-                static_cast<float>(value) * window[static_cast<size_t>(i)],
-                0.0f};
+            timeBuffer[static_cast<size_t>(i)] =
+                static_cast<float>(value * window[static_cast<size_t>(i)]);
         }
-        fft.forward(spectrum);
+        fft.forwardReal(timeBuffer, spectrum);
         for (int bin = 0; bin < bins; ++bin) {
             const float magnitude = std::abs(spectrum[static_cast<size_t>(bin)]);
             const float db = static_cast<float>(
@@ -298,6 +295,7 @@ PhaseSpectrogram computePhaseSpectrogram(const Audio& audio, int requestedFft,
     const std::vector<float> window = hannWindow(fftSize);
     FFT fft(fftSize);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
     std::vector<float> previousPhase(static_cast<size_t>(bins), 0.0f);
     std::vector<bool> previousValid(static_cast<size_t>(bins), false);
     const double sampleRate = static_cast<double>(audio.sampleRate());
@@ -308,8 +306,6 @@ PhaseSpectrogram computePhaseSpectrogram(const Audio& audio, int requestedFft,
          ++analysisFrame) {
         const int64_t start =
             static_cast<int64_t>(analysisFrame) * analysisHop;
-        std::fill(spectrum.begin(), spectrum.end(),
-                  std::complex<float>{0.0f, 0.0f});
         for (int i = 0; i < fftSize; ++i) {
             const int64_t index = start + i;
             double value = 0.0;
@@ -318,11 +314,10 @@ PhaseSpectrogram computePhaseSpectrogram(const Audio& audio, int requestedFft,
                     value += audio.sample(ch, selected.start + index);
                 value /= static_cast<double>(audio.numChannels());
             }
-            spectrum[static_cast<size_t>(i)] = {
-                static_cast<float>(value * window[static_cast<size_t>(i)]),
-                0.0f};
+            timeBuffer[static_cast<size_t>(i)] =
+                static_cast<float>(value * window[static_cast<size_t>(i)]);
         }
-        fft.forward(spectrum);
+        fft.forwardReal(timeBuffer, spectrum);
         const bool store = (analysisFrame % stride) == 0;
         const int frame = analysisFrame / stride;
         for (int bin = 0; bin < bins; ++bin) {

@@ -47,6 +47,7 @@ OnsetEnvelope computeOnsetEnvelope(const Audio& audio) {
     std::vector<float> previousEnergy(static_cast<size_t>(audio.numChannels()),
                                       0.0f);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
 
     for (int frame = 0; frame < frames; ++frame) {
         const int64_t start = static_cast<int64_t>(frame) * result.hop;
@@ -60,10 +61,10 @@ OnsetEnvelope computeOnsetEnvelope(const Audio& audio) {
                     value = audio.sample(ch, source);
                     energy += static_cast<double>(value) * value;
                 }
-                spectrum[static_cast<size_t>(i)] = {
-                    value * window[static_cast<size_t>(i)], 0.0f};
+                timeBuffer[static_cast<size_t>(i)] =
+                    value * window[static_cast<size_t>(i)];
             }
-            fft.forward(spectrum);
+            fft.forwardReal(timeBuffer, spectrum);
             double flux = 0.0;
             for (int bin = 1; bin < bins; ++bin) {
                 const float magnitude = std::abs(spectrum[static_cast<size_t>(bin)]);

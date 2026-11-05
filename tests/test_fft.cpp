@@ -50,6 +50,33 @@ VWTEST("fft resolves a sine bin") {
     CHECK_NEAR(peakMagnitude, 32.0, 0.01);
 }
 
+VWTEST("real FFT matches the complex transform") {
+    constexpr int size = 64;
+    FFT fft(size);
+    std::vector<float> input(size);
+    for (int i = 0; i < size; ++i)
+        input[static_cast<size_t>(i)] = static_cast<float>(
+            std::sin(2.0 * 3.14159265358979323846 * 5.0 * i / size) +
+            0.25 * std::cos(2.0 * 3.14159265358979323846 * 11.0 * i / size));
+
+    std::vector<std::complex<float>> complexInput(size);
+    for (int i = 0; i < size; ++i)
+        complexInput[static_cast<size_t>(i)] = {input[static_cast<size_t>(i)],
+                                                0.0f};
+    fft.forward(complexInput);
+
+    std::vector<std::complex<float>> realOutput(size);
+    fft.forwardReal(input, realOutput);
+    for (int i = 0; i < size; ++i) {
+        CHECK_NEAR(realOutput[static_cast<size_t>(i)].real(),
+                   complexInput[static_cast<size_t>(i)].real(), 1e-4);
+        CHECK_NEAR(realOutput[static_cast<size_t>(i)].imag(),
+                   complexInput[static_cast<size_t>(i)].imag(), 1e-4);
+    }
+    CHECK_NEAR(realOutput[0].imag(), 0.0, 1e-6);
+    CHECK_NEAR(realOutput[size / 2].imag(), 0.0, 1e-6);
+}
+
 VWTEST("fft inverse round-trip") {
     FFT fft(128);
     std::vector<std::complex<float>> original(128);

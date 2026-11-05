@@ -544,4 +544,6 @@ automation presets; the cut-up arrangement model itself is implemented.
   via `FileSaveController`.
 - Added checkpointed document undo (every 16 operations, capped at 32) and
   identity phase locking in the phase vocoder.
-- Next: remaining async/performance work.
+- Added real-input FFT packing and routed STFT analysis, onset detection,
+  spectral processing, mastering analysis, and image phase analysis through it.
+- Next: partitioned convolution and timeline-level undo.

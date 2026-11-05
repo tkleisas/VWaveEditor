@@ -168,20 +168,19 @@ std::vector<float> analyzePhase(const std::vector<double>& signal,
         static_cast<size_t>(frameCount) * static_cast<size_t>(bins), 0.0f);
     FFT fft(fftSize);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
     for (int frame = 0; frame < frameCount; ++frame) {
         const int64_t start = static_cast<int64_t>(frame) * hop;
-        std::fill(spectrum.begin(), spectrum.end(),
-                  std::complex<float>{0.0f, 0.0f});
+        std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
         for (int i = 0; i < fftSize; ++i) {
             const int64_t source = start + i;
             if (source < 0 || source >= static_cast<int64_t>(signal.size()))
                 continue;
-            spectrum[static_cast<size_t>(i)] = {
+            timeBuffer[static_cast<size_t>(i)] =
                 static_cast<float>(signal[static_cast<size_t>(source)] *
-                                   window[static_cast<size_t>(i)]),
-                0.0f};
+                                   window[static_cast<size_t>(i)]);
         }
-        fft.forward(spectrum);
+        fft.forwardReal(timeBuffer, spectrum);
         for (int bin = 0; bin < bins; ++bin) {
             phases[static_cast<size_t>(frame) * static_cast<size_t>(bins) +
                    static_cast<size_t>(bin)] =

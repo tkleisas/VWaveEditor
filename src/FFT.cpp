@@ -96,13 +96,65 @@ std::unique_ptr<FftBackend> makeFftBackend(int size, FftBackendType type) {
     throw std::invalid_argument("unknown FFT backend");
 }
 
-FFT::FFT(int size) : m_backend(makeFftBackend(size)) {}
+FFT::FFT(int size) : m_backend(makeFftBackend(size)) {
+    if (size >= 2) {
+        const int half = size / 2;
+        m_realBackend = makeFftBackend(half);
+        m_realTwiddles.resize(static_cast<size_t>(half + 1));
+        for (int k = 0; k <= half; ++k) {
+            const double angle = -2.0 * kPi * static_cast<double>(k) /
+                                 static_cast<double>(size);
+            m_realTwiddles[static_cast<size_t>(k)] = {
+                static_cast<float>(std::cos(angle)),
+                static_cast<float>(std::sin(angle))};
+        }
+    }
+}
 
 void FFT::forward(std::vector<std::complex<float>>& data) const {
     if (static_cast<int>(data.size()) != size())
         throw std::invalid_argument(
             "FFT data size does not match transform size");
     m_backend->forward(data.data());
+}
+
+void FFT::forwardReal(
+    const std::vector<float>& input,
+    std::vector<std::complex<float>>& output) const {
+    if (static_cast<int>(input.size()) != size() ||
+        static_cast<int>(output.size()) != size())
+        throw std::invalid_argument(
+            "FFT data size does not match transform size");
+    const int n = size();
+    if (n == 1) {
+        output[0] = {input[0], 0.0f};
+        return;
+    }
+    const int half = n / 2;
+    m_realScratch.resize(static_cast<size_t>(half));
+    for (int k = 0; k < half; ++k) {
+        m_realScratch[static_cast<size_t>(k)] = {
+            input[static_cast<size_t>(2 * k)],
+            input[static_cast<size_t>(2 * k + 1)]};
+    }
+    m_realBackend->forward(m_realScratch.data());
+
+    for (int k = 0; k <= half; ++k) {
+        const auto zk = m_realScratch[static_cast<size_t>(k % half)];
+        const auto zmk = std::conj(
+            m_realScratch[static_cast<size_t>((half - k) % half)]);
+        const auto even = 0.5f * (zk + zmk);
+        const auto odd =
+            std::complex<float>{0.0f, -0.5f} * (zk - zmk);
+        output[static_cast<size_t>(k)] =
+            even + m_realTwiddles[static_cast<size_t>(k)] * odd;
+    }
+    output[0] = {output[0].real(), 0.0f};
+    output[static_cast<size_t>(half)] = {
+        output[static_cast<size_t>(half)].real(), 0.0f};
+    for (int k = half + 1; k < n; ++k)
+        output[static_cast<size_t>(k)] =
+            std::conj(output[static_cast<size_t>(n - k)]);
 }
 
 void FFT::inverse(std::vector<std::complex<float>>& data) const {

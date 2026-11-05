@@ -263,6 +263,7 @@ MasteringAnalysis analyzeMastering(const Timeline& timeline,
     const double windowNorm = std::max(1.0, windowSum * windowSum);
     FFT fft(fftSize);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    std::vector<float> timeBuffer(static_cast<size_t>(fftSize), 0.0f);
     const int stemCount = static_cast<int>(stemIndices.size());
     std::vector<std::vector<std::complex<float>>> monoSpectra(
         static_cast<size_t>(stemCount),
@@ -285,8 +286,7 @@ MasteringAnalysis analyzeMastering(const Timeline& timeline,
                       std::complex<float>{0.0f, 0.0f});
             const int channels = std::max(1, audio.numChannels());
             for (int ch = 0; ch < channels; ++ch) {
-                std::fill(spectrum.begin(), spectrum.end(),
-                          std::complex<float>{0.0f, 0.0f});
+                std::fill(timeBuffer.begin(), timeBuffer.end(), 0.0f);
                 for (int i = 0; i < fftSize; ++i) {
                     const int64_t timelineFrame = start + i;
                     const int64_t localFrame =
@@ -297,10 +297,10 @@ MasteringAnalysis analyzeMastering(const Timeline& timeline,
                         ch < audio.numChannels()
                             ? audio.sample(ch, localFrame)
                             : 0.0f;
-                    spectrum[static_cast<size_t>(i)] = {
-                        value * window[static_cast<size_t>(i)], 0.0f};
+                    timeBuffer[static_cast<size_t>(i)] =
+                        value * window[static_cast<size_t>(i)];
                 }
-                fft.forward(spectrum);
+                fft.forwardReal(timeBuffer, spectrum);
                 for (int bin = 0; bin < bins; ++bin) {
                     monoSpectrum[static_cast<size_t>(bin)] +=
                         spectrum[static_cast<size_t>(bin)] /
