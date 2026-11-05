@@ -44,7 +44,8 @@ The Windows build uses MSYS2 MINGW64.
 ## Cutting a release
 
 1. Ensure `master` is green on Linux and Windows.
-2. Update the fallback version in `CMakeLists.txt` when appropriate.
+2. Update the committed `VERSION` file and matching release notes when
+   appropriate. Untagged build trees use this fallback.
 3. Commit the release changes.
 4. Create an annotated version tag:
 
