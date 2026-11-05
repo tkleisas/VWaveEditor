@@ -222,3 +222,16 @@ VWTEST("audio block store restores persisted block ids") {
     CHECK(!restored.restore(info, audio, &error));
     CHECK(!error.empty());
 }
+
+VWTEST("audio block store retain releases unreferenced blocks") {
+    AudioBlockStore store;
+    const AudioBlockId first = store.add(constantAudio(1, 8, 0.1f));
+    const AudioBlockId second = store.add(constantAudio(1, 8, 0.2f));
+    store.retain({first});
+    CHECK(store.size() == size_t{1});
+    CHECK(store.contains(first));
+    CHECK(!store.contains(second));
+    Audio audio;
+    REQUIRE(store.tryGet(first, audio));
+    CHECK_NEAR(audio.sample(0, 0), 0.1, 1e-6);
+}

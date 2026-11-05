@@ -726,3 +726,26 @@ VWTEST("timeline save removes stale track work directories") {
     REQUIRE(reloaded.loadProject(path, &error));
     CHECK(!std::filesystem::exists(second));
 }
+
+VWTEST("timeline loads inline version two projects without a work area") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "inline.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(200, 0.4f), 0,
+                                   &error));
+    REQUIRE(timeline.track(0).document.splitClipAt(100, &error));
+    {
+        std::ofstream out(path);
+        REQUIRE(out.good());
+        out << timeline.toJson().dump(2);
+    }
+    CHECK(!std::filesystem::exists(
+        directory.path() / "inline.vwdoc.blocks"));
+    Timeline loaded;
+    REQUIRE(loaded.loadProject(path, &error));
+    CHECK_EQ(loaded.track(0).document.clips().size(), size_t{2});
+    CHECK(loaded.track(0).document.audio().equals(
+        timeline.track(0).document.audio()));
+}
