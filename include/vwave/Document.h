@@ -10,6 +10,8 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <filesystem>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -125,9 +127,16 @@ public:
     bool loadProject(const std::string& path, std::string* error = nullptr);
     bool saveProject(const std::string& path,
                      std::string* error = nullptr) const;
-    nlohmann::json toJson() const;
+    nlohmann::json toJson(bool includeBlockAudio = true) const;
     static bool fromJson(const nlohmann::json& json, Document& out,
-                         std::string* error = nullptr);
+                         std::string* error = nullptr,
+                         const AudioBlockStore* externalBlocks = nullptr);
+    bool writeBlockDirectory(const std::filesystem::path& directory,
+                             std::string* error = nullptr) const;
+    bool pruneBlockDirectory(const std::filesystem::path& directory,
+                             std::string* error = nullptr) const;
+    void setBlockCacheLimitBytes(uint64_t bytes);
+    uint64_t blockCacheBytes() const;
 
     const Audio& source() const { return m_source; }
     const Audio& audio() const;
@@ -263,6 +272,7 @@ private:
                           AudioBlockId block, int64_t baseFrames,
                           std::vector<AudioRegion>& out,
                           std::string* error) const;
+    std::set<AudioBlockId> referencedBlockIds() const;
     void invalidateArranged();
     void refreshClipView() const;
 

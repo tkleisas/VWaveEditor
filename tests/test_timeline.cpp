@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 using namespace vwave;
@@ -625,4 +626,96 @@ VWTEST("new actions invalidate redo across timeline and documents") {
     REQUIRE(timeline.setTrackPan(0, 0.5));
     CHECK(!timeline.track(0).document.canRedo());
     CHECK(!timeline.track(0).document.redo());
+}
+
+
+VWTEST("timeline project stores blocks in a work area") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "project.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(600, 0.3f), 0,
+                                   &error));
+    REQUIRE(timeline.track(0).document.splitClipAt(200, &error));
+    REQUIRE(timeline.track(0).document.splitClipAt(400, &error));
+    REQUIRE(timeline.saveProject(path, &error));
+
+    const std::filesystem::path workArea =
+        directory.path() / "project.vwdoc.blocks";
+    std::ifstream in(path);
+    nlohmann::json root;
+    in >> root;
+    CHECK_EQ(root.value("version", 0), 2);
+    CHECK_EQ(root.value("workArea", std::string{}),
+             std::string("project.vwdoc.blocks"));
+    CHECK(root["tracks"][0].contains("blockDirectory"));
+    CHECK(!root["tracks"][0]["document"].contains("blocks"));
+    const std::string blockDirectory =
+        root["tracks"][0]["blockDirectory"].get<std::string>();
+    CHECK(!blockDirectory.empty());
+    CHECK(std::filesystem::exists(workArea / blockDirectory /
+                                  "blocks.json"));
+    CHECK(std::filesystem::exists(workArea / blockDirectory / "1.f32"));
+
+    Timeline loaded;
+    REQUIRE(loaded.loadProject(path, &error));
+    CHECK_EQ(loaded.trackCount(), 1);
+    CHECK_EQ(loaded.track(0).document.clips().size(), size_t{3});
+    CHECK(loaded.track(0).document.audio().equals(
+        timeline.track(0).document.audio()));
+}
+
+VWTEST("timeline work area drops blocks reachable only from redo") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "project.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(600, 0.3f), 0,
+                                   &error));
+    Document& document = timeline.track(0).document;
+    REQUIRE(document.splitClipAt(200, &error));
+    document.setSelection(20, 80);
+    REQUIRE(document.gainDb(-6.0, &error));
+    REQUIRE(document.undo());
+    REQUIRE(document.splitClipAt(300, &error));
+    REQUIRE(timeline.saveProject(path, &error));
+
+    std::ifstream project(path);
+    nlohmann::json root;
+    project >> root;
+    const std::string blockDirectory =
+        root["tracks"][0]["blockDirectory"].get<std::string>();
+    std::ifstream manifest(directory.path() / "project.vwdoc.blocks" /
+                           blockDirectory / "blocks.json");
+    nlohmann::json manifestRoot;
+    manifest >> manifestRoot;
+    CHECK_EQ(manifestRoot["blocks"].size(), size_t{1});
+    CHECK(!std::filesystem::exists(directory.path() /
+                                   "project.vwdoc.blocks" /
+                                   blockDirectory / "2.f32"));
+}
+
+VWTEST("timeline save removes stale track work directories") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "project.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.1f), 0,
+                                   &error));
+    REQUIRE(timeline.addAudioTrack("two", constantAudio(100, 0.2f), 0,
+                                   &error));
+    REQUIRE(timeline.saveProject(path, &error));
+    std::ifstream first(path);
+    nlohmann::json firstRoot;
+    first >> firstRoot;
+    const auto second = directory.path() / "project.vwdoc.blocks" /
+                        firstRoot["tracks"][1]["blockDirectory"]
+                            .get<std::string>();
+    CHECK(std::filesystem::exists(second));
+    REQUIRE(timeline.removeTrack(1));
+    REQUIRE(timeline.saveProject(path, &error));
+    CHECK(!std::filesystem::exists(second));
 }

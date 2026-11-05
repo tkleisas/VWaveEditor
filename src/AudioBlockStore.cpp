@@ -420,7 +420,19 @@ bool AudioBlockStore::evict(AudioBlockId id, std::string* error) {
 }
 
 bool AudioBlockStore::save(const std::filesystem::path& directory,
-                           std::string* error) {
+                           std::string* error) const {
+    return saveImpl(directory, nullptr, error);
+}
+
+bool AudioBlockStore::save(const std::filesystem::path& directory,
+                           const std::set<AudioBlockId>& referenced,
+                           std::string* error) const {
+    return saveImpl(directory, &referenced, error);
+}
+
+bool AudioBlockStore::saveImpl(const std::filesystem::path& directory,
+                               const std::set<AudioBlockId>* referenced,
+                               std::string* error) const {
     if (error) error->clear();
     std::lock_guard<std::mutex> lock(m_mutex);
     std::error_code ec;
@@ -429,11 +441,22 @@ bool AudioBlockStore::save(const std::filesystem::path& directory,
         setError(error, "cannot create audio block directory");
         return false;
     }
+    if (referenced) {
+        for (const AudioBlockId id : *referenced) {
+            if (!findEntry(id)) {
+                setError(error, "referenced audio block does not exist");
+                return false;
+            }
+        }
+    }
 
     std::vector<AudioBlockInfo> infos;
-    infos.reserve(m_entries.size());
+    infos.reserve(referenced ? referenced->size() : m_entries.size());
     for (auto& item : m_entries) {
         Entry& entry = item.second;
+        if (referenced && referenced->find(entry.info.id) ==
+                              referenced->end())
+            continue;
         if (entry.info.file.empty())
             entry.info.file = std::to_string(entry.info.id) + ".f32";
         if (!entry.loaded) {
@@ -491,12 +514,26 @@ bool AudioBlockStore::save(const std::filesystem::path& directory,
     }
 
     m_backingDirectory = directory;
-    for (auto& item : m_entries) item.second.persisted = true;
+    enforceCacheLimit();
+    return true;
+}
 
+bool AudioBlockStore::prune(const std::filesystem::path& directory,
+                            const std::set<AudioBlockId>& referenced,
+                            std::string* error) const {
+    if (error) error->clear();
+    std::lock_guard<std::mutex> lock(m_mutex);
     std::vector<std::filesystem::path> expected;
-    expected.reserve(infos.size());
-    for (const auto& info : infos)
-        expected.push_back(directory / info.file);
+    expected.reserve(referenced.size());
+    for (const AudioBlockId id : referenced) {
+        const Entry* entry = findEntry(id);
+        if (!entry) {
+            setError(error, "referenced audio block does not exist");
+            return false;
+        }
+        expected.push_back(blockPath(directory, entry->info));
+    }
+    std::error_code ec;
     std::error_code iteratorError;
     for (const auto& item :
          std::filesystem::directory_iterator(directory, iteratorError)) {

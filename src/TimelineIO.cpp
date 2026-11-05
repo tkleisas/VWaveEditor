@@ -2,19 +2,74 @@
 
 #include "TimelineInternal.h"
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace vwave::detail;
 
 namespace vwave {
 
-nlohmann::json Timeline::toJson() const {
+namespace {
+
+void setError(std::string* error, const std::string& message) {
+    if (error) *error = message;
+}
+
+bool safeDirectoryName(const std::string& name) {
+    if (name.empty()) return false;
+    const std::filesystem::path path(name);
+    return !path.has_parent_path() && path.filename() == path;
+}
+
+std::string workAreaGeneration() {
+    static std::atomic<unsigned long long> counter{0};
+    const auto stamp =
+        std::chrono::steady_clock::now().time_since_epoch().count();
+    return std::to_string(stamp) + "-" +
+           std::to_string(counter.fetch_add(1));
+}
+
+std::string trackDirectoryName(int index, const std::string& generation) {
+    return "track-" + std::to_string(index) + "-" + generation;
+}
+
+bool writeJsonFile(const std::filesystem::path& path,
+                   const nlohmann::json& root, std::string* error) {
+    const auto temporary = path.string() + ".tmp";
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            setError(error, "cannot create project file");
+            return false;
+        }
+        out << root.dump(2) << '\n';
+        if (!out.good()) {
+            setError(error, "failed while writing project file");
+            return false;
+        }
+    }
+    std::error_code ec;
+    std::filesystem::rename(temporary, path, ec);
+    if (ec) {
+        std::filesystem::remove(temporary, ec);
+        setError(error, "cannot replace project file");
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+nlohmann::json Timeline::projectJson(bool includeBlockAudio) const {
     nlohmann::json root;
     root["format"] = "vwave-timeline";
-    root["version"] = 1;
+    root["version"] = 2;
     root["sampleRate"] = m_sampleRate;
     root["activeTrack"] = m_active;
     root["selectionScope"] =
@@ -22,7 +77,8 @@ nlohmann::json Timeline::toJson() const {
                                                          : "all_tracks";
     root["selection"] = selectionJson(m_selection);
     root["tracks"] = nlohmann::json::array();
-    for (const auto& item : m_tracks) {
+    for (size_t index = 0; index < m_tracks.size(); ++index) {
+        const auto& item = m_tracks[index];
         nlohmann::json trackJson;
         trackJson["name"] = item.name;
         if (!item.recipe.is_null() && !item.recipe.empty())
@@ -34,14 +90,17 @@ nlohmann::json Timeline::toJson() const {
         trackJson["solo"] = item.solo;
         trackJson["armed"] = item.armed;
         trackJson["empty"] = item.empty;
-        if (!item.empty)
-            trackJson["document"] = item.document.toJson();
-        else
+        if (!item.empty) {
+            trackJson["document"] = item.document.toJson(includeBlockAudio);
+        } else {
             trackJson["sampleRate"] = item.document.sampleRate();
+        }
         root["tracks"].push_back(std::move(trackJson));
     }
     return root;
 }
+
+nlohmann::json Timeline::toJson() const { return projectJson(true); }
 
 bool Timeline::saveProject(const std::string& path,
                            std::string* error) const {
@@ -51,16 +110,54 @@ bool Timeline::saveProject(const std::string& path,
         return false;
     }
     try {
-        const nlohmann::json root = toJson();
-        std::ofstream out(path, std::ios::binary);
-        if (!out) {
-            setError(error, "cannot create project file");
+        const std::filesystem::path projectPath(path);
+        const std::string workAreaName =
+            projectPath.filename().string() + ".blocks";
+        const std::filesystem::path workArea =
+            projectPath.parent_path() / workAreaName;
+        std::error_code ec;
+        std::filesystem::create_directories(workArea, ec);
+        if (ec) {
+            setError(error, "cannot create project work area");
             return false;
         }
-        out << root.dump(2) << '\n';
-        if (!out.good()) {
-            setError(error, "failed while writing project file");
-            return false;
+
+        const std::string generation = workAreaGeneration();
+        std::vector<std::filesystem::path> usedDirectories;
+        std::vector<std::string> blockDirectories(m_tracks.size());
+        for (size_t index = 0; index < m_tracks.size(); ++index) {
+            const auto& item = m_tracks[index];
+            if (item.empty) continue;
+            const std::string name =
+                trackDirectoryName(static_cast<int>(index), generation);
+            const auto directory = workArea / name;
+            if (!item.document.writeBlockDirectory(directory, error))
+                return false;
+            usedDirectories.push_back(directory);
+            blockDirectories[index] = name;
+        }
+
+        nlohmann::json root = projectJson(false);
+        root["workArea"] = workAreaName;
+        for (size_t index = 0; index < m_tracks.size(); ++index) {
+            if (!blockDirectories[index].empty())
+                root["tracks"][index]["blockDirectory"] =
+                    blockDirectories[index];
+        }
+        if (!writeJsonFile(projectPath, root, error)) return false;
+
+        std::error_code iteratorError;
+        for (const auto& entry :
+             std::filesystem::directory_iterator(workArea,
+                                                 iteratorError)) {
+            if (!entry.is_directory()) continue;
+            const std::string name = entry.path().filename().string();
+            if (name.rfind("track-", 0) != 0) continue;
+            if (std::find(usedDirectories.begin(), usedDirectories.end(),
+                          entry.path()) == usedDirectories.end()) {
+                std::filesystem::remove_all(entry.path(), ec);
+                ec.clear();
+            }
         }
         return true;
     } catch (const std::exception& e) {
@@ -102,7 +199,8 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
             setError(error, "not a VWaveEditor project");
             return false;
         }
-        if (root.value("version", 0) != 1) {
+        const int version = root.value("version", 0);
+        if (version != 1 && version != 2) {
             setError(error, "unsupported project version");
             return false;
         }
@@ -115,6 +213,22 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
             root["tracks"].empty()) {
             setError(error, "project has no tracks");
             return false;
+        }
+
+        std::filesystem::path workArea;
+        if (version >= 2) {
+            std::string workAreaName =
+                root.value("workArea", std::string{});
+            if (workAreaName.empty())
+                workAreaName =
+                    std::filesystem::path(path).filename().string() +
+                    ".blocks";
+            if (!safeDirectoryName(workAreaName)) {
+                setError(error, "project work area has an invalid name");
+                return false;
+            }
+            workArea = std::filesystem::path(path).parent_path() /
+                       workAreaName;
         }
 
         Timeline loaded;
@@ -150,9 +264,26 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
                     setError(error, "track is missing its document");
                     return false;
                 }
-                if (!Document::fromJson(trackJson["document"],
-                                        item.document, error))
-                    return false;
+                if (version >= 2 && trackJson.contains("blockDirectory")) {
+                    const std::string blockDirectory =
+                        trackJson["blockDirectory"].get<std::string>();
+                    if (!safeDirectoryName(blockDirectory)) {
+                        setError(error, "track work area has an invalid name");
+                        return false;
+                    }
+                    AudioBlockStore store;
+                    if (!store.load(workArea / blockDirectory, error))
+                        return false;
+                    if (!Document::fromJson(trackJson["document"],
+                                            item.document, error, &store))
+                        return false;
+                    item.document.setBlockCacheLimitBytes(
+                        256ull * 1024ull * 1024ull);
+                } else {
+                    if (!Document::fromJson(trackJson["document"],
+                                            item.document, error))
+                        return false;
+                }
                 if (item.document.sampleRate() != sampleRate) {
                     setError(error, "track sample rate does not match project");
                     return false;

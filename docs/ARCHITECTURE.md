@@ -131,20 +131,21 @@ Rendering is a separate cache. `Document::audio()` mixes the arrangement and
 returns copy-on-write audio; editing never mutates a block.
 
 Undo/redo stores before/after arrangement snapshots, selections, labels, and
-history stamps. Blocks referenced by history remain available until history is
-cleared or compacted. Project format v2 embeds the reachable blocks and
-arrangement/history snapshots in the project JSON. Legacy v1 projects are
-migrated on load by replaying their operation history into the region model;
-clip runs reference a shared legacy base block so gains/fades are not applied
-twice.
+history stamps. Blocks referenced by history and redo remain available until
+the stacks are cleared or compacted. Project format v2 stores arrangements and
+history snapshots plus reachable blocks in a generation-based work-area sidecar.
+Legacy v1 projects are migrated on load by replaying their operation history
+into the region model; clip runs reference a shared legacy base block so
+gains/fades are not applied twice.
 
 The v1 operation-replay and optional clip-overlay model has been removed.
 `Document` still exposes clip-shaped compatibility accessors for the editor and
 automation; they are a view over regions and do not gate destructive edits.
 
-Project work-area directories and live block spill/LRU integration are the next
-storage step; the core `AudioBlockStore` already supports them. See
-`docs/AUDIO_MODEL.md`.
+Timeline work areas use `project.vwdoc.blocks/track-<n>-<generation>/` sidecar
+directories. A save writes new generation directories first, commits the project
+JSON last, then removes unused generations. Loaded tracks use an LRU cache and
+reload evicted blocks from disk on demand. See `docs/AUDIO_MODEL.md`.
 
 Document-level audio import/export and project JSON persistence live in
 `DocumentIO.cpp`, operation execution in `DocumentExecution.cpp`, and history
@@ -153,10 +154,12 @@ in `DocumentHistory.cpp`; shared JSON/selection helpers live in
 
 ## Persistence
 
-Timeline projects are versioned JSON. Each non-empty track nests its
-single-document JSON, including base64 source/operation payloads, history, and
-metadata. Track routing state, offsets, active track, and timeline selection are
-stored at the timeline level. Legacy single-document projects load as one track.
+Timeline projects are versioned JSON. Version 2 stores track routing, offsets,
+active track, timeline selection, region arrangements, and undo history. Audio
+blocks live in per-track generation directories in a sidecar work area (see
+`docs/AUDIO_MODEL.md`); the project file is committed after the blocks. Inline
+block JSON remains supported for portable single-document projects. Legacy
+version 1 timeline and single-document projects load through migration paths.
 
 Application settings (audio device names and theme) are stored separately in
 `$XDG_CONFIG_HOME/vwave/settings.json` or `~/.config/vwave/settings.json`.
@@ -431,11 +434,10 @@ The suite covers:
 
 ## Known limitations
 
-- Project v2 currently embeds reachable audio blocks in the project JSON. The
-  project work-area directory, live block spill/LRU cache, and garbage
-  collection are the next storage step.
-- Undo history is retained in full; history pruning/compaction is not yet
-  implemented.
+- Undo history is retained in full; history pruning/compaction and autosave are
+  not yet implemented.
+- The disk work area is committed on explicit project save; live edits remain in
+  RAM until the next save.
 - Mixdown export warns on peaks above 0 dBFS but does not automatically limit;
   integer PCM output can clip if the warning is ignored.
 - Timeline structural undo keeps up to 64 snapshot entries; older structural

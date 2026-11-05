@@ -82,19 +82,46 @@ bool Document::saveAudio(const std::string& path,
     return writeAudio(path, audio(), options, error);
 }
 
-nlohmann::json Document::toJson() const {
-    if (m_source.empty())
-        throw std::runtime_error("document has no source audio");
-    if (m_sourceBlock == kInvalidAudioBlock)
-        throw std::runtime_error("document has no source block");
-
+std::set<AudioBlockId> Document::referencedBlockIds() const {
     std::set<AudioBlockId> blockIds;
-    blockIds.insert(m_sourceBlock);
+    if (m_sourceBlock != kInvalidAudioBlock) blockIds.insert(m_sourceBlock);
     collectBlockIds(m_arrangement.regions(), blockIds);
     for (const auto& entry : m_history) {
         collectBlockIds(entry.before, blockIds);
         collectBlockIds(entry.after, blockIds);
     }
+    for (const auto& entry : m_redo) {
+        collectBlockIds(entry.before, blockIds);
+        collectBlockIds(entry.after, blockIds);
+    }
+    return blockIds;
+}
+
+bool Document::writeBlockDirectory(const std::filesystem::path& directory,
+                                   std::string* error) const {
+    return m_store.save(directory, referencedBlockIds(), error);
+}
+
+bool Document::pruneBlockDirectory(const std::filesystem::path& directory,
+                                   std::string* error) const {
+    return m_store.prune(directory, referencedBlockIds(), error);
+}
+
+void Document::setBlockCacheLimitBytes(uint64_t bytes) {
+    m_store.setCacheLimitBytes(bytes);
+}
+
+uint64_t Document::blockCacheBytes() const {
+    return m_store.cacheBytes();
+}
+
+nlohmann::json Document::toJson(bool includeBlockAudio) const {
+    if (m_source.empty())
+        throw std::runtime_error("document has no source audio");
+    if (m_sourceBlock == kInvalidAudioBlock)
+        throw std::runtime_error("document has no source block");
+
+    const std::set<AudioBlockId> blockIds = referencedBlockIds();
 
     nlohmann::json root;
     root["format"] = "vwave-project";
@@ -114,14 +141,17 @@ nlohmann::json Document::toJson() const {
              {"name", slice.name}});
     root["regions"] = regionsToJson(m_arrangement.regions());
 
-    root["blocks"] = nlohmann::json::array();
-    for (const AudioBlockId id : blockIds) {
-        const AudioBlockInfo info = m_store.info(id);
-        if (info.id == kInvalidAudioBlock)
-            throw std::runtime_error("document references a missing audio block");
-        nlohmann::json block = audioBlockInfoToJson(info);
-        block["audio"] = audioToJson(m_store.get(id));
-        root["blocks"].push_back(std::move(block));
+    if (includeBlockAudio) {
+        root["blocks"] = nlohmann::json::array();
+        for (const AudioBlockId id : blockIds) {
+            const AudioBlockInfo info = m_store.info(id);
+            if (info.id == kInvalidAudioBlock)
+                throw std::runtime_error(
+                    "document references a missing audio block");
+            nlohmann::json block = audioBlockInfoToJson(info);
+            block["audio"] = audioToJson(m_store.get(id));
+            root["blocks"].push_back(std::move(block));
+        }
     }
 
     root["history"] = nlohmann::json::array();
@@ -137,7 +167,8 @@ nlohmann::json Document::toJson() const {
 }
 
 bool Document::fromJson(const nlohmann::json& root, Document& out,
-                        std::string* error) {
+                        std::string* error,
+                        const AudioBlockStore* externalBlocks) {
     if (error) error->clear();
     try {
         if (root.value("format", std::string{}) != "vwave-project") {
@@ -161,21 +192,27 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
             }
             loaded = Document::fromAudio(std::move(source));
         } else {
-            if (!root.contains("blocks") || !root["blocks"].is_array()) {
-                setError(error, "project has no audio blocks");
-                return false;
-            }
-            for (const auto& value : root["blocks"]) {
-                AudioBlockInfo info;
-                if (!audioBlockInfoFromJson(value, info, error)) return false;
-                if (!value.contains("audio")) {
-                    setError(error, "audio block is missing its data");
+            if (externalBlocks) {
+                loaded.m_store = *externalBlocks;
+            } else {
+                if (!root.contains("blocks") || !root["blocks"].is_array()) {
+                    setError(error, "project has no audio blocks");
                     return false;
                 }
-                Audio audio;
-                if (!audioFromJson(value["audio"], audio, error))
-                    return false;
-                if (!loaded.m_store.restore(info, audio, error)) return false;
+                for (const auto& value : root["blocks"]) {
+                    AudioBlockInfo info;
+                    if (!audioBlockInfoFromJson(value, info, error))
+                        return false;
+                    if (!value.contains("audio")) {
+                        setError(error, "audio block is missing its data");
+                        return false;
+                    }
+                    Audio audio;
+                    if (!audioFromJson(value["audio"], audio, error))
+                        return false;
+                    if (!loaded.m_store.restore(info, audio, error))
+                        return false;
+                }
             }
             const AudioBlockId sourceBlock =
                 root.value("sourceBlock", uint64_t{0});

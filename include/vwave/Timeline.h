@@ -143,6 +143,7 @@ private:
     bool latestDocumentUndo(int& index, HistoryStamp& stamp) const;
     bool latestDocumentRedo(int& index, HistoryStamp& stamp) const;
 
+    nlohmann::json projectJson(bool includeBlockAudio) const;
     bool validateSampleRate(const Audio& audio, std::string* error) const;
     void syncSelectionToTracks();
     bool trackAudible(const TimelineTrack& track) const;

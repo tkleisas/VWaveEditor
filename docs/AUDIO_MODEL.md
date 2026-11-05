@@ -99,19 +99,28 @@ new block/region and retain the previous blocks for undo.
 
 ## Persistence and recovery
 
-A project work area will contain:
+A timeline project writes a sidecar work area next to the project file:
 
 ```text
-<project>.vwave/
-  manifest.json       project/track/region/history metadata
-  blocks.json         audio block index
-  blocks/<id>.f32     immutable audio blocks
+project.vwdoc
+project.vwdoc.blocks/
+  track-0-<generation>/
+    blocks.json
+    1.f32, 2.f32, ...
 ```
 
-The manifest is written last. Old blocks remain referenced by history entries
-until those entries are pruned. A garbage-collection pass removes blocks not
-reachable from the current project state or its bounded undo/redo graph. Project
-save must prune only after the new manifest has been committed.
+Each save writes new generation directories containing only blocks reachable
+from the current arrangement, history, and redo graph. The project file is
+written last and points at those directories. Old generation directories are
+removed only after the new project file has been committed, so a failed save
+leaves the previous project and blocks intact. Unreachable blocks inside a new
+generation are not written at all; `AudioBlockStore::prune` is available for
+in-place maintenance.
+
+The in-memory LRU cache is separate from persistence: evicting a block only
+drops its decoded copy. Loaded timeline tracks use a 256 MiB default cache limit
+and reload evicted blocks on demand. Playback/analysis consumers must hold an
+`Audio` reference for as long as they use it.
 
 The in-memory LRU cache is separate from persistence: evicting a block only
 drops its decoded copy. Playback/analysis consumers must hold an `Audio`
@@ -134,16 +143,15 @@ reference for as long as they use it.
 2. **Document integration** (done): documents always own one region
    arrangement; import creates a full region; sample edits use range-local
    derived blocks; history stores arrangement snapshots plus block references.
-3. **Project format v2** (done, embedded blocks): v2 projects serialize
-   reachable blocks, arrangements, and history snapshots; legacy v1 projects
-   migrate by replaying operations into the region model. The project work-area
-   directory and live spill/LRU wiring remain.
+3. **Project format v2** (done): v2 projects serialize arrangements and
+   history snapshots, plus reachable blocks either inline or in a generation-
+   based work-area sidecar. Legacy v1 projects migrate by replaying operations
+   into the region model.
 4. **Editor integration** (done for Make Clips): the editor no longer creates a
    clip mode. Region boundaries are always visible, region operations are
    ordinary track edits, and sample edits no longer require flattening.
-5. **Garbage collection and durability** (next): reachability analysis,
-   history pruning, work-area persistence, crash recovery, and background
-   prefetch/write-back.
+5. **Durability and scale** (next): history pruning/compaction, background
+   prefetch/write-back, autosave, and crash recovery testing.
 
 ## Tests
 

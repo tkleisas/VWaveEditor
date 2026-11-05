@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -58,7 +59,13 @@ public:
     bool evict(AudioBlockId id, std::string* error = nullptr);
 
     bool save(const std::filesystem::path& directory,
-              std::string* error = nullptr);
+              std::string* error = nullptr) const;
+    bool save(const std::filesystem::path& directory,
+              const std::set<AudioBlockId>& referenced,
+              std::string* error = nullptr) const;
+    bool prune(const std::filesystem::path& directory,
+               const std::set<AudioBlockId>& referenced,
+               std::string* error = nullptr) const;
     bool load(const std::filesystem::path& directory,
               std::string* error = nullptr);
     std::filesystem::path backingDirectory() const;
@@ -88,13 +95,16 @@ private:
     void touch(Entry& entry) const;
     void enforceCacheLimit() const;
     bool canEvict(const Entry& entry) const;
+    bool saveImpl(const std::filesystem::path& directory,
+                  const std::set<AudioBlockId>* referenced,
+                  std::string* error) const;
 
     mutable std::mutex m_mutex;
     mutable std::map<AudioBlockId, Entry> m_entries;
     AudioBlockId m_nextId = 1;
     mutable uint64_t m_useClock = 0;
     uint64_t m_cacheLimitBytes = 0;
-    std::filesystem::path m_backingDirectory;
+    mutable std::filesystem::path m_backingDirectory;
 };
 
 } // namespace vwave
