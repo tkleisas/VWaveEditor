@@ -143,9 +143,11 @@ The v1 operation-replay and optional clip-overlay model has been removed.
 automation; they are a view over regions and do not gate destructive edits.
 
 Timeline work areas use `project.vwdoc.blocks/track-<n>-<generation>/` sidecar
-directories. A save writes new generation directories first, commits the project
-JSON last, then removes unused generations. Loaded tracks use an LRU cache and
-reload evicted blocks from disk on demand. See `docs/AUDIO_MODEL.md`.
+directories. A save writes new generation directories first and commits the
+project JSON last. Old generations remain available for in-session structural
+undo and are removed on the next project load when they are no longer
+referenced. Loaded tracks use an LRU cache and reload evicted blocks from disk
+on demand. See `docs/AUDIO_MODEL.md`.
 
 Document-level audio import/export and project JSON persistence live in
 `DocumentIO.cpp`, operation execution in `DocumentExecution.cpp`, and history
@@ -157,7 +159,8 @@ in `DocumentHistory.cpp`; shared JSON/selection helpers live in
 Timeline projects are versioned JSON. Version 2 stores track routing, offsets,
 active track, timeline selection, region arrangements, and undo history. Audio
 blocks live in per-track generation directories in a sidecar work area (see
-`docs/AUDIO_MODEL.md`); the project file is committed after the blocks. Inline
+`docs/AUDIO_MODEL.md`); the project file is committed after the blocks. Old
+generation directories are cleaned when the project is next loaded. Inline
 block JSON remains supported for portable single-document projects. Legacy
 version 1 timeline and single-document projects load through migration paths.
 

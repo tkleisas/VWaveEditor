@@ -7,6 +7,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -123,7 +124,6 @@ bool Timeline::saveProject(const std::string& path,
         }
 
         const std::string generation = workAreaGeneration();
-        std::vector<std::filesystem::path> usedDirectories;
         std::vector<std::string> blockDirectories(m_tracks.size());
         for (size_t index = 0; index < m_tracks.size(); ++index) {
             const auto& item = m_tracks[index];
@@ -133,7 +133,6 @@ bool Timeline::saveProject(const std::string& path,
             const auto directory = workArea / name;
             if (!item.document.writeBlockDirectory(directory, error))
                 return false;
-            usedDirectories.push_back(directory);
             blockDirectories[index] = name;
         }
 
@@ -145,20 +144,6 @@ bool Timeline::saveProject(const std::string& path,
                     blockDirectories[index];
         }
         if (!writeJsonFile(projectPath, root, error)) return false;
-
-        std::error_code iteratorError;
-        for (const auto& entry :
-             std::filesystem::directory_iterator(workArea,
-                                                 iteratorError)) {
-            if (!entry.is_directory()) continue;
-            const std::string name = entry.path().filename().string();
-            if (name.rfind("track-", 0) != 0) continue;
-            if (std::find(usedDirectories.begin(), usedDirectories.end(),
-                          entry.path()) == usedDirectories.end()) {
-                std::filesystem::remove_all(entry.path(), ec);
-                ec.clear();
-            }
-        }
         return true;
     } catch (const std::exception& e) {
         setError(error, std::string("cannot save project: ") + e.what());
@@ -305,6 +290,28 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
         loaded.m_selection = selectionFromJson(
             root.value("selection", nlohmann::json{}));
         loaded.setSelection(loaded.m_selection.start, loaded.m_selection.end);
+
+        if (version >= 2 && !workArea.empty()) {
+            std::set<std::filesystem::path> keep;
+            for (const auto& trackJson : root["tracks"]) {
+                if (!trackJson.contains("blockDirectory")) continue;
+                const std::string name =
+                    trackJson["blockDirectory"].get<std::string>();
+                keep.insert(workArea / name);
+            }
+            std::error_code iteratorError;
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(workArea,
+                                                     iteratorError)) {
+                if (!entry.is_directory()) continue;
+                const std::string name = entry.path().filename().string();
+                if (name.rfind("track-", 0) != 0) continue;
+                if (keep.find(entry.path()) == keep.end())
+                    std::filesystem::remove_all(entry.path(), iteratorError);
+                iteratorError.clear();
+            }
+        }
+
         *this = std::move(loaded);
         clearUndoHistory();
         return true;

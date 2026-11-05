@@ -111,10 +111,15 @@ project.vwdoc.blocks/
 
 Each save writes new generation directories containing only blocks reachable
 from the current arrangement, history, and redo graph. The project file is
-written last and points at those directories. Old generation directories are
-removed only after the new project file has been committed, so a failed save
-leaves the previous project and blocks intact. Unreachable blocks are not
-written into a new generation.
+written last and points at those directories, so a failed save leaves the
+previous project and blocks intact. Unreachable blocks are not written into a
+new generation.
+
+Old generations are retained while the session is open because timeline
+structural undo snapshots can still reference their blocks. Loading a project
+removes every generation directory not referenced by the loaded project file,
+which is safe because in-memory undo history is cleared on load. Unreferenced
+blocks therefore disappear on the next project load.
 
 The in-memory LRU cache is separate from persistence: evicting a block only
 drops its decoded copy. Loaded timeline tracks use a 256 MiB default cache limit

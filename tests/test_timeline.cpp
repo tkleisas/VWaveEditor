@@ -717,5 +717,8 @@ VWTEST("timeline save removes stale track work directories") {
     CHECK(std::filesystem::exists(second));
     REQUIRE(timeline.removeTrack(1));
     REQUIRE(timeline.saveProject(path, &error));
+    CHECK(std::filesystem::exists(second));
+    Timeline reloaded;
+    REQUIRE(reloaded.loadProject(path, &error));
     CHECK(!std::filesystem::exists(second));
 }
