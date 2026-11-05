@@ -112,6 +112,13 @@ uint64_t Document::blockCacheBytes() const {
     return m_store.cacheBytes();
 }
 
+size_t Document::prefetchCurrentBlocks() const {
+    std::set<AudioBlockId> ids;
+    if (m_sourceBlock != kInvalidAudioBlock) ids.insert(m_sourceBlock);
+    collectBlockIds(m_arrangement.regions(), ids);
+    return m_store.prefetch(ids);
+}
+
 nlohmann::json Document::toJson(bool includeBlockAudio) const {
     if (m_source.empty())
         throw std::runtime_error("document has no source audio");

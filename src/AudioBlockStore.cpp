@@ -335,6 +335,16 @@ Audio AudioBlockStore::get(AudioBlockId id) const {
     return result;
 }
 
+size_t AudioBlockStore::prefetch(const std::set<AudioBlockId>& ids) const {
+    size_t loaded = 0;
+    for (const AudioBlockId id : ids) {
+        Audio audio;
+        if (!tryGet(id, audio, nullptr)) continue;
+        ++loaded;
+    }
+    return loaded;
+}
+
 void AudioBlockStore::retain(const std::set<AudioBlockId>& keep) {
     std::lock_guard<std::mutex> lock(m_mutex);
     for (auto it = m_entries.begin(); it != m_entries.end();) {

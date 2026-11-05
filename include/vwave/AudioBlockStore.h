@@ -67,6 +67,7 @@ public:
     bool spill(const std::filesystem::path& directory,
                const std::set<AudioBlockId>& referenced,
                std::string* error = nullptr) const;
+    size_t prefetch(const std::set<AudioBlockId>& ids) const;
     bool load(const std::filesystem::path& directory,
               std::string* error = nullptr);
     std::filesystem::path backingDirectory() const;

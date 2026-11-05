@@ -475,8 +475,8 @@ blocks:
 - Project saves use generation-based block work areas with an LRU RAM cache.
 - Session/CLI/Lua/MCP compatibility commands and tests cover the lifecycle.
 
-Remaining follow-up work is region gain/fade editing UI, history compaction,
-and autosave.
+Remaining follow-up work is region gain/fade editing UI, broader recovery
+testing, and prefetching after undo/seek rather than only at project load.
 
 ### Transport: click-to-seek and loop playback (implemented)
 

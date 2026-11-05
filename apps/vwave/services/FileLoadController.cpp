@@ -68,6 +68,10 @@ bool FileLoadController::loadProject(const std::string& path,
             error = exception.what();
         }
         if (control.cancelled()) return;
+        if (success) {
+            timeline.prefetchCurrentBlocks();
+            if (control.cancelled()) return;
+        }
         m_dispatcher.post([this, request, timeline = std::move(timeline),
                            success, error = std::move(error), path,
                            loaded = std::move(loaded)]() mutable {

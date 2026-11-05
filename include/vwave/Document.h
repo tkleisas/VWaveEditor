@@ -135,6 +135,7 @@ public:
                              std::string* error = nullptr) const;
     void setBlockCacheLimitBytes(uint64_t bytes);
     uint64_t blockCacheBytes() const;
+    size_t prefetchCurrentBlocks() const;
     size_t blockCount() const { return m_store.size(); }
     size_t historyLimit() const { return m_historyLimit; }
     void setHistoryLimit(size_t entries);

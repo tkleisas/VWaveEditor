@@ -140,10 +140,13 @@ reference for as long as they use it.
 
 - Blocks are immutable; copies share storage.
 - The store mutex protects metadata and cache state only.
-- Audio callbacks and DSP workers must never perform blocking disk I/O. The
-  project layer prefetches required blocks into RAM before playback/rendering.
+- Audio callbacks and DSP workers must never perform blocking disk I/O.
+- Project loading runs on the file-loader worker; after parsing, it prefetches
+  the current arrangement's blocks into RAM before handing the timeline to the
+  UI thread.
 - Disk writes happen on the main thread or a dedicated I/O worker, never in the
-  audio callback.
+  audio callback. Autosave runs on its own job so it cannot cancel an explicit
+  save.
 
 ## Migration stages
 
@@ -173,3 +176,7 @@ cache eviction, corruption, unsafe manifests, and metadata serialization.
 `tests/test_region_arrangement.cpp` covers reference-based splits, stretched
 source mapping, gaps/overlaps, ripple repeat, range erase/insert/replace/crop,
 gain/fades, removal, validation, format consistency, and JSON round-trips.
+
+Timeline project tests cover work-area generation cleanup, live spill without
+manifest rewrite, cache eviction/reload, and background prefetch of the loaded
+arrangement.

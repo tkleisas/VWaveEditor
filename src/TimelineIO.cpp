@@ -151,6 +151,15 @@ bool Timeline::saveProject(const std::string& path,
     }
 }
 
+size_t Timeline::prefetchCurrentBlocks() const {
+    size_t loaded = 0;
+    for (const auto& track : m_tracks) {
+        if (track.empty) continue;
+        loaded += track.document.prefetchCurrentBlocks();
+    }
+    return loaded;
+}
+
 bool Timeline::cleanupWorkArea(const std::string& path, std::string* error) {
     if (error) error->clear();
     try {

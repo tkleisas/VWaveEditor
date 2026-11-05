@@ -814,3 +814,24 @@ VWTEST("timeline cleanup removes unreferenced work area generations") {
     CHECK(!std::filesystem::exists(firstGeneration));
     CHECK(std::filesystem::exists(secondGeneration));
 }
+
+VWTEST("timeline prefetches current arrangement blocks from the work area") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "prefetch.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(400, 0.25f), 0,
+                                   &error));
+    REQUIRE(timeline.track(0).document.splitClipAt(200, &error));
+    REQUIRE(timeline.saveProject(path, &error));
+    Timeline loaded;
+    REQUIRE(loaded.loadProject(path, &error));
+    loaded.track(0).document.setBlockCacheLimitBytes(1);
+    CHECK_EQ(loaded.track(0).document.blockCacheBytes(), uint64_t{0});
+    loaded.track(0).document.setBlockCacheLimitBytes(0);
+    CHECK(loaded.prefetchCurrentBlocks() > size_t{0});
+    CHECK(loaded.track(0).document.blockCacheBytes() > uint64_t{0});
+    CHECK(loaded.track(0).document.audio().equals(
+        timeline.track(0).document.audio()));
+}

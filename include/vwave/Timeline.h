@@ -111,6 +111,7 @@ public:
     bool saveProject(const std::string& path,
                      std::string* error = nullptr) const;
     bool loadProject(const std::string& path, std::string* error = nullptr);
+    size_t prefetchCurrentBlocks() const;
     static bool cleanupWorkArea(const std::string& path,
                                 std::string* error = nullptr);
 
