@@ -1,6 +1,9 @@
 #pragma once
 
+#include "vwave/FftBackend.h"
+
 #include <complex>
+#include <memory>
 #include <vector>
 
 namespace vwave {
@@ -11,15 +14,13 @@ class FFT {
 public:
     explicit FFT(int size);
 
-    int size() const { return m_size; }
+    int size() const { return m_backend ? m_backend->size() : 0; }
 
     void forward(std::vector<std::complex<float>>& data) const;
     void inverse(std::vector<std::complex<float>>& data) const;
 
 private:
-    int m_size = 0;
-    std::vector<int> m_bitReverse;
-    std::vector<std::complex<float>> m_twiddles;
+    std::unique_ptr<FftBackend> m_backend;
 };
 
 void fftInPlace(float* real, float* imag, int size, bool inverse);
