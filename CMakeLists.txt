@@ -123,6 +123,20 @@ target_include_directories(vwave_ui_core PUBLIC
 target_link_libraries(vwave_ui_core PUBLIC vwave::core)
 set_target_properties(vwave_ui_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+if(VWAVE_BUILD_GUI)
+    add_library(vwave_ui_sdl STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/sdl/SdlCursorController.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/sdl/SdlEventAdapter.cpp
+    )
+    add_library(vwave::ui_sdl ALIAS vwave_ui_sdl)
+    vwave_set_warnings(vwave_ui_sdl)
+    target_include_directories(vwave_ui_sdl PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave)
+    target_link_libraries(vwave_ui_sdl PUBLIC
+        vwave::ui_core PkgConfig::SDL2)
+    set_target_properties(vwave_ui_sdl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
 if(VWAVE_BUILD_EXAMPLES)
     add_executable(vwave_embed_example examples/yawn_embed.cpp)
     vwave_set_warnings(vwave_embed_example)
@@ -200,10 +214,16 @@ if(VWAVE_BUILD_TESTS)
     if(NOT VWAVE_BUILD_LUA)
         list(FILTER VWAVE_TEST_SOURCES EXCLUDE REGEX "test_lua\\.cpp$")
     endif()
+    if(NOT VWAVE_BUILD_GUI)
+        list(FILTER VWAVE_TEST_SOURCES EXCLUDE REGEX "test_ui_sdl\\.cpp$")
+    endif()
     add_executable(vwave_tests ${VWAVE_TEST_SOURCES})
     vwave_set_warnings(vwave_tests)
     target_include_directories(vwave_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     target_link_libraries(vwave_tests PRIVATE vwave::core vwave::ui_core)
+    if(TARGET vwave_ui_sdl)
+        target_link_libraries(vwave_tests PRIVATE vwave_ui_sdl)
+    endif()
     foreach(test_source ${VWAVE_TEST_SOURCES})
         get_filename_component(test_file "${test_source}" NAME)
         if(test_file STREQUAL "test_main.cpp")

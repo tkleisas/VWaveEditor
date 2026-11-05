@@ -559,5 +559,7 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Added `Slider` with logarithmic/stepped model mapping, drag capture, keyboard
   steps, and disabled handling; covered by headless tests.
 - Added normalized wheel events and hover-target wheel routing.
-- Next: scroll/layout controls, SDL adapter, and migration of toolbar/sidebar/
+- Added the SDL event adapter for pointer/wheel/key/text/window events and a
+  cached SDL system-cursor controller.
+- Next: scroll/layout controls, SDL painter, and migration of toolbar/sidebar/
   timeline controls to the widget layer.
