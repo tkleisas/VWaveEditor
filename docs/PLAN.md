@@ -563,5 +563,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   cached SDL system-cursor controller.
 - Added semantic `Painter` support and widget paint traversal, plus an SDL
   painter with role colors, clipped drawing, and a bounded text-texture cache.
-- Next: scroll/layout controls and migration of toolbar/sidebar/timeline
-  controls to the widget layer.
+- Added recursive widget translation, clipping `ScrollView` content with wheel
+  clamping, and unhandled-wheel bubbling through parent widgets.
+- Next: layout helpers and migration of toolbar/sidebar/timeline controls to
+  the widget layer.

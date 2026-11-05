@@ -19,6 +19,12 @@ Widget* Widget::hitTest(Point point) {
     return enabled ? this : nullptr;
 }
 
+void Widget::translate(Point delta) {
+    bounds.x += delta.x;
+    bounds.y += delta.y;
+    for (auto& child : m_children) child->translate(delta);
+}
+
 void Widget::draw(Painter& painter) {
     if (!visible) return;
     paint(painter);

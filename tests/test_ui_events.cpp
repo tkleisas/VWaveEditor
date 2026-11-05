@@ -208,3 +208,33 @@ VWTEST("wheel events route to the widget under the pointer") {
     CHECK(!host.handleEvent(WheelEvent{{25, 5}, 0.0, 1.0}));
     CHECK_EQ(secondPtr->count, 2);
 }
+
+
+namespace {
+
+struct BubbleWidget : Widget {
+    bool onWheel(const WheelEvent&) override {
+        ++count;
+        return consume;
+    }
+    bool consume = false;
+    int count = 0;
+};
+
+} // namespace
+
+VWTEST("unhandled wheel bubbles to parents") {
+    BubbleWidget root;
+    root.bounds = {0, 0, 100, 100};
+    auto child = std::make_unique<BubbleWidget>();
+    child->bounds = {0, 0, 20, 20};
+    auto* childPtr = child.get();
+    root.addChild(std::move(child));
+    root.consume = true;
+
+    WidgetHost host;
+    host.setRoot(&root);
+    REQUIRE(host.handleEvent(WheelEvent{{5, 5}, 0.0, -1.0}));
+    CHECK_EQ(childPtr->count, 1);
+    CHECK_EQ(root.count, 1);
+}

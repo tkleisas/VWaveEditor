@@ -24,7 +24,8 @@ public:
 
     Widget& addChild(std::unique_ptr<Widget> child);
     Widget* hitTest(Point point);
-    void draw(Painter& painter);
+    void translate(Point delta);
+    virtual void draw(Painter& painter);
 
     virtual CursorShape cursorAt(Point) const { return CursorShape::Arrow; }
     virtual bool focusable() const { return false; }

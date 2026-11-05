@@ -137,7 +137,9 @@ bool WidgetHost::handleEvent(const Event& event) {
             [this](const WheelEvent& wheel) {
                 Widget* target = m_root ? m_root->hitTest(wheel.position)
                                         : nullptr;
-                return target ? target->onWheel(wheel) : false;
+                for (Widget* widget = target; widget; widget = widget->parent)
+                    if (widget->onWheel(wheel)) return true;
+                return false;
             },
             [this](const KeyEvent& key) {
                 if (!key.down) {
