@@ -565,5 +565,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   painter with role colors, clipped drawing, and a bounded text-texture cache.
 - Added recursive widget translation, clipping `ScrollView` content with wheel
   clamping, and unhandled-wheel bubbling through parent widgets.
-- Next: layout helpers and migration of toolbar/sidebar/timeline controls to
-  the widget layer.
+- Added column/row/stack layout helpers with inset/spacing and content-size
+  reporting for scroll containers.
+- Next: migrate toolbar/sidebar/timeline controls to the widget layer and add
+  canvas hit targets/cursor handles.
