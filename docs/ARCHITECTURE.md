@@ -376,9 +376,9 @@ tree, and applies cached system cursors. The editor toolbar and sidebar buttons 
 retained widgets. Sidebar buttons are pooled and repositioned from the existing
 manual layout, so scrolling and dynamic sections remain compatible during the
 transition. Timeline cursor hit targets are shared across ruler, overview,
-track headers, clips, selection handles, and trim/stretch grips. Sidebar sliders now use retained `SidebarSlider`
-  controls as well. Custom canvas rendering remains on the legacy path until
-  migration is complete.
+track headers, clips, selection handles, and trim/stretch grips. Sidebar sliders now use retained `SidebarSlider` controls as well, and
+  track-header buttons/sliders use a pooled retained `ControlPanel`. Custom
+  canvas rendering remains on the legacy path until migration is complete.
 
 ### Standalone editor
 

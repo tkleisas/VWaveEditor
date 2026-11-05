@@ -577,4 +577,8 @@ automation presets; the cut-up arrangement model itself is implemented.
   path for now.
 - Migrated sidebar sliders to retained `SidebarSlider` widgets with label/value
   painting, drag capture, keyboard steps, and SizeWE cursors.
-- Next: continue the timeline canvas extraction and residual legacy widgets.
+- Migrated track-header buttons and volume/pan sliders through a reusable
+  retained `ControlPanel`; sidebar/track controls now share pooling, painting,
+  hit-testing, and cursor behavior.
+- Next: extract the timeline canvas interaction/rendering and remove the
+  remaining immediate-mode control path.

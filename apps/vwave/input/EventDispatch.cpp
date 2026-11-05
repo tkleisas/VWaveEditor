@@ -60,6 +60,54 @@ bool App::handleToolbarInput(const SDL_Event& event) {
     return false;
 }
 
+bool App::handleTrackHeaderInput(const SDL_Event& event) {
+    if (m_tab != vwave::EditorTab::Waveform) return false;
+    const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
+                          m_panningOverview || m_shiftingTrack ||
+                          m_sliderDragging || m_draggingSpectrum ||
+                          m_drawingWavetable;
+    if (dragging && !m_trackHeaderControls.captured()) return false;
+
+    const bool modal = m_dialog.isOpen() || m_settingsController.isOpen() ||
+                       m_contextMenuOpen || m_openMenu >= 0;
+    if (modal) {
+        if (m_trackHeaderControls.captured() ||
+            m_trackHeaderControls.hovered()) {
+            m_trackHeaderControls.handleEvent(
+                WindowEvent{WindowEvent::Type::FocusLost});
+            m_cursorController.apply(m_trackHeaderControls.cursor());
+        }
+        return false;
+    }
+
+    const std::optional<Event> translated = m_uiEventAdapter.translate(event);
+    if (!translated) return false;
+
+    if (const auto* pointer = std::get_if<PointerEvent>(&*translated)) {
+        SDL_Point point{pointer->position.x, pointer->position.y};
+        const bool inHeader =
+            SDL_PointInRect(&point, &m_trackHeaderColumn) != 0;
+        const bool captured = m_trackHeaderControls.captured() != nullptr;
+        const bool hovered = m_trackHeaderControls.hovered() != nullptr;
+        if (!inHeader && !captured && !hovered) return false;
+
+        const bool handled = m_trackHeaderControls.handleEvent(*translated);
+        m_cursorController.apply(m_trackHeaderControls.cursor());
+        if (event.type == SDL_MOUSEBUTTONDOWN ||
+            event.type == SDL_MOUSEBUTTONUP)
+            return handled;
+        if (event.type == SDL_MOUSEMOTION)
+            return handled || captured;
+        return false;
+    }
+
+    if (std::holds_alternative<WindowEvent>(*translated)) {
+        m_trackHeaderControls.handleEvent(*translated);
+        m_cursorController.apply(m_trackHeaderControls.cursor());
+    }
+    return false;
+}
+
 bool App::handleSidebarInput(const SDL_Event& event) {
     if (!m_sidebarRoot) return false;
     const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
@@ -110,6 +158,7 @@ bool App::handleSidebarInput(const SDL_Event& event) {
 void App::handleEvent(const SDL_Event& event) {
     if (handleToolbarInput(event)) return;
     if (handleSidebarInput(event)) return;
+    if (handleTrackHeaderInput(event)) return;
     switch (event.type) {
     case SDL_QUIT:
         m_running = false;

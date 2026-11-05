@@ -428,6 +428,28 @@ int App::run() {
         handleEvent(sliderUp);
         if (m_spectralLow.value == beforeLow) return 1;
         setTab(vwave::EditorTab::Waveform);
+        drawWaveform(m_contentRect);
+        vwave::ui::PushButton* muteButton = nullptr;
+        for (auto* button : m_trackHeaderControls.buttons()) {
+            if (button->visible && button->label == "M") {
+                muteButton = button;
+                break;
+            }
+        }
+        if (!muteButton) return 1;
+        const bool beforeMute = m_timeline.track(0).muted;
+        SDL_Event muteDown{};
+        muteDown.type = SDL_MOUSEBUTTONDOWN;
+        muteDown.button.x = muteButton->bounds.x + muteButton->bounds.w / 2;
+        muteDown.button.y = muteButton->bounds.y + muteButton->bounds.h / 2;
+        muteDown.button.button = SDL_BUTTON_LEFT;
+        handleEvent(muteDown);
+        SDL_Event muteUp = muteDown;
+        muteUp.type = SDL_MOUSEBUTTONUP;
+        handleEvent(muteUp);
+        if (m_timeline.track(0).muted == beforeMute) return 1;
+        if (!m_timeline.undo()) return 1;
+        if (m_timeline.track(0).muted != beforeMute) return 1;
         auto waitForFile = [this](const std::filesystem::path& target) {
             const Uint32 deadline = SDL_GetTicks() + 5000;
             while (SDL_GetTicks() < deadline) {
@@ -572,6 +594,11 @@ void App::addSlider(const std::string& label, const std::string& valueText,
                          std::move(onChanged));
         return;
     }
+    if (m_buildingTrackHeader) {
+        m_trackHeaderControls.addSlider(label, valueText, {x, y, w, 26},
+                                        slider, std::move(onChanged));
+        return;
+    }
     m_ui.addSlider(label, valueText, x, y, w, slider, std::move(onChanged));
 }
 
@@ -690,6 +717,12 @@ void App::addButton(const std::string& label, int x, int y, int w, int h,
     if (m_buildingSidebar) {
         addSidebarButton(label, x, y, w, h, std::move(action), accent, active,
                          enabled);
+        return;
+    }
+    if (m_buildingTrackHeader) {
+        m_trackHeaderControls.addButton(label, {x, y, w, h},
+                                        std::move(action), accent, active,
+                                        enabled);
         return;
     }
     m_ui.addButton(label, x, y, w, h, std::move(action), accent, active,

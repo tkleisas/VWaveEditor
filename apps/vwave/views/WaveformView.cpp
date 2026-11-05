@@ -181,6 +181,10 @@ void App::drawWaveform(const SDL_Rect& area) {
     SDL_Rect rowsClip{area.x + margin, rowsTop, headerWidth + 8 + laneWidth,
                       laneHeight};
     SDL_RenderSetClipRect(m_renderer, &rowsClip);
+    m_trackHeaderControls.begin(
+        {m_trackHeaderColumn.x, m_trackHeaderColumn.y,
+         m_trackHeaderColumn.w, m_trackHeaderColumn.h});
+    m_buildingTrackHeader = true;
     for (int index = 0; index < m_timeline.trackCount(); ++index) {
         const int rowY = rowsTop + index * rowHeight -
                          static_cast<int>(std::lround(m_trackScroll));
@@ -272,6 +276,8 @@ void App::drawWaveform(const SDL_Rect& area) {
             }
         }
     }
+    m_buildingTrackHeader = false;
+    m_trackHeaderControls.end(m_uiPainter.get());
     SDL_RenderSetClipRect(m_renderer, &m_contentRect);
     m_ui.setControlArea(1);
 

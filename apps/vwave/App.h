@@ -24,6 +24,7 @@
 #include "services/FileSaveController.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
+#include "ui/editor/ControlPanel.h"
 #include "ui/editor/SidebarSlider.h"
 #include "ui/framework/PushButton.h"
 #include "ui/framework/WidgetHost.h"
@@ -103,6 +104,7 @@ private:
                           vwave::ParameterSlider& slider,
                           std::function<void(double)> onChanged);
     bool handleSidebarInput(const SDL_Event& event);
+    bool handleTrackHeaderInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);
@@ -307,6 +309,8 @@ private:
     size_t m_sidebarButtonIndex = 0;
     size_t m_sidebarSliderIndex = 0;
     bool m_buildingSidebar = false;
+    vwave::ui::ControlPanel m_trackHeaderControls;
+    bool m_buildingTrackHeader = false;
     vwave::ui::SdlEventAdapter m_uiEventAdapter;
     vwave::ui::SdlCursorController m_cursorController;
     TTF_Font* m_fontSmall = nullptr;
