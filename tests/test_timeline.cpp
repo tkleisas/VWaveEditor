@@ -664,6 +664,10 @@ VWTEST("timeline project stores blocks in a work area") {
     CHECK_EQ(loaded.track(0).document.clips().size(), size_t{3});
     CHECK(loaded.track(0).document.audio().equals(
         timeline.track(0).document.audio()));
+    loaded.track(0).document.setBlockCacheLimitBytes(1);
+    CHECK_EQ(loaded.track(0).document.blockCacheBytes(), uint64_t{0});
+    CHECK(loaded.track(0).document.audio().equals(
+        timeline.track(0).document.audio()));
 }
 
 VWTEST("timeline work area drops blocks reachable only from redo") {
