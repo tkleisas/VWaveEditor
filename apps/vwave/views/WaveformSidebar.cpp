@@ -124,33 +124,31 @@ void App::drawTrackSidebar(int& y) {
               nextMono);
     y += buttonHeight + 6;
 
-    const bool hasClips = !m_timeline.empty() && activeDocument().hasClips();
-    drawSection("CLIPS", y);
-    addButton(hasClips ? "Flatten Clips" : "Make Clips", 18, y, buttonWidth,
-              buttonHeight, [this] {
-                  if (activeDocument().hasClips())
-                      flattenClips();
-                  else
-                      makeClips();
-              }, false, false, !m_timeline.empty());
-    addButton(std::string("Clip Tool: ") + (m_clips.toolEnabled() ? "On" : "Off"),
+    const bool hasRegions =
+        !m_timeline.empty() && activeDocument().hasClips();
+    drawSection("REGIONS", y);
+    addButton("Flatten Regions", 18, y, buttonWidth, buttonHeight,
+              [this] { flattenClips(); }, false, false, hasRegions);
+    addButton(std::string("Region Tool: ") +
+                  (m_clips.toolEnabled() ? "On" : "Off"),
               18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
-              [this] { toggleClipTool(); }, false, m_clips.toolEnabled(), hasClips);
+              [this] { toggleClipTool(); }, false, m_clips.toolEnabled(),
+              hasRegions);
     y += buttonHeight + 6;
-    addButton("Split Clip", 18, y, buttonWidth, buttonHeight,
-              [this] { splitClipAtPlayhead(); }, false, false, hasClips);
-    addButton("Delete Clip", 18 + buttonWidth + gap, y, buttonWidth,
+    addButton("Split Region", 18, y, buttonWidth, buttonHeight,
+              [this] { splitClipAtPlayhead(); }, false, false, hasRegions);
+    addButton("Delete Region", 18 + buttonWidth + gap, y, buttonWidth,
               buttonHeight, [this] { deleteSelectedClip(); }, false, false,
-              hasClips);
+              hasRegions);
     y += buttonHeight + 6;
-    addButton("Repeat Clip x2", 18, y, buttonWidth, buttonHeight,
-              [this] { repeatSelectedClip(2); }, false, false, hasClips);
+    addButton("Repeat Region x2", 18, y, buttonWidth, buttonHeight,
+              [this] { repeatSelectedClip(2); }, false, false, hasRegions);
     addButton("Move to Head", 18 + buttonWidth + gap, y, buttonWidth,
               buttonHeight, [this] { moveSelectedClipToPlayhead(); }, false,
-              false, hasClips);
+              false, hasRegions);
     y += buttonHeight + 6;
-    addButton("Stretch Clip", 18, y, buttonWidth, buttonHeight,
-              [this] { stretchSelectedClip(); }, false, false, hasClips);
+    addButton("Stretch Region", 18, y, buttonWidth, buttonHeight,
+              [this] { stretchSelectedClip(); }, false, false, hasRegions);
     y += buttonHeight + 6;
 
     drawSection("EDIT", y);

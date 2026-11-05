@@ -3,8 +3,11 @@
 
 #include "vwave/Document.h"
 
+#include "../src/Base64.h"
+
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 using namespace vwave;
@@ -18,6 +21,29 @@ Audio makeRamp(int64_t frames, int sampleRate = 48000) {
         audio.sample(1, i) = -static_cast<float>(i) / 2000.0f;
     }
     return audio;
+}
+
+nlohmann::json selectionJson(const Selection& selection) {
+    return {{"start", selection.start},
+            {"end", selection.end},
+            {"active", selection.active}};
+}
+
+nlohmann::json audioJson(const Audio& audio) {
+    return {{"sampleRate", audio.sampleRate()},
+            {"channels", audio.numChannels()},
+            {"frames", audio.numFrames()},
+            {"data", base64Encode(
+                         reinterpret_cast<const uint8_t*>(audio.data()),
+                         audio.totalSamples() * sizeof(float))}};
+}
+
+nlohmann::json historyItem(const Operation& operation,
+                           const Selection& before,
+                           const Selection& after) {
+    return {{"operation", operation.toJson()},
+            {"before", selectionJson(before)},
+            {"after", selectionJson(after)}};
 }
 
 } // namespace
@@ -215,7 +241,7 @@ VWTEST("document undo remains correct across checkpointed histories") {
     Document doc = Document::fromAudio(original);
     doc.setSelection(0, 64);
     for (int i = 0; i < 40; ++i) REQUIRE(doc.invertSelection());
-    CHECK(doc.checkpointCount() > 0);
+    CHECK_EQ(doc.undoCount(), size_t{40});
     CHECK_NEAR(doc.audio().sample(0, 0), 0.25, 1e-6);
 
     for (int i = 0; i < 35; ++i) REQUIRE(doc.undo());
@@ -230,7 +256,6 @@ VWTEST("document undo remains correct across checkpointed histories") {
     REQUIRE(doc.invertSelection());
     CHECK_EQ(doc.undoCount(), size_t{11});
     CHECK_EQ(doc.redoCount(), size_t{0});
-    CHECK_EQ(doc.checkpointCount(), size_t{0});
     CHECK_NEAR(doc.audio().sample(0, 0), -0.25, 1e-6);
 
     for (int i = 0; i < 11; ++i) REQUIRE(doc.undo());
@@ -416,23 +441,18 @@ VWTEST("document range operations survive project round-trip") {
     CHECK(loaded.audio().equals(original));
 }
 
-VWTEST("document clip arrangement splits moves and repeats undoably") {
+VWTEST("document region arrangement splits moves and repeats undoably") {
     const Audio original = makeRamp(1000);
     Document doc = Document::fromAudio(original);
     REQUIRE(doc.createClipArrangement());
     CHECK(doc.hasClips());
     CHECK_EQ(doc.clips().size(), size_t{1});
-    CHECK_EQ(doc.undoLabel(), std::string("Create clips"));
     CHECK(doc.audio().equals(original));
-    REQUIRE(doc.undo());
-    CHECK(!doc.hasClips());
-    CHECK(doc.audio().equals(original));
-    REQUIRE(doc.redo());
-    CHECK_EQ(doc.clips().size(), size_t{1});
+    CHECK_EQ(doc.undoCount(), size_t{0});
 
     REQUIRE(doc.splitClipAt(400));
     CHECK_EQ(doc.clips().size(), size_t{2});
-    CHECK_EQ(doc.undoLabel(), std::string("Split clip"));
+    CHECK_EQ(doc.undoLabel(), std::string("Split region"));
     CHECK(doc.audio().equals(original));
     CHECK_EQ(doc.clips()[0].sourceStart, int64_t{0});
     CHECK_EQ(doc.clips()[0].sourceLength, int64_t{400});
@@ -445,6 +465,10 @@ VWTEST("document clip arrangement splits moves and repeats undoably") {
     CHECK_EQ(doc.numFrames(), int64_t{400});
     for (int64_t i = 0; i < 400; ++i)
         CHECK_NEAR(doc.audio().sample(0, i), original.sample(0, i), 1e-9);
+    REQUIRE(doc.undo());
+    CHECK_EQ(doc.clips().size(), size_t{2});
+    REQUIRE(doc.redo());
+    CHECK_EQ(doc.clips().size(), size_t{1});
     REQUIRE(doc.undo());
     CHECK_EQ(doc.clips().size(), size_t{2});
 
@@ -490,38 +514,65 @@ VWTEST("document clip stretch gain and flatten are undoable") {
 
     const Audio arranged = doc.audio();
     REQUIRE(doc.flattenClips());
-    CHECK(!doc.hasClips());
+    CHECK_EQ(doc.clips().size(), size_t{1});
     CHECK(doc.audio().equals(arranged));
-    CHECK_EQ(doc.undoLabel(), std::string("Flatten clips"));
+    CHECK_EQ(doc.undoLabel(), std::string("Flatten regions"));
     REQUIRE(doc.undo());
-    CHECK(doc.hasClips());
     CHECK_EQ(doc.clips().size(), size_t{2});
 }
 
-VWTEST("document requires flattening before destructive clip edits") {
-    Document doc = Document::fromAudio(makeRamp(1000));
-    REQUIRE(doc.createClipArrangement());
+VWTEST("document edits regions without flattening first") {
+    const Audio original = makeRamp(1000);
+    Document doc = Document::fromAudio(original);
+    REQUIRE(doc.splitClipAt(400));
     doc.setSelection(100, 200);
     std::string error;
-    CHECK(!doc.gainDb(-6.0, &error));
-    CHECK(!error.empty());
-    error.clear();
-    CHECK(!doc.deleteSelection(&error));
-    CHECK(!error.empty());
+    REQUIRE(doc.gainDb(-6.0, &error));
+    CHECK_EQ(doc.clips().size(), size_t{4});
+    CHECK_NEAR(doc.audio().sample(0, 500), original.sample(0, 500), 1e-9);
+    CHECK(doc.source().equals(original));
+    CHECK_EQ(doc.undoLabel(), std::string("Gain -6 dB"));
+    REQUIRE(doc.undo());
+    CHECK(doc.audio().equals(original));
+    CHECK_EQ(doc.clips().size(), size_t{2});
 
+    doc.setSelection(100, 300);
+    REQUIRE(doc.deleteSelection(&error));
+    CHECK_EQ(doc.numFrames(), int64_t{800});
+    CHECK_NEAR(doc.audio().sample(0, 100), original.sample(0, 300), 1e-9);
+    REQUIRE(doc.undo());
+    CHECK(doc.audio().equals(original));
+
+    const Audio edited = doc.audio();
     REQUIRE(doc.flattenClips());
-    CHECK(!doc.hasClips());
-    CHECK(doc.gainDb(-6.0, &error));
-    CHECK(doc.undoLabel() == std::string("Gain -6 dB"));
+    CHECK(doc.audio().equals(edited));
+    CHECK_EQ(doc.clips().size(), size_t{1});
     REQUIRE(doc.undo());
-    CHECK(doc.undoLabel() == std::string("Flatten clips"));
+    CHECK_EQ(doc.clips().size(), size_t{2});
+}
+
+VWTEST("document tracks immutable blocks and region references") {
+    const Audio original = makeRamp(400);
+    Document doc = Document::fromAudio(original);
+    REQUIRE(doc.regions().size() == size_t{1});
+    const AudioBlockId sourceBlock = doc.regions()[0].block;
+    REQUIRE(doc.splitClipAt(200));
+    REQUIRE(doc.regions().size() == size_t{2});
+    CHECK(doc.regions()[0].block == sourceBlock);
+    CHECK(doc.regions()[1].block == sourceBlock);
+    CHECK_EQ(doc.regions()[1].sourceStart, int64_t{200});
+
+    doc.setSelection(50, 150);
+    REQUIRE(doc.gainDb(-6.0));
+    REQUIRE(doc.regions().size() == size_t{4});
+    CHECK(doc.regions()[0].block == sourceBlock);
+    CHECK(doc.regions()[1].block != sourceBlock);
+    CHECK(doc.regions()[2].block == sourceBlock);
+    CHECK(doc.regions()[3].block == sourceBlock);
+    CHECK(doc.source().equals(original));
+    CHECK_NEAR(doc.audio().sample(0, 300), original.sample(0, 300), 1e-9);
     REQUIRE(doc.undo());
-    CHECK(doc.hasClips());
-    REQUIRE(doc.redo());
-    CHECK(!doc.hasClips());
-    REQUIRE(doc.redo());
-    CHECK(doc.undoLabel() == std::string("Gain -6 dB"));
-    CHECK(!doc.hasClips());
+    CHECK(doc.audio().equals(original));
 }
 
 VWTEST("document clip project round-trip preserves arrangement") {
@@ -545,11 +596,79 @@ VWTEST("document clip project round-trip preserves arrangement") {
     CHECK_EQ(loaded.clips()[1].timelineStart, int64_t{600});
     CHECK_NEAR(loaded.clips()[1].gainDb, -3.0, 1e-9);
     CHECK(loaded.audio().equals(expected));
-    CHECK_EQ(loaded.undoLabel(), std::string("Set clip fades"));
+    CHECK_EQ(loaded.undoLabel(), std::string("Set region fades"));
     REQUIRE(loaded.undo());
     CHECK_EQ(loaded.numFrames(), int64_t{1200});
     REQUIRE(loaded.redo());
     CHECK(loaded.audio().equals(expected));
+}
+
+VWTEST("document loads legacy v1 clip projects") {
+    const Audio original = makeRamp(1000);
+    Clip full;
+    full.sourceLength = original.numFrames();
+    full.name = "Clip 1";
+    Operation create = Operation::setClips({full});
+    create.label = "Create clips";
+
+    Clip left = full;
+    left.sourceLength = 400;
+    left.name = "Clip 1 A";
+    Clip right = full;
+    right.sourceStart = 400;
+    right.sourceLength = 600;
+    right.timelineStart = 400;
+    right.name = "Clip 1 B";
+    Operation split = Operation::setClips({left, right});
+    split.label = "Split clip";
+
+    Operation flatten = Operation::flattenClips();
+    flatten.label = "Flatten clips";
+    Operation gain = Operation::gain(-6.0, {0, 400});
+    const Selection empty;
+
+    nlohmann::json root;
+    root["format"] = "vwave-project";
+    root["version"] = 1;
+    root["source"] = audioJson(original);
+    root["sourcePath"] = "/tmp/legacy.wav";
+    root["selection"] = selectionJson(empty);
+    root["markers"] = nlohmann::json::array();
+    root["slices"] = nlohmann::json::array();
+    root["history"] = nlohmann::json::array(
+        {historyItem(create, empty, empty),
+         historyItem(split, empty, empty),
+         historyItem(flatten, empty, empty),
+         historyItem(gain, empty, empty)});
+
+    TempPath file(".vwdoc");
+    {
+        std::ofstream out(file.path());
+        REQUIRE(out.good());
+        out << root.dump(2);
+    }
+
+    Document loaded;
+    std::string error;
+    REQUIRE(loaded.loadProject(file.string(), &error));
+    CHECK(loaded.source().equals(original));
+    CHECK_EQ(loaded.sourcePath(), std::string("/tmp/legacy.wav"));
+    CHECK_EQ(loaded.clips().size(), size_t{2});
+    CHECK_EQ(loaded.undoLabel(), std::string("Gain -6 dB"));
+    CHECK_NEAR(loaded.audio().sample(0, 10),
+               original.sample(0, 10) * 0.501187, 1e-5);
+    CHECK_NEAR(loaded.audio().sample(0, 500), original.sample(0, 500), 1e-9);
+
+    REQUIRE(loaded.undo());
+    CHECK_EQ(loaded.undoLabel(), std::string("Flatten clips"));
+    CHECK(loaded.audio().equals(original));
+    REQUIRE(loaded.undo());
+    CHECK_EQ(loaded.undoLabel(), std::string("Split clip"));
+    CHECK_EQ(loaded.clips().size(), size_t{2});
+    REQUIRE(loaded.undo());
+    CHECK_EQ(loaded.undoLabel(), std::string("Create clips"));
+    CHECK_EQ(loaded.clips().size(), size_t{1});
+    CHECK(loaded.audio().equals(original));
 }
 
 VWTEST("document clip arrangement preserves stereo channels") {
@@ -577,7 +696,7 @@ VWTEST("document rejects invalid clip arrangements") {
     clip.sourceLength = 20;
     CHECK(!doc.setClipArrangement({clip}, "Bad", &error));
     CHECK(!error.empty());
-    CHECK(!doc.hasClips());
+    CHECK(doc.hasClips());
     CHECK_EQ(doc.undoCount(), size_t{0});
 
     error.clear();
@@ -586,8 +705,10 @@ VWTEST("document rejects invalid clip arrangements") {
     REQUIRE(doc.setClipArrangement({valid}, "Good", &error));
     CHECK_EQ(doc.undoLabel(), std::string("Good"));
     error.clear();
-    CHECK(!doc.deleteClip(0, &error));
-    CHECK(!error.empty());
+    REQUIRE(doc.deleteClip(0, &error));
+    CHECK_EQ(doc.numFrames(), int64_t{0});
+    REQUIRE(doc.undo());
+    CHECK_EQ(doc.numFrames(), int64_t{100});
 }
 
 VWTEST("document revision changes with audio edits") {
@@ -602,9 +723,32 @@ VWTEST("document revision changes with audio edits") {
     REQUIRE(doc.redo());
     CHECK(doc.revision() > undone);
     const uint64_t redone = doc.revision();
-    REQUIRE(doc.createClipArrangement());
+    REQUIRE(doc.splitClipAt(50));
     CHECK(doc.revision() > redone);
     const uint64_t clips = doc.revision();
     REQUIRE(doc.flattenClips());
     CHECK(doc.revision() > clips);
+}
+
+VWTEST("document edits a range inside a stretched region") {
+    const Audio original = makeRamp(100);
+    Document doc = Document::fromAudio(original);
+    REQUIRE(doc.stretchClip(0, 2.0));
+    CHECK_EQ(doc.numFrames(), int64_t{200});
+    const Audio stretched = doc.audio();
+    doc.setSelection(50, 150);
+    std::string error;
+    REQUIRE(doc.gainDb(-6.0, &error));
+    CHECK_EQ(doc.numFrames(), int64_t{200});
+    CHECK_NEAR(doc.audio().sample(0, 10), stretched.sample(0, 10), 1e-6);
+    CHECK_NEAR(doc.audio().sample(0, 190), stretched.sample(0, 190), 1e-6);
+    CHECK_NEAR(doc.audio().sample(0, 100),
+               stretched.sample(0, 100) * 0.501187, 1e-5);
+    REQUIRE(doc.undo());
+    CHECK_EQ(doc.numFrames(), int64_t{200});
+    CHECK(doc.audio().equals(stretched));
+    CHECK_EQ(doc.undoLabel(), std::string("Stretch region"));
+    REQUIRE(doc.undo());
+    CHECK_EQ(doc.numFrames(), int64_t{100});
+    CHECK(doc.audio().equals(original));
 }

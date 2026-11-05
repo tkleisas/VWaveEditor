@@ -2,13 +2,50 @@
 
 #include "DocumentInternal.h"
 
+#include <algorithm>
 #include <fstream>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace vwave::detail;
 
 namespace vwave {
+
+namespace {
+
+nlohmann::json regionsToJson(const std::vector<AudioRegion>& regions) {
+    nlohmann::json array = nlohmann::json::array();
+    for (const auto& region : regions)
+        array.push_back(audioRegionToJson(region));
+    return array;
+}
+
+bool regionsFromJson(const nlohmann::json& json,
+                     std::vector<AudioRegion>& regions,
+                     std::string* error) {
+    regions.clear();
+    if (!json.is_array()) {
+        setError(error, "audio regions must be an array");
+        return false;
+    }
+    for (const auto& value : json) {
+        AudioRegion region;
+        if (!audioRegionFromJson(value, region, error)) return false;
+        regions.push_back(std::move(region));
+    }
+    return true;
+}
+
+void collectBlockIds(const std::vector<AudioRegion>& regions,
+                     std::set<AudioBlockId>& ids) {
+    for (const auto& region : regions) {
+        if (region.block != kInvalidAudioBlock) ids.insert(region.block);
+    }
+}
+
+} // namespace
 
 bool Document::loadAudio(const std::string& path, std::string* error) {
     if (error) error->clear();
@@ -22,12 +59,10 @@ bool Document::loadAudio(const std::string& path, std::string* error) {
     m_sourcePath = path;
     m_history.clear();
     m_redo.clear();
-    m_checkpoints.clear();
-    m_rendered = m_source;
-    m_arranged = m_rendered;
-    m_clips.clear();
-    m_cacheValid = true;
-    m_arrangedValid = true;
+    if (!initializeSource()) {
+        setError(error, "cannot initialize audio document");
+        return false;
+    }
     m_selection.clear();
     m_clipboard = Audio{};
     m_markers.clear();
@@ -50,10 +85,21 @@ bool Document::saveAudio(const std::string& path,
 nlohmann::json Document::toJson() const {
     if (m_source.empty())
         throw std::runtime_error("document has no source audio");
+    if (m_sourceBlock == kInvalidAudioBlock)
+        throw std::runtime_error("document has no source block");
+
+    std::set<AudioBlockId> blockIds;
+    blockIds.insert(m_sourceBlock);
+    collectBlockIds(m_arrangement.regions(), blockIds);
+    for (const auto& entry : m_history) {
+        collectBlockIds(entry.before, blockIds);
+        collectBlockIds(entry.after, blockIds);
+    }
+
     nlohmann::json root;
     root["format"] = "vwave-project";
-    root["version"] = 1;
-    root["source"] = audioToJson(m_source);
+    root["version"] = 2;
+    root["sourceBlock"] = m_sourceBlock;
     root["sourcePath"] = m_sourcePath;
     root["selection"] = selectionToJson(m_selection);
     root["markers"] = nlohmann::json::array();
@@ -66,12 +112,26 @@ nlohmann::json Document::toJson() const {
             {{"start", slice.range.start},
              {"end", slice.range.end},
              {"name", slice.name}});
+    root["regions"] = regionsToJson(m_arrangement.regions());
+
+    root["blocks"] = nlohmann::json::array();
+    for (const AudioBlockId id : blockIds) {
+        const AudioBlockInfo info = m_store.info(id);
+        if (info.id == kInvalidAudioBlock)
+            throw std::runtime_error("document references a missing audio block");
+        nlohmann::json block = audioBlockInfoToJson(info);
+        block["audio"] = audioToJson(m_store.get(id));
+        root["blocks"].push_back(std::move(block));
+    }
+
     root["history"] = nlohmann::json::array();
     for (const auto& entry : m_history) {
         root["history"].push_back(
             {{"operation", entry.operation.toJson()},
-             {"before", selectionToJson(entry.before)},
-             {"after", selectionToJson(entry.after)}});
+             {"before", selectionToJson(entry.beforeSelection)},
+             {"after", selectionToJson(entry.afterSelection)},
+             {"beforeRegions", regionsToJson(entry.before)},
+             {"afterRegions", regionsToJson(entry.after)}});
     }
     return root;
 }
@@ -84,19 +144,69 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
             setError(error, "not a VWaveEditor project");
             return false;
         }
-        if (root.value("version", 0) != 1) {
+        const int version = root.value("version", 0);
+        if (version != 1 && version != 2) {
             setError(error, "unsupported project version");
             return false;
         }
 
-        Audio source;
-        if (!audioFromJson(root.at("source"), source, error)) return false;
-        if (source.empty()) {
-            setError(error, "project source audio is empty");
-            return false;
+        Document loaded;
+        if (version == 1) {
+            Audio source;
+            if (!audioFromJson(root.at("source"), source, error))
+                return false;
+            if (source.empty()) {
+                setError(error, "project source audio is empty");
+                return false;
+            }
+            loaded = Document::fromAudio(std::move(source));
+        } else {
+            if (!root.contains("blocks") || !root["blocks"].is_array()) {
+                setError(error, "project has no audio blocks");
+                return false;
+            }
+            for (const auto& value : root["blocks"]) {
+                AudioBlockInfo info;
+                if (!audioBlockInfoFromJson(value, info, error)) return false;
+                if (!value.contains("audio")) {
+                    setError(error, "audio block is missing its data");
+                    return false;
+                }
+                Audio audio;
+                if (!audioFromJson(value["audio"], audio, error))
+                    return false;
+                if (!loaded.m_store.restore(info, audio, error)) return false;
+            }
+            const AudioBlockId sourceBlock =
+                root.value("sourceBlock", uint64_t{0});
+            if (sourceBlock == kInvalidAudioBlock) {
+                setError(error, "project has no source block");
+                return false;
+            }
+            loaded.m_sourceBlock = sourceBlock;
+            if (!loaded.m_store.tryGet(sourceBlock, loaded.m_source, error))
+                return false;
+            std::vector<AudioRegion> regions;
+            if (root.contains("regions")) {
+                if (!regionsFromJson(root["regions"], regions, error))
+                    return false;
+            } else {
+                RegionArrangement builder;
+                if (!builder.makeFull(sourceBlock, loaded.m_source.numFrames(),
+                                      regions, error))
+                    return false;
+            }
+            if (!loaded.m_arrangement.validate(regions, loaded.m_store, error))
+                return false;
+            loaded.m_arrangement.assign(std::move(regions));
+            loaded.m_arrangedValid = false;
+            loaded.m_clipViewValid = false;
+            const AudioBlockInfo sourceInfo =
+                loaded.m_store.info(sourceBlock);
+            loaded.m_channels = sourceInfo.channels;
+            loaded.m_sampleRate = sourceInfo.sampleRate;
         }
 
-        Document loaded(std::move(source));
         loaded.m_sourcePath = root.value("sourcePath", std::string{});
         loaded.m_selection = selectionFromJson(
             root.value("selection", nlohmann::json{}));
@@ -124,68 +234,153 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
             }
         }
 
-        if (root.contains("history") && root["history"].is_array()) {
-            Audio working = loaded.m_source;
-            std::vector<Clip> clips;
-            for (const auto& item : root["history"]) {
-                Operation operation;
-                if (!Operation::fromJson(item.at("operation"), operation,
-                                         error))
-                    return false;
-                loaded.m_rendered = working;
-                loaded.m_clips.assign(clips);
-                loaded.m_cacheValid = true;
-                if (!loaded.validateRange(operation, error)) return false;
+        if (version == 1) {
+            if (root.contains("history") && root["history"].is_array()) {
+                bool clipMode = false;
+                bool baseCaptured = false;
+                AudioBlockId baseBlock = kInvalidAudioBlock;
+                int64_t baseFrames = 0;
+                for (const auto& item : root["history"]) {
+                    Operation operation;
+                    if (!Operation::fromJson(item.at("operation"), operation,
+                                             error))
+                        return false;
+                    const Selection savedBefore = selectionFromJson(
+                        item.value("before", nlohmann::json{}));
+                    Selection savedAfter = selectionFromJson(
+                        item.value("after", nlohmann::json{}));
 
-                Selection after = selectionFromJson(
-                    item.value("after", nlohmann::json{}));
-                if (!loaded.applyHistoryOperation(operation, working, clips,
-                                                  after, error)) {
-                    setError(error, "cannot replay project operation: " +
-                                        operation.label + ": " +
-                                        (error ? *error : std::string{}));
-                    return false;
+                    if (operation.kind == Operation::Kind::SetClips) {
+                        std::vector<Clip> clips;
+                        if (!clipsFromOperation(operation, clips, error))
+                            return false;
+                        if (!baseCaptured) {
+                            const Audio base = loaded.audio();
+                            if (base.empty()) {
+                                setError(error, "legacy clip base is empty");
+                                return false;
+                            }
+                            baseBlock =
+                                loaded.m_store.add(base, "Legacy clip base");
+                            baseFrames = base.numFrames();
+                            baseCaptured = true;
+                        }
+                        std::vector<AudioRegion> regions;
+                        if (!loaded.regionsFromClips(clips, baseBlock,
+                                                     baseFrames, regions,
+                                                     error))
+                            return false;
+                        loaded.m_selection = clampSelection(
+                            savedBefore, loaded.numFrames());
+                        if (!loaded.commitRegions(
+                                operation, std::move(regions), savedBefore,
+                                savedAfter, error))
+                            return false;
+                        clipMode = true;
+                    } else if (operation.kind ==
+                               Operation::Kind::FlattenClips) {
+                        if (!clipMode) {
+                            setError(error, "legacy flatten has no clips");
+                            return false;
+                        }
+                        const Audio flat = loaded.audio();
+                        AudioRegion region;
+                        region.block =
+                            loaded.m_store.add(flat, "Legacy flattened");
+                        region.sourceLength = flat.numFrames();
+                        std::vector<AudioRegion> regions{region};
+                        loaded.m_selection = clampSelection(
+                            savedBefore, loaded.numFrames());
+                        if (!loaded.commitRegions(
+                                operation, std::move(regions), savedBefore,
+                                savedAfter, error))
+                            return false;
+                        baseBlock = region.block;
+                        baseFrames = flat.numFrames();
+                        baseCaptured = true;
+                        clipMode = false;
+                    } else {
+                        if (clipMode) {
+                            setError(error,
+                                     "legacy sample operation inside clips");
+                            return false;
+                        }
+                        loaded.m_selection = clampSelection(
+                            savedBefore, loaded.numFrames());
+                        if (!loaded.apply(operation, error)) return false;
+                        if (!loaded.m_history.empty()) {
+                            HistoryEntry& entry =
+                                loaded.m_history.back();
+                            entry.beforeSelection = clampSelection(
+                                savedBefore, loaded.numFrames());
+                            entry.afterSelection = clampSelection(
+                                savedAfter, loaded.numFrames());
+                            loaded.m_selection = entry.afterSelection;
+                        }
+                        baseCaptured = false;
+                    }
                 }
-                Selection before = selectionFromJson(
-                    item.value("before", nlohmann::json{}));
-                loaded.m_history.push_back(
-                    {std::move(operation), before, after,
-                     nextHistoryStampForNewAction()});
-                loaded.captureCheckpoint(loaded.m_history.size(), working,
-                                         clips, after);
             }
-            loaded.m_rendered = std::move(working);
-            loaded.m_clips.assign(std::move(clips));
-            loaded.m_arranged = loaded.m_clips.render(loaded.m_rendered);
-            loaded.m_arrangedValid = true;
-            loaded.m_cacheValid = true;
-            loaded.m_redo.clear();
         } else {
-            loaded.m_checkpoints.clear();
-            loaded.m_rendered = loaded.m_source;
-            loaded.m_arranged = loaded.m_rendered;
-            loaded.m_cacheValid = true;
-            loaded.m_arrangedValid = true;
+            if (root.contains("history") && root["history"].is_array()) {
+                for (const auto& item : root["history"]) {
+                    Operation operation;
+                    if (item.contains("operation") &&
+                        !Operation::fromJson(item["operation"], operation,
+                                             error))
+                        return false;
+                    std::vector<AudioRegion> before;
+                    std::vector<AudioRegion> after;
+                    if (!regionsFromJson(
+                            item.value("beforeRegions",
+                                       nlohmann::json::array()),
+                            before, error))
+                        return false;
+                    if (!regionsFromJson(
+                            item.value("afterRegions",
+                                       nlohmann::json::array()),
+                            after, error))
+                        return false;
+                    if (!loaded.m_arrangement.validate(before,
+                                                       loaded.m_store,
+                                                       error) ||
+                        !loaded.m_arrangement.validate(after,
+                                                       loaded.m_store,
+                                                       error))
+                        return false;
+                    HistoryEntry entry;
+                    entry.operation = std::move(operation);
+                    entry.before = std::move(before);
+                    entry.after = std::move(after);
+                    entry.beforeSelection = selectionFromJson(
+                        item.value("before", nlohmann::json{}));
+                    entry.afterSelection = selectionFromJson(
+                        item.value("after", nlohmann::json{}));
+                    entry.stamp = nextHistoryStampForNewAction();
+                    loaded.m_history.push_back(std::move(entry));
+                }
+                loaded.m_redo.clear();
+            }
         }
 
-        const int64_t arrangedFrames = loaded.m_arranged.numFrames();
+        const int64_t frames = loaded.numFrames();
         loaded.m_markers.erase(
             std::remove_if(loaded.m_markers.begin(), loaded.m_markers.end(),
-                           [arrangedFrames](const Marker& marker) {
-                               return marker.frame > arrangedFrames;
+                           [frames](const Marker& marker) {
+                               return marker.frame > frames;
                            }),
             loaded.m_markers.end());
         loaded.m_slices.erase(
             std::remove_if(loaded.m_slices.begin(), loaded.m_slices.end(),
-                           [arrangedFrames](const Slice& slice) {
-                               return slice.range.end > arrangedFrames;
+                           [frames](const Slice& slice) {
+                               return slice.range.end > frames;
                            }),
             loaded.m_slices.end());
-
+        loaded.m_selection =
+            clampSelection(loaded.m_selection, loaded.numFrames());
+        loaded.invalidateArranged();
         ++loaded.m_revision;
         out = std::move(loaded);
-        out.m_selection =
-            clampSelection(out.m_selection, out.m_arranged.numFrames());
         return true;
     } catch (const std::exception& e) {
         setError(error, std::string("cannot load project: ") + e.what());

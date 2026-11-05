@@ -80,39 +80,39 @@ Zero-cross snapping searches a short window around each selection edge. The
 **Zero-X Cut** action snaps both edges and deletes the range in one undoable
 step.
 
-## Clip arrangement
+## Region arrangement
 
-**Make Clips** turns the active track's current edited audio into one clip. A
-clip references a source range, a local timeline position, stretch ratio,
-gain, fades, and a name. Clips can overlap; overlapping clips are mixed.
+Every track is always a region arrangement. Loading a file creates one
+full-length region over an immutable audio block; there is no **Make Clips**
+step. A split creates two regions that reference the same block without copying
+samples.
 
 Operations:
 
-- Enable **Clip Tool**, click a clip to select it, then drag the body to move
-  it or drag the orange right-edge handle to stretch it.
-- **Split Clip** splits at the playhead. The right part becomes a new clip.
-- **Delete Clip** removes the clip and leaves a gap.
-- **Repeat Clip x2** inserts additional copies after the clip and ripples
-  later clips.
-- **Move to Head** moves the selected clip to the playhead.
-- **Stretch Clip** applies the current stretch ratio to the selected clip.
-- **Flatten Clips** renders the arrangement into the track base audio and
-  clears the clip list.
+- Enable **Region Tool**, click a region to select it, then drag the body to
+  move it or drag the orange right-edge handle to stretch it. Region boundaries
+  are visible even when the tool is off.
+- **Split Region** splits at the playhead. The right part becomes a new region.
+- **Delete Region** removes the region and leaves a gap.
+- **Repeat Region x2** inserts additional copies after the region and ripples
+  later regions.
+- **Move to Head** moves the selected region to the playhead.
+- **Stretch Region** applies the current stretch ratio to the selected region.
+- **Flatten Regions** renders the arrangement into one consolidated region and
+  drops the region boundaries. Old blocks remain for undo.
 
-Clip operations use the active track's `Document` history. They share the same
-undo/redo stack as gain, fade, move, and other document edits. Undoing past the
-first clip operation returns to ordinary track audio.
+Sample edits remain available while regions exist. Gain, fades, reverse, cut,
+delete, paste, spectral processing, and other range edits render only the
+selected range into a new immutable block and replace the covered region range.
+Audio outside the edit is untouched; baked overlaps inside the selection become
+one region.
 
-While clips exist, destructive sample edits are rejected with a request to
-flatten first. This keeps source ranges stable. Gain, fades, move, stretch,
-split, repeat, and flatten remain available and undoable.
-
-Clip layout is saved through the document operation history, so projects
-round-trip without a separate clip format.
+Region operations and sample edits share the active track's undo/redo stack.
+Undo returns the previous arrangement and selection; blocks referenced by
+history are retained until the history is cleared.
 
 Automation can set gain and fades via `set_clip_gain` and `set_clip_fades`.
-The desktop UI exposes arrangement operations; gain/fades are available through
-Session, Lua/MCP, and the CLI.
+The legacy `make_clips` command is now an idempotent compatibility no-op.
 
 ## Mono and stereo tracks
 

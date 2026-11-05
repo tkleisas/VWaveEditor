@@ -35,10 +35,12 @@ bool audioBlockInfoFromJson(const nlohmann::json& json, AudioBlockInfo& out,
 class AudioBlockStore {
 public:
     AudioBlockStore() = default;
-    AudioBlockStore(const AudioBlockStore&) = delete;
-    AudioBlockStore& operator=(const AudioBlockStore&) = delete;
+    AudioBlockStore(const AudioBlockStore& other);
+    AudioBlockStore& operator=(const AudioBlockStore& other);
 
     AudioBlockId add(const Audio& audio, std::string name = {});
+    bool restore(const AudioBlockInfo& info, const Audio& audio,
+                 std::string* error = nullptr);
     bool contains(AudioBlockId id) const;
     bool tryGet(AudioBlockId id, Audio& out,
                 std::string* error = nullptr) const;

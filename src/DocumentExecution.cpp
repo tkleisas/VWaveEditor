@@ -10,6 +10,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace vwave::detail;
 
@@ -23,7 +24,7 @@ double dbToLinear(double db) { return std::pow(10.0, db / 20.0); }
 
 bool Document::validateRange(const Operation& operation,
                              std::string* error) const {
-    const int64_t frames = m_rendered.numFrames();
+    const int64_t frames = numFrames();
     auto validateSampleRange = [&](const Range& range, const char* name) {
         if (range.start < 0 || range.end > frames || range.length() <= 0) {
             setError(error, std::string(name) + " range is outside the document");
@@ -67,8 +68,7 @@ bool Document::validateRange(const Operation& operation,
         if (operation.process == Operation::Process::SpectralFilter) {
             const std::string type =
                 operation.params.value("type", std::string{});
-            const double cutoff =
-                operation.params.value("cutoffHz", 0.0);
+            const double cutoff = operation.params.value("cutoffHz", 0.0);
             if ((type != "lowpass" && type != "highpass") ||
                 !std::isfinite(cutoff) || cutoff <= 0.0) {
                 setError(error, "invalid spectral filter parameters");
@@ -107,7 +107,8 @@ bool Document::validateRange(const Operation& operation,
             setError(error, "replacement audio is empty");
             return false;
         }
-        if (operation.payload.numChannels() != m_rendered.numChannels()) {
+        if (m_channels > 0 &&
+            operation.payload.numChannels() != m_channels) {
             setError(error, "replacement channel count does not match");
             return false;
         }
@@ -121,7 +122,8 @@ bool Document::validateRange(const Operation& operation,
             setError(error, "insert audio is empty");
             return false;
         }
-        if (operation.payload.numChannels() != m_rendered.numChannels()) {
+        if (m_channels > 0 &&
+            operation.payload.numChannels() != m_channels) {
             setError(error, "insert channel count does not match");
             return false;
         }
@@ -158,7 +160,6 @@ bool Document::validateRange(const Operation& operation,
         return true;
     }
     case Operation::Kind::SetClips:
-        return true;
     case Operation::Kind::FlattenClips:
         return true;
     case Operation::Kind::Crop:
@@ -174,38 +175,15 @@ bool Document::validateRange(const Operation& operation,
             setError(error, "replacement audio is empty");
             return false;
         }
+        if (m_channels > 0 &&
+            operation.payload.numChannels() != m_channels) {
+            setError(error, "replacement channel count does not match");
+            return false;
+        }
         return true;
     }
     setError(error, "unknown operation");
     return false;
-}
-
-bool Document::applyHistoryOperation(const Operation& operation, Audio& base,
-                                     std::vector<Clip>& clips,
-                                     Selection& after,
-                                     std::string* error) const {
-    if (operation.kind == Operation::Kind::SetClips) {
-        std::vector<Clip> target;
-        if (!clipsFromOperation(operation, target, error)) return false;
-        if (target.empty()) {
-            setError(error, "clip arrangement is empty");
-            return false;
-        }
-        if (!m_clips.validate(target, base.numFrames(), error)) return false;
-        clips = std::move(target);
-        return true;
-    }
-    if (operation.kind == Operation::Kind::FlattenClips) {
-        if (clips.empty()) {
-            setError(error, "no clip arrangement to flatten");
-            return false;
-        }
-        base = ClipArrangement::render(base, clips);
-        clips.clear();
-        after = {0, base.numFrames(), base.numFrames() > 0};
-        return true;
-    }
-    return applyOperation(operation, base, after, error);
 }
 
 bool Document::applyProcess(const Operation& operation, Audio& working,
@@ -259,9 +237,10 @@ bool Document::applyProcess(const Operation& operation, Audio& working,
             for (int64_t i = 0; i < length; ++i) {
                 const float position =
                     static_cast<float>(i) / static_cast<float>(length - 1);
-                const float gain = operation.process == Operation::Process::FadeIn
-                                       ? position
-                                       : 1.0f - position;
+                const float gain =
+                    operation.process == Operation::Process::FadeIn
+                        ? position
+                        : 1.0f - position;
                 data[i] *= gain;
             }
         }
@@ -283,7 +262,8 @@ bool Document::applyProcess(const Operation& operation, Audio& working,
     }
     case Operation::Process::Silence: {
         for (int ch = 0; ch < channels; ++ch) {
-            std::fill_n(working.channel(ch) + range.start, range.length(), 0.0f);
+            std::fill_n(working.channel(ch) + range.start, range.length(),
+                        0.0f);
         }
         return true;
     }
@@ -350,7 +330,8 @@ bool Document::applyProcess(const Operation& operation, Audio& working,
         const bool normalizeIr =
             operation.params.value("normalizeIr", false);
         Audio selected = working.slice(range);
-        Audio processed = vwave::convolve(selected, operation.payload, normalizeIr);
+        Audio processed =
+            vwave::convolve(selected, operation.payload, normalizeIr);
         if (processed.empty()) {
             setError(error, "convolution failed");
             return false;
@@ -421,77 +402,71 @@ bool Document::applyProcess(const Operation& operation, Audio& working,
     return false;
 }
 
-bool Document::applyOperation(const Operation& operation, Audio& working,
-                              Selection& after, std::string* error) const {
-    switch (operation.kind) {
-    case Operation::Kind::Process: {
-        const int64_t oldFrames = working.numFrames();
-        if (!applyProcess(operation, working, error)) return false;
-        if (working.numFrames() != oldFrames) {
-            const int64_t delta = working.numFrames() - oldFrames;
-            const int64_t start =
-                std::clamp<int64_t>(operation.range.start, 0,
-                                    working.numFrames());
-            const int64_t end =
-                std::clamp<int64_t>(operation.range.end + delta, start,
-                                    working.numFrames());
-            after = {start, end, end > start};
-        }
-        return true;
+bool Document::applyProcessRange(const Operation& operation,
+                                 std::vector<AudioRegion>& out,
+                                 Selection& after, std::string* error) {
+    const Audio whole = audio();
+    Audio selected = whole.slice(operation.range);
+    if (selected.empty()) {
+        setError(error, "process range is empty");
+        return false;
     }
-    case Operation::Kind::Delete: {
-        const Range range = operation.range;
-        Audio result(working.numChannels(),
-                     working.numFrames() - range.length(),
-                     working.sampleRate());
-        for (int ch = 0; ch < working.numChannels(); ++ch) {
-            std::copy_n(working.channel(ch), range.start,
-                        result.channel(ch));
-            std::copy_n(working.channel(ch) + range.end,
-                        working.numFrames() - range.end,
-                        result.channel(ch) + range.start);
-        }
-        working = std::move(result);
+    const int64_t oldFrames = selected.numFrames();
+    Operation local = operation;
+    local.range = {0, selected.numFrames()};
+    if (!applyProcess(local, selected, error)) return false;
+    if (selected.empty()) {
+        setError(error, "process produced empty audio");
+        return false;
+    }
+    const int64_t newFrames = selected.numFrames();
+    const AudioBlockId block = m_store.add(selected, "Processed range");
+    if (!m_arrangement.replaceRange(operation.range.start,
+                                    operation.range.end, block,
+                                    newFrames, out, error))
+        return false;
+
+    after = m_selection;
+    if (newFrames != oldFrames) {
+        const int64_t start = operation.range.start;
+        const int64_t end = operation.range.end + (newFrames - oldFrames);
+        after = {start, end, end > start};
+    }
+    return true;
+}
+
+bool Document::applyRangeEdit(const Operation& operation,
+                              std::vector<AudioRegion>& out,
+                              Selection& after, std::string* error) {
+    switch (operation.kind) {
+    case Operation::Kind::Delete:
+        if (!m_arrangement.eraseRange(operation.range.start,
+                                      operation.range.end, out, error))
+            return false;
         after.clear();
         return true;
-    }
     case Operation::Kind::Insert: {
-        const int64_t position = operation.range.start;
-        const Audio& payload = operation.payload;
-        Audio result(working.numChannels(),
-                     working.numFrames() + payload.numFrames(),
-                     working.sampleRate());
-        for (int ch = 0; ch < working.numChannels(); ++ch) {
-            std::copy_n(working.channel(ch), position, result.channel(ch));
-            std::copy_n(payload.channel(ch), payload.numFrames(),
-                        result.channel(ch) + position);
-            std::copy_n(working.channel(ch) + position,
-                        working.numFrames() - position,
-                        result.channel(ch) + position + payload.numFrames());
-        }
-        working = std::move(result);
-        after = {position, position + payload.numFrames(),
-                 payload.numFrames() > 0};
+        const AudioBlockId block =
+            m_store.add(operation.payload, "Inserted audio");
+        if (!m_arrangement.insertRegion(
+                operation.range.start, block,
+                operation.payload.numFrames(), out, error))
+            return false;
+        after = {operation.range.start,
+                 operation.range.start + operation.payload.numFrames(),
+                 operation.payload.numFrames() > 0};
         return true;
     }
     case Operation::Kind::ReplaceRange: {
-        const Range range = operation.range;
-        const Audio& payload = operation.payload;
-        Audio result(working.numChannels(),
-                     working.numFrames() - range.length() + payload.numFrames(),
-                     working.sampleRate());
-        for (int ch = 0; ch < working.numChannels(); ++ch) {
-            std::copy_n(working.channel(ch), range.start,
-                        result.channel(ch));
-            std::copy_n(payload.channel(ch), payload.numFrames(),
-                        result.channel(ch) + range.start);
-            std::copy_n(working.channel(ch) + range.end,
-                        working.numFrames() - range.end,
-                        result.channel(ch) + range.start + payload.numFrames());
-        }
-        working = std::move(result);
-        after = {range.start, range.start + payload.numFrames(),
-                 payload.numFrames() > 0};
+        const AudioBlockId block =
+            m_store.add(operation.payload, "Replacement audio");
+        if (!m_arrangement.replaceRange(
+                operation.range.start, operation.range.end, block,
+                operation.payload.numFrames(), out, error))
+            return false;
+        after = {operation.range.start,
+                 operation.range.start + operation.payload.numFrames(),
+                 operation.payload.numFrames() > 0};
         return true;
     }
     case Operation::Kind::MoveRange: {
@@ -500,45 +475,30 @@ bool Document::applyOperation(const Operation& operation, Audio& working,
         const bool copy = operation.params.value("copy", false);
         const int64_t destination =
             operation.params.value("destination", int64_t{0});
+        const Audio whole = audio();
+        Audio selected = whole.slice(source);
+        if (selected.empty()) {
+            setError(error, "move source is empty");
+            return false;
+        }
+        const AudioBlockId block = m_store.add(selected, "Moved range");
         if (copy) {
-            Audio result(working.numChannels(),
-                         working.numFrames() + length,
-                         working.sampleRate());
-            for (int ch = 0; ch < working.numChannels(); ++ch) {
-                std::copy_n(working.channel(ch), destination,
-                            result.channel(ch));
-                std::copy_n(working.channel(ch) + source.start, length,
-                            result.channel(ch) + destination);
-                std::copy_n(working.channel(ch) + destination,
-                            working.numFrames() - destination,
-                            result.channel(ch) + destination + length);
-            }
-            working = std::move(result);
+            if (!m_arrangement.insertRegion(destination, block, length, out,
+                                            error))
+                return false;
             after = {destination, destination + length, length > 0};
             return true;
         }
-
-        Audio rest(working.numChannels(), working.numFrames() - length,
-                   working.sampleRate());
-        for (int ch = 0; ch < working.numChannels(); ++ch) {
-            std::copy_n(working.channel(ch), source.start, rest.channel(ch));
-            std::copy_n(working.channel(ch) + source.end,
-                        working.numFrames() - source.end,
-                        rest.channel(ch) + source.start);
-        }
+        std::vector<AudioRegion> erased;
+        if (!m_arrangement.eraseRange(source.start, source.end, erased,
+                                      error))
+            return false;
         const int64_t insertAt =
             destination <= source.start ? destination : destination - length;
-        Audio result(working.numChannels(), working.numFrames(),
-                     working.sampleRate());
-        for (int ch = 0; ch < working.numChannels(); ++ch) {
-            std::copy_n(rest.channel(ch), insertAt, result.channel(ch));
-            std::copy_n(working.channel(ch) + source.start, length,
-                        result.channel(ch) + insertAt);
-            std::copy_n(rest.channel(ch) + insertAt,
-                        rest.numFrames() - insertAt,
-                        result.channel(ch) + insertAt + length);
-        }
-        working = std::move(result);
+        RegionArrangement builder;
+        builder.assign(std::move(erased));
+        if (!builder.insertRegion(insertAt, block, length, out, error))
+            return false;
         after = {insertAt, insertAt + length, length > 0};
         return true;
     }
@@ -547,38 +507,51 @@ bool Document::applyOperation(const Operation& operation, Audio& working,
         const int64_t length = source.length();
         const int repeats = operation.params.value("repeats", 1);
         const int64_t added = length * static_cast<int64_t>(repeats);
-        Audio result(working.numChannels(), working.numFrames() + added,
-                     working.sampleRate());
-        for (int ch = 0; ch < working.numChannels(); ++ch) {
-            std::copy_n(working.channel(ch), source.end, result.channel(ch));
-            for (int repeat = 0; repeat < repeats; ++repeat) {
-                std::copy_n(working.channel(ch) + source.start, length,
-                            result.channel(ch) + source.end +
-                                static_cast<int64_t>(repeat) * length);
-            }
-            std::copy_n(working.channel(ch) + source.end,
-                        working.numFrames() - source.end,
-                        result.channel(ch) + source.end + added);
+        const Audio whole = audio();
+        const Audio selected = whole.slice(source);
+        if (selected.empty()) {
+            setError(error, "repeat source is empty");
+            return false;
         }
-        working = std::move(result);
+        Audio repeated(selected.numChannels(), added, selected.sampleRate());
+        for (int ch = 0; ch < selected.numChannels(); ++ch) {
+            for (int repeat = 0; repeat < repeats; ++repeat) {
+                std::copy_n(selected.channel(ch), length,
+                            repeated.channel(ch) + repeat * length);
+            }
+        }
+        const AudioBlockId block =
+            m_store.add(repeated, "Repeated range");
+        if (!m_arrangement.insertRegion(source.end, block, added, out, error))
+            return false;
         after = {source.start, source.end + added, added > 0};
         return true;
     }
-    case Operation::Kind::SetClips:
-    case Operation::Kind::FlattenClips:
-        setError(error, "clip operation requires arrangement state");
-        return false;
     case Operation::Kind::Crop:
-        working = working.slice(operation.range);
-        after = {0, working.numFrames(), working.numFrames() > 0};
+        if (!m_arrangement.cropRange(operation.range.start,
+                                     operation.range.end, out, error))
+            return false;
+        {
+            RegionArrangement builder;
+            builder.assign(out);
+            const int64_t frames = builder.durationFrames();
+            after = {0, frames, frames > 0};
+        }
         return true;
     case Operation::Kind::Resample: {
-        const int64_t oldFrames = working.numFrames();
-        Audio result = vwave::resample(working, operation.sampleRate);
-        if (result.empty() && !working.empty()) {
+        const Audio current = audio();
+        const int64_t oldFrames = current.numFrames();
+        Audio result = vwave::resample(current, operation.sampleRate);
+        if (result.empty() && !current.empty()) {
             setError(error, "resampling failed");
             return false;
         }
+        const AudioBlockId block =
+            m_store.add(result, "Resampled audio");
+        RegionArrangement builder;
+        if (!builder.makeFull(block, result.numFrames(), out, error))
+            return false;
+        after = m_selection;
         if (after.active && oldFrames > 0) {
             const double scale = static_cast<double>(result.numFrames()) /
                                  static_cast<double>(oldFrames);
@@ -588,88 +561,55 @@ bool Document::applyOperation(const Operation& operation, Audio& working,
                 std::llround(static_cast<double>(after.end) * scale));
             after.active = after.end > after.start;
         }
-        working = std::move(result);
         return true;
     }
-    case Operation::Kind::ReplaceAll:
-        working = operation.payload;
-        after = {0, working.numFrames(), working.numFrames() > 0};
+    case Operation::Kind::ReplaceAll: {
+        const AudioBlockId block =
+            m_store.add(operation.payload, "Replaced audio");
+        RegionArrangement builder;
+        if (!builder.makeFull(block, operation.payload.numFrames(), out,
+                              error))
+            return false;
+        after = {0, operation.payload.numFrames(),
+                 operation.payload.numFrames() > 0};
         return true;
+    }
+    case Operation::Kind::Process:
+    case Operation::Kind::SetClips:
+    case Operation::Kind::FlattenClips:
+        break;
     }
     setError(error, "unknown operation kind");
     return false;
 }
 
+bool Document::applyRegions(const Operation& operation,
+                            std::vector<AudioRegion>& out, Selection& after,
+                            std::string* error) {
+    if (operation.kind == Operation::Kind::Process)
+        return applyProcessRange(operation, out, after, error);
+    return applyRangeEdit(operation, out, after, error);
+}
+
 bool Document::apply(const Operation& operation, std::string* error) {
     if (error) error->clear();
-    if (!m_cacheValid) rebuild();
+    if (!validateRange(operation, error)) return false;
 
     if (operation.kind == Operation::Kind::SetClips) {
         std::vector<Clip> clips;
         if (!clipsFromOperation(operation, clips, error)) return false;
-        if (clips.empty()) {
-            setError(error, "clip arrangement is empty");
-            return false;
-        }
-        if (!m_clips.validate(clips, m_rendered.numFrames(), error))
-            return false;
-        const Selection before = m_selection;
-        m_clips.assign(std::move(clips));
-        refreshArranged();
-        ++m_revision;
-        m_selection = clampSelection(m_selection, m_arranged.numFrames());
-        m_history.push_back(
-            {operation, before, m_selection, nextHistoryStampForNewAction()});
-        m_redo.clear();
-        dropCheckpointsAtOrAfter(m_history.size());
-        captureCheckpoint();
-        return true;
+        return setClipArrangementInternal(
+            std::move(clips), operation.label, error);
     }
-
     if (operation.kind == Operation::Kind::FlattenClips) {
-        if (m_clips.empty()) {
-            setError(error, "no clip arrangement to flatten");
-            return false;
-        }
-        const Selection before = m_selection;
-        m_rendered = m_clips.render(m_rendered);
-        m_clips.clear();
-        m_arranged = m_rendered;
-        m_arrangedValid = true;
-        m_cacheValid = true;
-        ++m_revision;
-        m_selection = clampSelection(m_selection, m_arranged.numFrames());
-        m_history.push_back(
-            {operation, before, m_selection, nextHistoryStampForNewAction()});
-        m_redo.clear();
-        dropCheckpointsAtOrAfter(m_history.size());
-        captureCheckpoint();
-        return true;
+        return flattenClipsInternal(operation, error);
     }
 
-    if (!m_clips.empty()) {
-        setError(error, "flatten the clip arrangement before destructive edits");
-        return false;
-    }
-    if (!validateRange(operation, error)) return false;
-
-    Audio working = m_rendered;
     Selection before = m_selection;
-    Selection after = m_selection;
-    if (!applyOperation(operation, working, after, error)) return false;
-
-    m_rendered = std::move(working);
-    m_arranged = m_rendered;
-    m_cacheValid = true;
-    m_arrangedValid = true;
-    ++m_revision;
-    m_selection = clampSelection(after, m_rendered.numFrames());
-    m_history.push_back(
-        {operation, before, m_selection, nextHistoryStampForNewAction()});
-    m_redo.clear();
-    dropCheckpointsAtOrAfter(m_history.size());
-    captureCheckpoint();
-    return true;
+    Selection after = before;
+    std::vector<AudioRegion> regions;
+    if (!applyRegions(operation, regions, after, error)) return false;
+    return commitRegions(operation, std::move(regions), before, after, error);
 }
 
 } // namespace vwave

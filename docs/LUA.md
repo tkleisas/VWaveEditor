@@ -135,12 +135,12 @@ a `tracks` array. `vwave.tracks()` returns the track list directly.
 default. `combine_mono_tracks` creates a new stereo track and mutes the sources;
 `padding` accepts `back`, `front`, or `both`.
 
-## Clips
+## Regions
 
-Clip arrangements share the active track document's undo stack:
+Every track is a region arrangement. Region edits share the active track
+document's undo stack:
 
 ```lua
-vwave.apply("make_clips")
 vwave.apply("split_clip", { at = 1.5 })
 vwave.apply("move_clip", { clip = 1, at = 4.0 })
 vwave.apply("stretch_clip", { clip = 1, ratio = 1.5 })
@@ -151,10 +151,12 @@ vwave.apply("set_clip_fades",
 vwave.apply("flatten_clips")
 ```
 
-Clip times are local to the track arrangement. `make_clips` creates one clip
-from the current edited audio. Destructive sample edits are rejected until the
-clip arrangement is flattened. Track info includes `clip_count` and a `clips`
-array with source range, timeline position, stretch, gain, and fade values.
+Region times are local to the track arrangement. `make_clips` remains an
+idempotent compatibility command. `flatten_clips` now consolidates the
+arrangement into one region. Sample edits no longer require flattening; they
+render the selected range into a new immutable block. Track info includes
+`clip_count` and a `clips` array with source range, timeline position, stretch,
+gain, and fade values.
 
 ## Analysis and slicing
 

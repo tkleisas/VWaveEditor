@@ -339,10 +339,10 @@ the range and shifts subsequent audio. `stretch_track` ignores the selection
 and stretches the entire active track. `split_stereo_track` and
 `combine_mono_tracks` are also available through `vwave command`.
 
-Clip commands (`make_clips`, `flatten_clips`, `split_clip`, `delete_clip`,
+Region commands (`make_clips`, `flatten_clips`, `split_clip`, `delete_clip`,
 `move_clip`, `stretch_clip`, `repeat_clip`, `set_clip_gain`,
-`set_clip_fades`) operate on a loaded Session or `.vwdoc` project. Use the
-`vwave project` subcommands above for persistent multi-step clip editing.
+`set_clip_fades`) operate on a loaded Session or `.vwdoc` project. Every track
+is region-based; `make_clips` is an idempotent compatibility no-op.
 
 ## lua
 

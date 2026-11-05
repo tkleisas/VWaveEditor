@@ -135,39 +135,36 @@ void App::openTrackContextMenu(int trackIndex, int x, int y) {
             std::string(vwave::stereoPaddingName(m_stereo.padding())),
         [this] { cycleStereoPadding(); });
     separator();
-    const bool clipMode =
+    const bool hasRegions =
         m_timeline.track(trackIndex).document.hasClips();
-    add(clipMode ? "Flatten Clips" : "Make Clips", [this, trackIndex, clipMode] {
+    add("Flatten Regions", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
-        if (clipMode)
-            flattenClips();
-        else
-            makeClips();
-    }, true);
-    add("Clip Tool: On/Off", [this, trackIndex] {
+        flattenClips();
+    }, hasRegions);
+    add("Region Tool: On/Off", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
         toggleClipTool();
-    }, clipMode);
-    add("Split Clip at Playhead", [this, trackIndex] {
+    }, hasRegions);
+    add("Split Region at Playhead", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
         splitClipAtPlayhead();
-    }, clipMode);
-    add("Delete Clip", [this, trackIndex] {
+    }, hasRegions);
+    add("Delete Region", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
         deleteSelectedClip();
-    }, clipMode);
-    add("Repeat Clip x2", [this, trackIndex] {
+    }, hasRegions);
+    add("Repeat Region x2", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
         repeatSelectedClip(2);
-    }, clipMode);
-    add("Move Clip to Playhead", [this, trackIndex] {
+    }, hasRegions);
+    add("Move Region to Playhead", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
         moveSelectedClipToPlayhead();
-    }, clipMode);
-    add("Stretch Clip", [this, trackIndex] {
+    }, hasRegions);
+    add("Stretch Region", [this, trackIndex] {
         m_timeline.setActiveTrack(trackIndex);
         stretchSelectedClip();
-    }, clipMode);
+    }, hasRegions);
     separator();
     add("Delete Track", [this, trackIndex] { removeTrack(trackIndex); });
     m_contextMenuOpen = true;

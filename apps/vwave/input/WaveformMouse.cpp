@@ -113,20 +113,20 @@ void App::handleWaveformMouseDown(const SDL_MouseButtonEvent& event) {
             m_playhead = clampFrame(hit.frame, m_timeline.lengthFrames());
             m_timeline.clearSelection();
             if (!track.document.hasClips()) {
-                setStatus("Make clips first");
+                setStatus("Track has no regions");
                 return;
             }
             if (hit.kind != TimelineHitKind::ClipBody &&
                 hit.kind != TimelineHitKind::ClipEnd) {
                 m_clips.setSelectedClip(-1);
-                setStatus("Click inside a clip");
+                setStatus("Click inside a region");
                 return;
             }
             if (hit.clipIndex < 0 ||
                 static_cast<size_t>(hit.clipIndex) >=
                     track.document.clips().size()) {
                 m_clips.setSelectedClip(-1);
-                setStatus("Click inside a clip");
+                setStatus("Click inside a region");
                 return;
             }
             m_clips.setSelectedClip(hit.clipIndex);

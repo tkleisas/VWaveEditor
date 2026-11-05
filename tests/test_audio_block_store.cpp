@@ -189,3 +189,36 @@ VWTEST("audio block info round-trips through json") {
     CHECK_EQ(parsed.name, info.name);
     CHECK_EQ(parsed.file, info.file);
 }
+
+VWTEST("audio block store copy preserves ids and shares samples") {
+    AudioBlockStore store;
+    const Audio audio = constantAudio(1, 32, 0.75f);
+    const AudioBlockId id = store.add(audio, "copy source");
+    AudioBlockStore copy = store;
+    CHECK(copy.contains(id));
+    Audio loaded;
+    REQUIRE(copy.tryGet(id, loaded));
+    CHECK(loaded.equals(audio));
+    const AudioBlockId added = copy.add(constantAudio(1, 8, 0.25f), "new");
+    CHECK(added != id);
+    CHECK(store.size() == size_t{1});
+    CHECK(copy.size() == size_t{2});
+}
+
+VWTEST("audio block store restores persisted block ids") {
+    AudioBlockStore store;
+    const Audio audio = constantAudio(2, 16, 0.5f);
+    const AudioBlockId original = store.add(audio, "original");
+    const AudioBlockInfo info = store.info(original);
+
+    AudioBlockStore restored;
+    std::string error;
+    REQUIRE(restored.restore(info, audio, &error));
+    CHECK(error.empty());
+    CHECK(restored.contains(original));
+    Audio loaded;
+    REQUIRE(restored.tryGet(original, loaded));
+    CHECK(loaded.equals(audio));
+    CHECK(!restored.restore(info, audio, &error));
+    CHECK(!error.empty());
+}

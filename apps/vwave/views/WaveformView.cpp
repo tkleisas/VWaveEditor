@@ -325,7 +325,7 @@ void App::drawWaveform(const SDL_Rect& area) {
         if (box.w > 48) {
             const std::string name =
                 clip.name.empty()
-                    ? "Clip " + std::to_string(clipIndex + 1)
+                    ? "Region " + std::to_string(clipIndex + 1)
                     : clip.name;
             drawText(truncateText(name, fontSmall(), box.w - 8), box.x + 4,
                      box.y + 5, selected ? kText : kTextDim, fontSmall());

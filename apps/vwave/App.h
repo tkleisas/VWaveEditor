@@ -223,7 +223,6 @@ private:
     void combineActiveMono(int direction);
     void cycleStereoPadding();
     void toggleClipTool();
-    void makeClips();
     void flattenClips();
     void splitClipAtPlayhead();
     void deleteSelectedClip();

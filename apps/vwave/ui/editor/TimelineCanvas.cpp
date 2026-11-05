@@ -41,8 +41,7 @@ void TimelineCanvas::layout(const vwave::Timeline& timeline,
         row.hasAudio = !track.empty && frames > 0;
         m_rows.push_back(row);
 
-        if (!layout.clipToolEnabled || track.document.clips().empty())
-            continue;
+        if (track.document.clips().empty()) continue;
         const auto& clips = track.document.clips();
         for (size_t clipIndex = 0; clipIndex < clips.size(); ++clipIndex) {
             const auto& clip = clips[clipIndex];

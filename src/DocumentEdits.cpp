@@ -48,13 +48,12 @@ bool Document::timeStretch(double ratio, StretchAlgorithm algorithm,
 
 bool Document::timeStretchTrack(double ratio, StretchAlgorithm algorithm,
                                 std::string* error) {
-    if (!m_cacheValid) rebuild();
-    if (m_rendered.empty()) {
+    const int64_t frames = numFrames();
+    if (frames <= 0) {
         setError(error, "document is empty");
         return false;
     }
-    return apply(Operation::timeStretch(ratio, {0, m_rendered.numFrames()},
-                                        algorithm),
+    return apply(Operation::timeStretch(ratio, {0, frames}, algorithm),
                  error);
 }
 
@@ -94,14 +93,12 @@ bool Document::convolve(const Audio& impulseResponse, bool normalizeIr,
 }
 
 bool Document::copySelection() {
-    if (!m_cacheValid) rebuild();
     if (!m_selection.active || m_selection.empty()) return false;
     m_clipboard = audio().slice(m_selection.range());
     return true;
 }
 
 bool Document::cutSelection(std::string* error) {
-    if (!m_cacheValid) rebuild();
     if (!m_selection.active || m_selection.empty()) return false;
     if (!copySelection()) return false;
     return deleteSelection(error);
@@ -142,8 +139,7 @@ bool Document::paste(std::string* error) {
         return apply(Operation::replaceRange(m_selection.range(), m_clipboard),
                      error);
     }
-    return apply(
-        Operation::insert(m_rendered.numFrames(), m_clipboard), error);
+    return apply(Operation::insert(numFrames(), m_clipboard), error);
 }
 
 bool Document::pasteAt(int64_t frame, std::string* error) {

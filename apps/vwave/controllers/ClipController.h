@@ -27,7 +27,6 @@ public:
     void onTrackChanged(bool hasClips);
     void afterEdit(const vwave::Document& document);
     void toggleTool();
-    void make();
     void flatten();
     void splitAtPlayhead();
     void deleteSelected();

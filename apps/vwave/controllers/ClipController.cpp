@@ -50,7 +50,7 @@ void ClipController::afterEdit(const vwave::Document& document) {
 void ClipController::toggleTool() {
     auto* document = activeDocument();
     if (!document || !document->hasClips()) {
-        m_status("Make clips first");
+        m_status("Track has no regions");
         return;
     }
     m_toolEnabled = !m_toolEnabled;
@@ -59,27 +59,7 @@ void ClipController::toggleTool() {
         m_selected = -1;
         m_selected = currentIndex();
     }
-    m_status(m_toolEnabled ? "Clip tool enabled" : "Clip tool disabled");
-}
-
-void ClipController::make() {
-    auto* document = activeDocument();
-    if (!document || document->audio().empty()) {
-        m_status("Open a track first");
-        return;
-    }
-    if (document->hasClips()) {
-        m_status("Track already has clips");
-        return;
-    }
-    m_runEdit([document](std::string* error) {
-        return document->createClipArrangement(error);
-    }, "Created clip arrangement");
-    if (document->hasClips()) {
-        m_selected = 0;
-        m_toolEnabled = true;
-        m_timeline.clearSelection();
-    }
+    m_status(m_toolEnabled ? "Region tool enabled" : "Region tool disabled");
 }
 
 void ClipController::flatten() {
@@ -90,7 +70,7 @@ void ClipController::flatten() {
     }
     m_runEdit([document](std::string* error) {
         return document->flattenClips(error);
-    }, "Flattened clip arrangement");
+    }, "Flattened regions");
     m_selected = -1;
     m_toolEnabled = false;
 }
@@ -98,7 +78,7 @@ void ClipController::flatten() {
 void ClipController::splitAtPlayhead() {
     auto* document = activeDocument();
     if (!document || !document->hasClips()) {
-        m_status("Make clips first");
+        m_status("Track has no regions");
         return;
     }
     const auto& track = m_timeline.track(m_timeline.activeTrack());
@@ -106,7 +86,7 @@ void ClipController::splitAtPlayhead() {
         std::max<int64_t>(0, m_playhead - track.startFrame);
     m_runEdit([document, frame](std::string* error) {
         return document->splitClipAt(frame, error);
-    }, "Split clip");
+    }, "Split region");
     m_selected = document->clipIndexAt(frame);
 }
 
@@ -119,7 +99,7 @@ void ClipController::deleteSelected() {
     }
     m_runEdit([document, index](std::string* error) {
         return document->deleteClip(static_cast<size_t>(index), error);
-    }, "Deleted clip");
+    }, "Deleted region");
     afterEdit(*document);
 }
 
@@ -133,7 +113,7 @@ void ClipController::repeatSelected(int count) {
     count = std::clamp(count, 1, 64);
     m_runEdit([document, index, count](std::string* error) {
         return document->repeatClip(static_cast<size_t>(index), count, error);
-    }, "Repeated clip");
+    }, "Repeated region");
     m_selected = index;
 }
 
@@ -149,7 +129,7 @@ void ClipController::moveSelectedToPlayhead() {
         std::max<int64_t>(0, m_playhead - track.startFrame);
     m_runEdit([document, index, frame](std::string* error) {
         return document->moveClip(static_cast<size_t>(index), frame, error);
-    }, "Moved clip to playhead");
+    }, "Moved region to playhead");
     m_selected = index;
 }
 
@@ -163,7 +143,7 @@ void ClipController::stretchSelected() {
     m_runEdit([document, index, this](std::string* error) {
         return document->stretchClip(static_cast<size_t>(index),
                                      m_stretchRatio.value, error);
-    }, "Stretched clip");
+    }, "Stretched region");
     m_selected = index;
 }
 

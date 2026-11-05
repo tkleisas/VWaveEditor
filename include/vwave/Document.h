@@ -1,9 +1,11 @@
 #pragma once
 
 #include "vwave/Audio.h"
+#include "vwave/AudioBlockStore.h"
 #include "vwave/AudioIO.h"
 #include "vwave/ClipArrangement.h"
 #include "vwave/HistoryStamp.h"
+#include "vwave/RegionArrangement.h"
 
 #include <nlohmann/json.hpp>
 
@@ -148,6 +150,8 @@ public:
 
     bool hasClips() const;
     const std::vector<Clip>& clips() const;
+    const std::vector<AudioRegion>& regions() const;
+    int64_t regionDurationFrames() const;
     int clipIndexAt(int64_t frame) const;
     bool createClipArrangement(std::string* error = nullptr);
     bool setClipArrangement(std::vector<Clip> clips, std::string label,
@@ -175,7 +179,7 @@ public:
     HistoryStamp latestUndoStamp() const;
     HistoryStamp latestRedoStamp() const;
     void discardStaleRedo();
-    size_t checkpointCount() const { return m_checkpoints.size(); }
+    size_t checkpointCount() const { return 0; }
     std::string undoLabel() const;
     std::string redoLabel() const;
     std::vector<Operation> operationHistory() const;
@@ -232,51 +236,58 @@ public:
     void clearSlices();
 
 private:
-    bool rebuild();
-    bool validateRange(const Operation& operation, std::string* error) const;
+    bool initializeSource();
+    bool currentFormat(int& channels, int& sampleRate) const;
+    bool validateRange(const Operation& operation,
+                       std::string* error = nullptr) const;
     bool applyProcess(const Operation& operation, Audio& working,
                       std::string* error) const;
-    bool applyOperation(const Operation& operation, Audio& working,
-                        Selection& after, std::string* error) const;
-    bool applyHistoryOperation(const Operation& operation, Audio& base,
-                               std::vector<Clip>& clips, Selection& after,
-                               std::string* error) const;
-    void refreshArranged();
+    bool applyRegions(const Operation& operation,
+                      std::vector<AudioRegion>& out, Selection& after,
+                      std::string* error);
+    bool applyProcessRange(const Operation& operation,
+                           std::vector<AudioRegion>& out,
+                           Selection& after, std::string* error);
+    bool applyRangeEdit(const Operation& operation,
+                        std::vector<AudioRegion>& out, Selection& after,
+                        std::string* error);
+    bool commitRegions(Operation operation, std::vector<AudioRegion> regions,
+                       Selection before, Selection after,
+                       std::string* error = nullptr);
+    bool setClipArrangementInternal(std::vector<Clip> clips,
+                                    const std::string& label,
+                                    std::string* error);
+    bool flattenClipsInternal(const Operation& operation,
+                              std::string* error);
+    bool regionsFromClips(const std::vector<Clip>& clips,
+                          AudioBlockId block, int64_t baseFrames,
+                          std::vector<AudioRegion>& out,
+                          std::string* error) const;
+    void invalidateArranged();
+    void refreshClipView() const;
 
     struct HistoryEntry {
         Operation operation;
-        Selection before;
-        Selection after;
+        std::vector<AudioRegion> before;
+        std::vector<AudioRegion> after;
+        Selection beforeSelection;
+        Selection afterSelection;
         HistoryStamp stamp;
     };
 
-    struct Checkpoint {
-        size_t historySize = 0;
-        Audio rendered;
-        std::vector<Clip> clips;
-        Selection selection;
-    };
-
-    static constexpr size_t kCheckpointInterval = 16;
-    static constexpr size_t kMaxCheckpoints = 32;
-
-    void captureCheckpoint();
-    void captureCheckpoint(size_t historySize, const Audio& rendered,
-                           const std::vector<Clip>& clips,
-                           const Selection& selection);
-    void dropCheckpointsAtOrAfter(size_t historySize);
-    const Checkpoint* checkpointFor(size_t historySize) const;
-
     Audio m_source;
+    AudioBlockStore m_store;
+    AudioBlockId m_sourceBlock = kInvalidAudioBlock;
+    RegionArrangement m_arrangement;
+    mutable Audio m_arranged;
+    mutable bool m_arrangedValid = false;
+    mutable std::vector<Clip> m_clipView;
+    mutable bool m_clipViewValid = false;
+    int m_channels = 0;
+    int m_sampleRate = 48000;
     std::vector<HistoryEntry> m_history;
     std::vector<HistoryEntry> m_redo;
-    std::vector<Checkpoint> m_checkpoints;
-    mutable Audio m_rendered;
-    mutable Audio m_arranged;
-    mutable bool m_cacheValid = false;
-    mutable bool m_arrangedValid = false;
     uint64_t m_revision = 0;
-    ClipArrangement m_clips;
     Selection m_selection;
     Audio m_clipboard;
     std::vector<Marker> m_markers;

@@ -128,19 +128,22 @@ reference for as long as they use it.
 
 ## Migration stages
 
-1. **Core model** (this stage): `AudioBlockStore` and `RegionArrangement` with
+1. **Core model** (done): `AudioBlockStore` and `RegionArrangement` with
    persistence, checksums, cache eviction, split/move/stretch/repeat/render
    and tests.
-2. **Document integration**: documents always own one region arrangement;
-   import creates a full region; sample edits use range-local derived blocks;
-   history stores arrangement snapshots plus block references.
-3. **Project format v2**: manifest plus block directory, with migration for
-   current v1 projects.
-4. **Editor integration**: remove `Make Clips`/`Flatten Clips`; the region
-   tool is always available; splitting, trimming, moving, and stretching are
-   ordinary track edits.
-5. **Garbage collection and durability**: reachability analysis, history
-   pruning, crash recovery, and background prefetch/write-back.
+2. **Document integration** (done): documents always own one region
+   arrangement; import creates a full region; sample edits use range-local
+   derived blocks; history stores arrangement snapshots plus block references.
+3. **Project format v2** (done, embedded blocks): v2 projects serialize
+   reachable blocks, arrangements, and history snapshots; legacy v1 projects
+   migrate by replaying operations into the region model. The project work-area
+   directory and live spill/LRU wiring remain.
+4. **Editor integration** (done for Make Clips): the editor no longer creates a
+   clip mode. Region boundaries are always visible, region operations are
+   ordinary track edits, and sample edits no longer require flattening.
+5. **Garbage collection and durability** (next): reachability analysis,
+   history pruning, work-area persistence, crash recovery, and background
+   prefetch/write-back.
 
 ## Tests
 

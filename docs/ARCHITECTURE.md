@@ -110,82 +110,45 @@ unselected prefix/suffix) or rendering the processed selection to a new track at
 its timeline position. Whole-track stretch always edits the active track in
 place.
 
-## Non-destructive document (current v1)
+## Non-destructive document (v2)
 
-The current document implementation is the v1 operation-replay model described
-below. It is being replaced by the block/region model in `docs/AUDIO_MODEL.md`;
-the existing project format remains readable during the migration.
+A document always owns one region arrangement and one immutable block store:
 
-A document stores:
+- the original imported audio is a source block;
+- an `AudioRegion` references a block and adds source offset/length, timeline
+  position, stretch, gain, fades, and a name;
+- a new import starts as one full-length region;
+- splitting creates two regions referencing the same block;
+- moving, trimming, stretching, repeating, or fading a region changes metadata
+  only;
+- a sample-changing operation renders only the selected range, stores the
+  result as a new immutable block, and replaces the covered region range while
+  preserving regions outside the edit;
+- delete/insert/replace/crop/repeat update the arrangement with ripple
+  semantics and create new blocks only where audio is inserted or replaced.
 
-- immutable source `Audio`;
-- ordered `HistoryEntry` records: operation, selection before, selection after;
-- redo stack;
-- clipboard;
-- markers and slices;
-- source path and project path;
-- a rendered audio cache.
+Rendering is a separate cache. `Document::audio()` mixes the arrangement and
+returns copy-on-write audio; editing never mutates a block.
 
-Editing applies an operation to the current rendered buffer, records the
-result, and keeps the source untouched. Undo removes the last history entry
-and replays the remaining operations from the nearest checkpoint (or from the
-source when none is available). Redo applies the operation again and restores
-its post-operation selection. Checkpoints are captured every 16 operations and
-capped at 32, so recent undo work is bounded while snapshot memory remains
-bounded as well.
+Undo/redo stores before/after arrangement snapshots, selections, labels, and
+history stamps. Blocks referenced by history remain available until history is
+cleared or compacted. Project format v2 embeds the reachable blocks and
+arrangement/history snapshots in the project JSON. Legacy v1 projects are
+migrated on load by replaying their operation history into the region model;
+clip runs reference a shared legacy base block so gains/fades are not applied
+twice.
 
-Supported operation classes:
+The v1 operation-replay and optional clip-overlay model has been removed.
+`Document` still exposes clip-shaped compatibility accessors for the editor and
+automation; they are a view over regions and do not gate destructive edits.
 
-Operation construction and serialization live in `Operation.cpp`; shared
-document JSON/selection helpers live in `DocumentInternal.h`.
-
-| Class | Operations |
-| --- | --- |
-| Process | gain, normalize, fades, reverse, invert, silence, DC removal, stretch, pitch, spectral, convolution |
-| Timeline | delete, insert, replace range, move range, repeat range, crop |
-| Arrangement | set clips, flatten clips |
-| Format | resample, replace all |
-
-Move, copy, and repeat are deterministic operations stored by range and
-destination/count, so project history remains compact. Repeat is a ripple
-insert. Whole-track stretch is a normal time-stretch process over the full
-document range.
-
-This design makes undo exact, keeps the original file reference intact, and
-allows project files to preserve editing history. Checkpoints use copy-on-write
-audio buffers, so they are cheap to retain until a later operation mutates the
-working buffer. Project files store operations and reconstruct checkpoints on
-load rather than serializing snapshot data.
-
-## Clip arrangement
-
-`ClipArrangement` owns clip validation, rendering, source-range operations, and
-clip gain/fades. `Document` delegates clip edits to it while retaining undo
-history and project serialization.
-
-A document can own a clip arrangement in addition to its base audio:
-
-```text
-base audio = source + non-clip document history
-arrangement = ordered clips over base ranges
-audio() = rendered arrangement (or base audio when no clips)
-```
-
-`Document::Clip` stores a source range, local timeline start, stretch ratio,
-gain, fades, and name. Rendering slices the base audio, time-stretches when
-needed with WSOLA, applies gain/fades, and mixes clips into the output. Gaps are
-silence; overlapping clips are summed.
-
-Clip operations are represented by `SetClips` operations whose payload is the
-target clip list. `FlattenClips` renders the arrangement into the base audio and
-clears the list. Both replay deterministically, so clip edits share the normal
-document undo/redo stack and are stored in the same project history. Destructive
-sample operations are rejected while clips exist; flatten first. This keeps
-clip source ranges stable and avoids ambiguous edits across the arrangement.
+Project work-area directories and live block spill/LRU integration are the next
+storage step; the core `AudioBlockStore` already supports them. See
+`docs/AUDIO_MODEL.md`.
 
 Document-level audio import/export and project JSON persistence live in
-`DocumentIO.cpp`, operation execution in `DocumentExecution.cpp`, and
-history replay in `DocumentHistory.cpp`; shared JSON/selection helpers live in
+`DocumentIO.cpp`, operation execution in `DocumentExecution.cpp`, and history
+in `DocumentHistory.cpp`; shared JSON/selection helpers live in
 `DocumentInternal.h`.
 
 ## Persistence
@@ -468,7 +431,11 @@ The suite covers:
 
 ## Known limitations
 
-- Undo beyond the oldest retained checkpoint replays from the source.
+- Project v2 currently embeds reachable audio blocks in the project JSON. The
+  project work-area directory, live block spill/LRU cache, and garbage
+  collection are the next storage step.
+- Undo history is retained in full; history pruning/compaction is not yet
+  implemented.
 - Mixdown export warns on peaks above 0 dBFS but does not automatically limit;
   integer PCM output can clip if the warning is ignored.
 - Timeline structural undo keeps up to 64 snapshot entries; older structural

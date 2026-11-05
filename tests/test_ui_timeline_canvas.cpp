@@ -118,6 +118,7 @@ VWTEST("timeline canvas hit testing follows handle precedence") {
     plainConfig.clipToolEnabled = false;
     TimelineCanvas plain;
     plain.layout(timeline, view, plainConfig);
+    CHECK(plain.clips().size() == size_t{2});
     CHECK(plain.hitTest({150, 55}, selection, SelectionScope::AllTracks, 0,
                         true).kind == TimelineHitKind::Lane);
     CHECK(plain.hitTest({330, 55}, selection, SelectionScope::AllTracks, 0,

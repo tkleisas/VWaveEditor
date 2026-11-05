@@ -258,6 +258,46 @@ AudioBlockId AudioBlockStore::add(const Audio& audio, std::string name) {
     return id;
 }
 
+bool AudioBlockStore::restore(const AudioBlockInfo& info, const Audio& audio,
+                              std::string* error) {
+    if (error) error->clear();
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (info.id == kInvalidAudioBlock) {
+        setError(error, "audio block id must be non-zero");
+        return false;
+    }
+    if (findEntry(info.id)) {
+        setError(error, "audio block id already exists");
+        return false;
+    }
+    if (info.channels != audio.numChannels() ||
+        info.frames != audio.numFrames() ||
+        info.sampleRate != audio.sampleRate()) {
+        setError(error, "audio block metadata does not match its data");
+        return false;
+    }
+    uint64_t expected = 0;
+    if (!checkedBytes(info.channels, info.frames, expected, error))
+        return false;
+    if (info.bytes != expected || info.checksum != checksum(audio)) {
+        setError(error, "audio block integrity check failed");
+        return false;
+    }
+    Entry entry;
+    entry.info = info;
+    if (entry.info.file.empty())
+        entry.info.file = std::to_string(info.id) + ".f32";
+    entry.data = audio;
+    entry.loaded = true;
+    entry.persisted = false;
+    entry.cacheBytes = info.bytes;
+    touch(entry);
+    m_entries.emplace(info.id, std::move(entry));
+    m_nextId = std::max<uint64_t>(m_nextId, info.id + 1);
+    enforceCacheLimit();
+    return true;
+}
+
 Audio AudioBlockStore::loadEntry(Entry& entry, std::string* error) const {
     if (!entry.loaded) {
         if (!entry.persisted || m_backingDirectory.empty()) {
@@ -544,5 +584,25 @@ std::filesystem::path AudioBlockStore::backingDirectory() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_backingDirectory;
 }
+AudioBlockStore::AudioBlockStore(const AudioBlockStore& other) {
+    std::lock_guard<std::mutex> lock(other.m_mutex);
+    m_entries = other.m_entries;
+    m_nextId = other.m_nextId;
+    m_useClock = other.m_useClock;
+    m_cacheLimitBytes = other.m_cacheLimitBytes;
+    m_backingDirectory = other.m_backingDirectory;
+}
+
+AudioBlockStore& AudioBlockStore::operator=(const AudioBlockStore& other) {
+    if (this == &other) return *this;
+    std::scoped_lock lock(m_mutex, other.m_mutex);
+    m_entries = other.m_entries;
+    m_nextId = other.m_nextId;
+    m_useClock = other.m_useClock;
+    m_cacheLimitBytes = other.m_cacheLimitBytes;
+    m_backingDirectory = other.m_backingDirectory;
+    return *this;
+}
+
 
 } // namespace vwave

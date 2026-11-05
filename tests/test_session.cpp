@@ -920,13 +920,13 @@ VWTEST("session clip arrangement commands are undoable") {
     const json made = session.execute("make_clips", json::object(), &error);
     REQUIRE(!made.is_null());
     CHECK_EQ(session.timeline().track(0).document.clips().size(), size_t{1});
-    CHECK_EQ(session.document().undoLabel(), std::string("Create clips"));
+    CHECK(session.document().undoLabel().empty());
 
     const json split =
         session.execute("split_clip", {{"at", 0.05}}, &error);
     REQUIRE(!split.is_null());
     CHECK_EQ(session.timeline().track(0).document.clips().size(), size_t{2});
-    CHECK_EQ(session.document().undoLabel(), std::string("Split clip"));
+    CHECK_EQ(session.document().undoLabel(), std::string("Split region"));
 
     const json moved = session.execute(
         "move_clip", {{"clip", 1}, {"at", 0.08}}, &error);
@@ -956,22 +956,14 @@ VWTEST("session clip arrangement commands are undoable") {
     CHECK_EQ(info["tracks"][0]["clip_count"], 3);
     CHECK_EQ(info["tracks"][0]["clips"].size(), size_t{3});
 
-    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
-    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
-    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
-    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
-    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
-    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
-    REQUIRE(!session.execute("undo", json::object(), &error).is_null());
+    for (int i = 0; i < 6; ++i)
+        REQUIRE(!session.execute("undo", json::object(), &error).is_null());
     CHECK(session.document().undoLabel().empty());
-    CHECK(!session.document().hasClips());
+    CHECK(session.document().hasClips());
+    CHECK_EQ(session.timeline().track(0).document.clips().size(), size_t{1});
 
-    const json flattened = session.execute(
-        "make_clips", json::object(), &error);
-    REQUIRE(!flattened.is_null());
     REQUIRE(!session.execute("flatten_clips", json::object(), &error).is_null());
-    CHECK(!session.document().hasClips());
-    CHECK_EQ(session.document().undoLabel(), std::string("Flatten clips"));
+    CHECK_EQ(session.document().undoLabel(), std::string("Flatten regions"));
 }
 
 VWTEST("session track structure and routing are undoable") {

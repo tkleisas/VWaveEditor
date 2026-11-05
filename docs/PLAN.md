@@ -41,17 +41,17 @@ and pull the rendered `Audio` without creating a window or an application.
 
 A `Document` owns:
 
-- an immutable source `Audio` object;
-- an ordered operation history;
-- a redo stack;
+- an immutable source `Audio` block;
+- an `AudioBlockStore` of immutable working blocks;
+- a `RegionArrangement` placing regions on the track timeline;
+- before/after arrangement history with a redo stack;
 - a selection, markers, and clipboard;
 - a cached rendered result.
 
-Each operation is replayed from the original source when the history changes.
-Operations are one of: process a sample range, delete a range, insert audio,
-replace a range, crop, resample, or replace the whole document. This keeps the
-source intact, makes undo/redo exact, and allows project serialisation while
-DSP algorithms evolve.
+Splits reference existing blocks. Sample edits create new blocks only for the
+affected range and preserve regions outside it. Metadata edits do not render
+audio. This keeps the source intact, makes undo/redo exact, and gives the
+editor a DAW-style non-linear arrangement without a Make Clips mode.
 
 ## Delivery phases
 

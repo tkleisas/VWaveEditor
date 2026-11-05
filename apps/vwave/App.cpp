@@ -893,8 +893,6 @@ void App::cycleStereoPadding() { m_stereo.cyclePadding(); }
 
 void App::toggleClipTool() { m_clips.toggleTool(); }
 
-void App::makeClips() { m_clips.make(); }
-
 void App::flattenClips() { m_clips.flatten(); }
 
 void App::splitClipAtPlayhead() { m_clips.splitAtPlayhead(); }
