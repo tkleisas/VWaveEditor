@@ -1,5 +1,7 @@
 #include "ui/editor/TimelineCanvas.h"
 
+#include "ui/editor/TimelineMapping.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <limits>
@@ -64,13 +66,11 @@ const TimelineCanvasRow* TimelineCanvas::rowForTrack(int trackIndex) const {
 }
 
 int TimelineCanvas::xForFrame(const Rect& lane, int64_t frame) const {
-    return lane.x + static_cast<int>(std::lround(
-                        m_viewport.pixelAt(frame, std::max(1, lane.w))));
+    return timelineXForFrame(m_viewport, lane, frame);
 }
 
 int64_t TimelineCanvas::frameAtX(const Rect& lane, int x) const {
-    return m_viewport.frameAt(x - lane.x, std::max(1, lane.w),
-                              m_totalFrames);
+    return timelineFrameAtX(m_viewport, lane, x, m_totalFrames);
 }
 
 Rect TimelineCanvas::selectionRect(const vwave::Selection& selection,

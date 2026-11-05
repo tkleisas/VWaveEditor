@@ -1,5 +1,7 @@
 #include "App.h"
 
+#include "ui/editor/TimelineMapping.h"
+
 #include "services/FileService.h"
 #include "ui/UiConstants.h"
 #include "ui/UiFormat.h"
@@ -242,11 +244,8 @@ if (m_waveDrag != WaveDragMode::None) {
         dragRow && dragRow->lane.w > 0
             ? m_timelineCanvas.frameAtX(dragRow->lane, event.x)
             : laneFrameAtX(lane, event.x);
-    const int64_t looseFrame = std::max<int64_t>(
-        0, static_cast<int64_t>(std::llround(
-               m_view.startFrame +
-               static_cast<double>(event.x - lane.x) *
-                   m_view.samplesPerPixel(std::max(1, lane.w)))));
+    const int64_t looseFrame = timelineLooseFrameAtX(
+        m_view, {lane.x, lane.y, lane.w, lane.h}, event.x);
     switch (m_waveDrag) {
     case WaveDragMode::NewSelection:
         if (m_clickCandidate &&

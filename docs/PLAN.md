@@ -591,5 +591,7 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Waveform drag motion, context-menu track lookup, clip rendering, selection
   bounds, and track/clip handles now use cached `TimelineCanvas` geometry.
   The old per-track header/lane rectangle arrays are retired.
-- Next: finish moving ruler/spectrum helpers onto the shared canvas mapping and
-  clean up remaining duplicated frame-to-pixel code.
+- Centralized frame↔pixel and loose-drag mapping in `TimelineMapping`; canvas,
+  waveform, ruler, spectrum, and loose drag previews now share it.
+- Next: migrate menu/dropdown and settings-dialog hit targets to the retained
+  widget layer, then continue broader UI cleanup.

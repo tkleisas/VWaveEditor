@@ -112,6 +112,7 @@ add_library(vwave_ui_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/SidebarSlider.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/TimelineCanvas.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/TimelineCursor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/TimelineMapping.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/PushButton.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/CommandRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/Layout.cpp

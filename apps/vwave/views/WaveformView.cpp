@@ -1,5 +1,7 @@
 #include "App.h"
 
+#include "ui/editor/TimelineMapping.h"
+
 #include "ui/UiFormat.h"
 #include "ui/UiTheme.h"
 
@@ -11,13 +13,13 @@
 using namespace vwave::ui;
 
 int App::laneXForFrame(const SDL_Rect& lane, int64_t frame) const {
-    return lane.x + static_cast<int>(std::lround(
-                        m_view.pixelAt(frame, std::max(1, lane.w))));
+    return timelineXForFrame(m_view, {lane.x, lane.y, lane.w, lane.h},
+                             frame);
 }
 
 int64_t App::laneFrameAtX(const SDL_Rect& lane, int x) const {
-    return m_view.frameAt(x - lane.x, std::max(1, lane.w),
-                          m_timeline.lengthFrames());
+    return timelineFrameAtX(m_view, {lane.x, lane.y, lane.w, lane.h}, x,
+                            m_timeline.lengthFrames());
 }
 
 SDL_Rect App::selectionScreenRect() const {
