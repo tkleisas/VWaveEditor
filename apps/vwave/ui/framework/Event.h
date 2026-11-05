@@ -50,6 +50,12 @@ struct TextInputEvent {
     std::string text;
 };
 
+struct WheelEvent {
+    Point position;
+    double deltaX = 0.0;
+    double deltaY = 0.0;
+};
+
 struct WindowEvent {
     enum class Type {
         Leave,
@@ -59,6 +65,7 @@ struct WindowEvent {
     Type type = Type::Leave;
 };
 
-using Event = std::variant<PointerEvent, KeyEvent, TextInputEvent, WindowEvent>;
+using Event = std::variant<PointerEvent, WheelEvent, KeyEvent, TextInputEvent,
+                            WindowEvent>;
 
 } // namespace vwave::ui

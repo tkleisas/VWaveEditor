@@ -168,3 +168,43 @@ VWTEST("focus change notifies old and new widgets exactly once") {
     CHECK(!firstPtr->focused);
     CHECK(secondPtr->focused);
 }
+
+namespace {
+
+struct WheelWidget : Widget {
+    bool onWheel(const WheelEvent& event) override {
+        ++count;
+        lastDelta = event.deltaY;
+        return consume;
+    }
+
+    bool consume = true;
+    int count = 0;
+    double lastDelta = 0.0;
+};
+
+} // namespace
+
+VWTEST("wheel events route to the widget under the pointer") {
+    Widget root;
+    root.bounds = {0, 0, 100, 100};
+    auto first = std::make_unique<WheelWidget>();
+    first->bounds = {0, 0, 20, 20};
+    auto second = std::make_unique<WheelWidget>();
+    second->bounds = {20, 0, 20, 20};
+    auto* firstPtr = first.get();
+    auto* secondPtr = second.get();
+    root.addChild(std::move(first));
+    root.addChild(std::move(second));
+
+    WidgetHost host;
+    host.setRoot(&root);
+    REQUIRE(host.handleEvent(WheelEvent{{25, 5}, 0.0, -3.0}));
+    CHECK_EQ(secondPtr->count, 1);
+    CHECK_EQ(firstPtr->count, 0);
+    CHECK_NEAR(secondPtr->lastDelta, -3.0, 1e-9);
+
+    secondPtr->consume = false;
+    CHECK(!host.handleEvent(WheelEvent{{25, 5}, 0.0, 1.0}));
+    CHECK_EQ(secondPtr->count, 2);
+}

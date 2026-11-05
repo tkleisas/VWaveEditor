@@ -29,6 +29,7 @@ public:
     virtual bool onPointerDown(const PointerEvent&) { return false; }
     virtual bool onPointerMove(const PointerEvent&) { return false; }
     virtual bool onPointerUp(const PointerEvent&) { return false; }
+    virtual bool onWheel(const WheelEvent&) { return false; }
     virtual bool onKeyDown(const KeyEvent&) { return false; }
     virtual bool onKeyUp(const KeyEvent&) { return false; }
     virtual bool onTextInput(const TextInputEvent&) { return false; }
