@@ -93,19 +93,30 @@ bool App::handleContextMenuInput(const SDL_Event& event) {
                 m_cursorController.apply(m_contextMenuHost.cursor());
                 return true;
             }
-            if (event.type == SDL_MOUSEBUTTONDOWN ||
-                event.type == SDL_MOUSEBUTTONUP) {
-                if (pointer->button != 1 || (!inPopup && !captured)) {
+            if (event.type == SDL_MOUSEBUTTONDOWN) {
+                if (pointer->button == 3) {
+                    closeContextMenu();
+                    m_cursorController.apply(CursorShape::Arrow);
+                    return true;
+                }
+                if (pointer->button != 1) return true;
+                if (!inPopup && !captured) {
                     closeContextMenu();
                     m_cursorController.apply(CursorShape::Arrow);
                     return true;
                 }
                 m_contextMenuHost.handleEvent(*translated);
                 m_cursorController.apply(m_contextMenuHost.cursor());
-                if (event.type == SDL_MOUSEBUTTONUP) {
-                    closeContextMenu();
-                    m_cursorController.apply(CursorShape::Arrow);
+                return true;
+            }
+            if (event.type == SDL_MOUSEBUTTONUP) {
+                if (pointer->button != 1) return true;
+                if (inPopup || captured) {
+                    m_contextMenuHost.handleEvent(*translated);
+                    m_cursorController.apply(m_contextMenuHost.cursor());
                 }
+                closeContextMenu();
+                m_cursorController.apply(CursorShape::Arrow);
                 return true;
             }
             return false;
