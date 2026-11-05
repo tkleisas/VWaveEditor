@@ -47,14 +47,6 @@ std::string manifestPath(const std::filesystem::path& directory) {
     return (directory / "blocks.json").string();
 }
 
-bool isBlockFileName(const std::filesystem::path& path) {
-    if (path.extension() != ".f32") return false;
-    const std::string stem = path.stem().string();
-    return !stem.empty() &&
-           std::all_of(stem.begin(), stem.end(), [](unsigned char c) {
-               return c >= '0' && c <= '9';
-           });
-}
 
 } // namespace
 
@@ -515,35 +507,6 @@ bool AudioBlockStore::saveImpl(const std::filesystem::path& directory,
 
     m_backingDirectory = directory;
     enforceCacheLimit();
-    return true;
-}
-
-bool AudioBlockStore::prune(const std::filesystem::path& directory,
-                            const std::set<AudioBlockId>& referenced,
-                            std::string* error) const {
-    if (error) error->clear();
-    std::lock_guard<std::mutex> lock(m_mutex);
-    std::vector<std::filesystem::path> expected;
-    expected.reserve(referenced.size());
-    for (const AudioBlockId id : referenced) {
-        const Entry* entry = findEntry(id);
-        if (!entry) {
-            setError(error, "referenced audio block does not exist");
-            return false;
-        }
-        expected.push_back(blockPath(directory, entry->info));
-    }
-    std::error_code ec;
-    std::error_code iteratorError;
-    for (const auto& item :
-         std::filesystem::directory_iterator(directory, iteratorError)) {
-        if (!item.is_regular_file() || !isBlockFileName(item.path())) continue;
-        if (std::find(expected.begin(), expected.end(), item.path()) ==
-            expected.end()) {
-            std::filesystem::remove(item.path(), ec);
-            ec.clear();
-        }
-    }
     return true;
 }
 

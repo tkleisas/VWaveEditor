@@ -63,9 +63,6 @@ public:
     bool save(const std::filesystem::path& directory,
               const std::set<AudioBlockId>& referenced,
               std::string* error = nullptr) const;
-    bool prune(const std::filesystem::path& directory,
-               const std::set<AudioBlockId>& referenced,
-               std::string* error = nullptr) const;
     bool load(const std::filesystem::path& directory,
               std::string* error = nullptr);
     std::filesystem::path backingDirectory() const;

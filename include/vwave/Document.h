@@ -133,8 +133,6 @@ public:
                          const AudioBlockStore* externalBlocks = nullptr);
     bool writeBlockDirectory(const std::filesystem::path& directory,
                              std::string* error = nullptr) const;
-    bool pruneBlockDirectory(const std::filesystem::path& directory,
-                             std::string* error = nullptr) const;
     void setBlockCacheLimitBytes(uint64_t bytes);
     uint64_t blockCacheBytes() const;
 

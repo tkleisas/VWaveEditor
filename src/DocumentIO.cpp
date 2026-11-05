@@ -102,11 +102,6 @@ bool Document::writeBlockDirectory(const std::filesystem::path& directory,
     return m_store.save(directory, referencedBlockIds(), error);
 }
 
-bool Document::pruneBlockDirectory(const std::filesystem::path& directory,
-                                   std::string* error) const {
-    return m_store.prune(directory, referencedBlockIds(), error);
-}
-
 void Document::setBlockCacheLimitBytes(uint64_t bytes) {
     m_store.setCacheLimitBytes(bytes);
 }

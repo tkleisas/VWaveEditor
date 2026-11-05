@@ -94,7 +94,7 @@ void ClipController::deleteSelected() {
     auto* document = activeDocument();
     const int index = currentIndex();
     if (!document || index < 0) {
-        m_status("Select a clip first");
+        m_status("Select a region first");
         return;
     }
     m_runEdit([document, index](std::string* error) {
@@ -107,7 +107,7 @@ void ClipController::repeatSelected(int count) {
     auto* document = activeDocument();
     const int index = currentIndex();
     if (!document || index < 0) {
-        m_status("Select a clip first");
+        m_status("Select a region first");
         return;
     }
     count = std::clamp(count, 1, 64);
@@ -121,7 +121,7 @@ void ClipController::moveSelectedToPlayhead() {
     auto* document = activeDocument();
     const int index = currentIndex();
     if (!document || index < 0) {
-        m_status("Select a clip first");
+        m_status("Select a region first");
         return;
     }
     const auto& track = m_timeline.track(m_timeline.activeTrack());
@@ -137,7 +137,7 @@ void ClipController::stretchSelected() {
     auto* document = activeDocument();
     const int index = currentIndex();
     if (!document || index < 0) {
-        m_status("Select a clip first");
+        m_status("Select a region first");
         return;
     }
     m_runEdit([document, index, this](std::string* error) {

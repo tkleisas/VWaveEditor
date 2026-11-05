@@ -459,22 +459,24 @@ Stage 1 is implemented as destructive-but-undoable track editing:
 - Mono-to-stereo combine with back/front/both padding and preserved offsets.
 - Session, CLI, Lua/MCP bridge, and tests for the new operations.
 
-Stage 2 is implemented as a document-owned clip arrangement:
+Stage 2 is implemented as an always-on region arrangement over immutable audio
+blocks:
 
-- `Document::Clip` with source range, local timeline position, stretch ratio,
-  gain, fades, and name.
-- Clip rendering supports gaps and overlap mixing; stereo channel layout is
-  preserved.
-- Clip tools: make, select, move, split, delete, repeat, stretch, move to
-  playhead, and flatten.
-- Clip layout is stored in the active track's `Document` history, sharing its
-  undo/redo stack and project persistence.
-- Destructive sample edits require flattening while clips exist, keeping source
-  ranges stable.
-- Session/CLI/Lua/MCP commands and tests cover the arrangement lifecycle.
+- Every track starts as one full region; splits create region references
+  without copying samples.
+- Regions store block/source range, local timeline position, stretch, gain,
+  fades, and name; gaps and overlap mixing are supported.
+- Region tools cover split, delete, repeat, stretch, move to playhead, and
+  flatten/consolidate.
+- Sample edits render only the selected range into a new block and preserve
+  regions outside it; flattening is no longer required.
+- Arrangement snapshots share the document undo/redo stack and project format
+  v2; legacy v1 clip projects migrate on load.
+- Project saves use generation-based block work areas with an LRU RAM cache.
+- Session/CLI/Lua/MCP compatibility commands and tests cover the lifecycle.
 
-Remaining follow-up work is UI polish for clip gain/fade editing and more
-automation presets; the cut-up arrangement model itself is implemented.
+Remaining follow-up work is region gain/fade editing UI, history compaction,
+and autosave.
 
 ### Transport: click-to-seek and loop playback (implemented)
 
@@ -542,8 +544,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   document edits cancel pending loads.
 - Moved mixdown export, project save, and slice export onto background jobs
   via `FileSaveController`.
-- Added checkpointed document undo (every 16 operations, capped at 32) and
-  identity phase locking in the phase vocoder.
+- Added identity phase locking in the phase vocoder.
 - Added real-input FFT packing and routed STFT analysis, onset detection,
   spectral processing, mastering analysis, and image phase analysis through it.
 - Added uniform partitioned overlap-add convolution for long outputs; short

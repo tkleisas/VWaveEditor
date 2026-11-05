@@ -113,9 +113,8 @@ Each save writes new generation directories containing only blocks reachable
 from the current arrangement, history, and redo graph. The project file is
 written last and points at those directories. Old generation directories are
 removed only after the new project file has been committed, so a failed save
-leaves the previous project and blocks intact. Unreachable blocks inside a new
-generation are not written at all; `AudioBlockStore::prune` is available for
-in-place maintenance.
+leaves the previous project and blocks intact. Unreachable blocks are not
+written into a new generation.
 
 The in-memory LRU cache is separate from persistence: evicting a block only
 drops its decoded copy. Loaded timeline tracks use a 256 MiB default cache limit
