@@ -214,19 +214,20 @@ Time-stretch and pitch-shift expose a **Target** selector:
 
 **Edit → Selection to New Track** copies the raw selection as a new track.
 
-In-place sample processing and selection moves are rejected while a clip
-arrangement exists. Flatten the clips first; then the arranged audio becomes the
-track base and destructive editing resumes. Processing to a new track is still
-available because it reads the arranged output.
+In-place sample processing works directly on a region arrangement. The selected
+range is rendered into a new immutable block and replaces the covered regions;
+audio outside the edit is preserved. Overlaps inside the selection are baked
+into that range. Processing to a new track reads the arranged output.
 
 ## Project persistence
 
-Timeline projects (`.vwdoc`) contain:
+Timeline projects (`.vwdoc`) contain track routing, offsets, active track,
+selection, region arrangements, and undo history. Audio blocks are written to a
+generation-based sidecar work area (`project.vwdoc.blocks/`); the project file
+points at the current generations and is committed after the blocks. Each
+generation contains only blocks reachable from the arrangement, undo, and redo
+state. Old generations are retained for in-session structural undo and removed
+on the next project load.
 
-- every track's name, offset, gain, pan, mute, solo, arm, and empty state;
-- each non-empty track's full source/edit history, including clip arrangements;
-- the active track;
-- the timeline selection.
-
-Legacy single-document projects load as a one-track timeline. Audio-only export
-writes the mixdown.
+Legacy version 1 timeline and single-document projects migrate on load.
+Audio-only export writes the mixdown.
