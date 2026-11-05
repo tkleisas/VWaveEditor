@@ -472,6 +472,23 @@ void App::drawWaveform(const SDL_Rect& area) {
         SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g, kAccent.b, 150);
         SDL_RenderFillRect(m_renderer, &startHandle);
         SDL_RenderFillRect(m_renderer, &endHandle);
+        SDL_Rect stretchHandle{selection.x + selection.w - 12,
+                               selection.y, 10, 10};
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               240);
+        SDL_RenderFillRect(m_renderer, &stretchHandle);
+        SDL_Rect moveHandle{selection.x + selection.w / 2 - 7,
+                            selection.y, 14, 8};
+        SDL_SetRenderDrawColor(m_renderer, kBlue.r, kBlue.g, kBlue.b, 240);
+        SDL_RenderFillRect(m_renderer, &moveHandle);
+        SDL_SetRenderDrawColor(m_renderer, kAccentText.r, kAccentText.g,
+                               kAccentText.b, 200);
+        for (int i = -1; i <= 1; ++i) {
+            SDL_RenderDrawLine(m_renderer, moveHandle.x + moveHandle.w / 2 + i * 3,
+                               moveHandle.y + 2,
+                               moveHandle.x + moveHandle.w / 2 + i * 3,
+                               moveHandle.y + moveHandle.h - 2);
+        }
         SDL_Rect repeatHandle{selection.x + selection.w - 6,
                               selection.y + selection.h - 12, 12, 12};
         SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
@@ -487,6 +504,11 @@ void App::drawWaveform(const SDL_Rect& area) {
     if (m_waveDrag != WaveDragMode::None && m_waveDragTrack >= 0) {
         const auto* dragRow =
             m_timelineCanvas.rowForTrack(m_waveDragTrack);
+        const SDL_Rect dragLane =
+            dragRow && dragRow->lane.w > 0
+                ? SDL_Rect{dragRow->lane.x, dragRow->lane.y,
+                           dragRow->lane.w, dragRow->lane.h}
+                : m_waveArea;
         if (dragRow && dragRow->lane.w > 0) {
             const SDL_Rect lane{dragRow->lane.x, dragRow->lane.y,
                                 dragRow->lane.w, dragRow->lane.h};
@@ -519,6 +541,29 @@ void App::drawWaveform(const SDL_Rect& area) {
                                        kOrange.b, 180);
                 SDL_RenderDrawRect(m_renderer, &block);
             }
+        }
+        if (m_waveDrag == WaveDragMode::SelectionStretch &&
+            m_timeline.selection().active) {
+            const SDL_Rect selection = selectionScreenRect();
+            const int endX = laneXForFrame(dragLane, m_waveDragPreviewFrame);
+            SDL_Rect ghost{selection.x, selection.y,
+                           std::max(1, endX - selection.x), selection.h};
+            SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                   kOrange.b, 35);
+            SDL_RenderFillRect(m_renderer, &ghost);
+            SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                   kOrange.b, 220);
+            SDL_RenderDrawRect(m_renderer, &ghost);
+        }
+        if (m_waveDrag == WaveDragMode::SelectionMove &&
+            m_timeline.selection().active) {
+            const SDL_Rect selection = selectionScreenRect();
+            const int startX = laneXForFrame(dragLane, m_waveDragPreviewFrame);
+            SDL_Rect ghost{startX, selection.y, selection.w, selection.h};
+            SDL_SetRenderDrawColor(m_renderer, kBlue.r, kBlue.g, kBlue.b, 30);
+            SDL_RenderFillRect(m_renderer, &ghost);
+            SDL_SetRenderDrawColor(m_renderer, kBlue.r, kBlue.g, kBlue.b, 220);
+            SDL_RenderDrawRect(m_renderer, &ghost);
         }
     }
 

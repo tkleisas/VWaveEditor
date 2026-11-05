@@ -82,6 +82,8 @@ private:
         TrackTrimEnd,
         TrackStretch,
         SelectionRepeat,
+        SelectionStretch,
+        SelectionMove,
         ClipMove,
         ClipStretch,
         LoopSelection
@@ -163,6 +165,8 @@ private:
     void handleSpectrumMouseMotion(const SDL_MouseMotionEvent& event);
     void handleWavetableMouseMotion(const SDL_MouseMotionEvent& event);
     void handleWaveformMouseUp(const SDL_MouseButtonEvent& event);
+    void updateWaveDragPreview(int mouseX, int mouseY);
+    void updateWaveDragAutoscroll();
     void handleSpectrumMouseUp(const SDL_MouseButtonEvent& event);
     vwave::ui::CursorShape waveformCursorAt(int x, int y) const;
     void refreshTimelineCanvas() const;

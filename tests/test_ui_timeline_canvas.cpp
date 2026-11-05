@@ -79,6 +79,7 @@ VWTEST("timeline canvas builds clip rects and selection") {
     auto config = layout();
     config.clipToolEnabled = true;
 
+    config.area = {0, 50, 600, 160};
     TimelineCanvas canvas;
     canvas.layout(timeline, view, config);
     REQUIRE(canvas.clips().size() == size_t{2});
@@ -118,6 +119,10 @@ VWTEST("timeline canvas hit testing follows handle precedence") {
     plain.layout(timeline, view, plainConfig);
     CHECK(plain.hitTest({150, 55}, selection, SelectionScope::AllTracks, 0,
                         true).kind == TimelineHitKind::Lane);
+    CHECK(plain.hitTest({330, 55}, selection, SelectionScope::AllTracks, 0,
+                        true).kind == TimelineHitKind::SelectionStretch);
+    CHECK(plain.hitTest({260, 54}, selection, SelectionScope::AllTracks, 0,
+                        true).kind == TimelineHitKind::SelectionMove);
     CHECK(canvas.hitTest({290, 55}, selection, SelectionScope::AllTracks, 0,
                          true).kind == TimelineHitKind::ClipBody);
     CHECK(canvas.hitTest({499, 55}, selection, SelectionScope::AllTracks, 0,

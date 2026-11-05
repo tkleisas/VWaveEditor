@@ -44,6 +44,8 @@ enum class TimelineHitKind {
     SelectionStart,
     SelectionEnd,
     SelectionRepeat,
+    SelectionStretch,
+    SelectionMove,
     ClipBody,
     ClipEnd,
     TrackTrimStart,

@@ -1076,7 +1076,10 @@ void App::togglePlay() {
 
 void App::stopPlayback() { m_playback.stop(); }
 
-void App::updatePlayback() { m_playback.update(); }
+void App::updatePlayback() {
+    updateWaveDragAutoscroll();
+    m_playback.update();
+}
 
 void App::runEdit(const std::function<bool(std::string*)>& edit,
                   const std::string& success) {

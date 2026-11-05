@@ -42,6 +42,7 @@ void App::updateUiCursor(int x, int y) {
         switch (m_waveDrag) {
         case WaveDragMode::ClipMove:
         case WaveDragMode::SelectionRepeat:
+        case WaveDragMode::SelectionMove:
             shape = CursorShape::SizeAll;
             break;
         case WaveDragMode::SelectionStart:
@@ -50,6 +51,7 @@ void App::updateUiCursor(int x, int y) {
         case WaveDragMode::TrackTrimEnd:
         case WaveDragMode::TrackStretch:
         case WaveDragMode::ClipStretch:
+        case WaveDragMode::SelectionStretch:
         case WaveDragMode::LoopSelection:
             shape = CursorShape::SizeWE;
             break;

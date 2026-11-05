@@ -49,8 +49,15 @@ CursorShape timelineCursorAt(const TimelineCursorGeometry& geometry,
                                  selection.h};
             const Rect repeatHandle{selection.x + selection.w - 6,
                                      selection.y + selection.h - 12, 12, 12};
-            if (containsAny(repeatHandle, point)) return CursorShape::SizeAll;
-            if (containsAny(startHandle, point) ||
+            const Rect stretchHandle{selection.x + selection.w - 12,
+                                      selection.y, 10, 10};
+            const Rect moveHandle{selection.x + selection.w / 2 - 7,
+                                  selection.y, 14, 8};
+            if (containsAny(repeatHandle, point) ||
+                containsAny(moveHandle, point))
+                return CursorShape::SizeAll;
+            if (containsAny(stretchHandle, point) ||
+                containsAny(startHandle, point) ||
                 containsAny(endHandle, point))
                 return CursorShape::SizeWE;
         }

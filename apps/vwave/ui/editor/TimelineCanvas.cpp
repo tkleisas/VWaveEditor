@@ -76,8 +76,8 @@ int64_t TimelineCanvas::frameAtX(const Rect& lane, int x) const {
 Rect TimelineCanvas::selectionRect(const vwave::Selection& selection,
                                    vwave::SelectionScope scope,
                                    int activeTrack) const {
-    if (!selection.active || m_area.w <= 0) return {};
-    Rect bounds = m_area;
+    if (!selection.active || m_laneArea.w <= 0) return {};
+    Rect bounds = m_laneArea;
     if (scope == vwave::SelectionScope::ActiveTrack &&
         activeTrack >= 0) {
         for (const auto& row : m_rows) {
@@ -184,9 +184,27 @@ TimelineHit TimelineCanvas::hitTest(
                                      9, selected.h};
                 const Rect repeatHandle{selected.x + selected.w - 6,
                                          selected.y + selected.h - 12, 12, 12};
+                const Rect stretchHandle{selected.x + selected.w - 12,
+                                          selected.y, 10, 10};
+                const Rect moveHandle{selected.x + selected.w / 2 - 7,
+                                      selected.y, 14, 8};
                 if (repeatHandle.contains(point)) {
                     TimelineHit result =
                         hit(TimelineHitKind::SelectionRepeat, selected,
+                            row->trackIndex, -1, frame);
+                    result.lane = row->lane;
+                    return result;
+                }
+                if (stretchHandle.contains(point)) {
+                    TimelineHit result =
+                        hit(TimelineHitKind::SelectionStretch, selected,
+                            row->trackIndex, -1, frame);
+                    result.lane = row->lane;
+                    return result;
+                }
+                if (moveHandle.contains(point)) {
+                    TimelineHit result =
+                        hit(TimelineHitKind::SelectionMove, selected,
                             row->trackIndex, -1, frame);
                     result.lane = row->lane;
                     return result;

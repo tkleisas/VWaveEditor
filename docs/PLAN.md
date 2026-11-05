@@ -607,5 +607,8 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Retained UI migration is complete for controls, menus, dialogs, and shared
   timeline geometry. Remaining direct rectangle checks are canvas-local
   interaction regions.
+- Added selection drag, stretch, and repeat handles with edge autoscroll;
+  selection bounds now use lane geometry rather than the full content area.
+- Added context-menu actions to reverse a selection or flip its phase.
 - Next: new UI work can build on `vwave_ui_core`, `vwave_ui_sdl`, `TimelineCanvas`,
   and the command registry.

@@ -380,7 +380,9 @@ dropdowns, context menus, and dialogs. Shared command/shortcut definitions keep
 menus, buttons, and keyboard bindings aligned.
 
 `TimelineCanvas` and `TimelineMapping` centralize waveform row/clip geometry,
-selection bounds, hit targets, cursor shapes, and frame↔pixel mapping. Spectrum,
+selection bounds, hit targets, cursor shapes, and frame↔pixel mapping. Selection
+handles support moving, stretching, resizing, and repeating with edge
+autoscroll; the track context menu exposes reverse and phase-flip actions. Spectrum,
 wavetable, scope, and wheel handling still contain local rectangle checks; these
 are intentional canvas interaction regions rather than legacy control hit tests.
 The old immediate-mode button/slider/control-area path has been removed.
