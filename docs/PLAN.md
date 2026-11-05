@@ -556,5 +556,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   predicates, and shared actions for menus, buttons, and key bindings.
 - Added the first retained control, `Button`, with pointer, keyboard, hover,
   disabled, and cancellation behavior covered by headless tests.
-- Next: slider/scroll controls, SDL adapter, and migration of toolbar/sidebar/
+- Added `Slider` with logarithmic/stepped model mapping, drag capture, keyboard
+  steps, and disabled handling; covered by headless tests.
+- Next: scroll/layout controls, SDL adapter, and migration of toolbar/sidebar/
   timeline controls to the widget layer.
