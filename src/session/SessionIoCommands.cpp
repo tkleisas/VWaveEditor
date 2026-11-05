@@ -16,8 +16,12 @@ nlohmann::json Session::executeIoCommands(const std::string& command,
             if (path.empty()) return nullptr;
             const AudioExportOptions options = exportOptionsFrom(params, error);
             if (error && !error->empty()) return nullptr;
-            if (!saveMixdown(path, options, error)) return nullptr;
-            return {{"ok", true}, {"path", path}};
+            double peakDb = -120.0;
+            if (!saveMixdown(path, options, error, &peakDb)) return nullptr;
+            return {{"ok", true},
+                    {"path", path},
+                    {"peak_db", peakDb},
+                    {"clipped", peakDb > 0.0}};
         }
 
         if (command == "load_audio") {
@@ -32,10 +36,15 @@ nlohmann::json Session::executeIoCommands(const std::string& command,
             const AudioExportOptions options = exportOptionsFrom(params, error);
             if (error && !error->empty()) return nullptr;
             if (optionalBool(params, "mixdown", false)) {
-                if (!saveMixdown(path, options, error)) return nullptr;
-            } else {
-                if (!document().saveAudio(path, options, error)) return nullptr;
+                double peakDb = -120.0;
+                if (!saveMixdown(path, options, error, &peakDb))
+                    return nullptr;
+                return {{"ok", true},
+                        {"path", path},
+                        {"peak_db", peakDb},
+                        {"clipped", peakDb > 0.0}};
             }
+            if (!document().saveAudio(path, options, error)) return nullptr;
             return {{"ok", true}, {"path", path}};
         }
         if (command == "load_project") {

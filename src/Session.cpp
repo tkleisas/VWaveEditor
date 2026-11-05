@@ -89,12 +89,18 @@ bool Session::saveAudio(const std::string& path,
 
 bool Session::saveMixdown(const std::string& path,
                           const AudioExportOptions& options,
-                          std::string* error) {
+                          std::string* error, double* peakDb) {
     if (error) error->clear();
     const Audio mix = m_timeline.mixdown();
     if (mix.empty()) {
         setError(error, "project is empty");
         return false;
+    }
+    if (peakDb) {
+        const float peak = mix.peak();
+        *peakDb = peak > 0.0f
+                      ? 20.0 * std::log10(static_cast<double>(peak))
+                      : -120.0;
     }
     return writeAudio(path, mix, options, error);
 }

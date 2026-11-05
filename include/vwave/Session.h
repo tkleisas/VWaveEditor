@@ -25,7 +25,8 @@ public:
                    std::string* error = nullptr);
     bool saveMixdown(const std::string& path,
                      const AudioExportOptions& options,
-                     std::string* error = nullptr);
+                     std::string* error = nullptr,
+                     double* peakDb = nullptr);
     bool loadProject(const std::string& path, std::string* error = nullptr);
     bool saveProject(const std::string& path, std::string* error = nullptr);
 

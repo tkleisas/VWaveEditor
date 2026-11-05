@@ -1,8 +1,10 @@
 #include "services/FileSaveController.h"
 
 #include "services/FileService.h"
+#include "ui/UiFormat.h"
 #include "vwave/AudioIO.h"
 
+#include <cmath>
 #include <filesystem>
 #include <utility>
 
@@ -27,11 +29,12 @@ void FileSaveController::saveAudio(vwave::Timeline timeline,
         vwave::Audio mix = timeline.mixdown();
         std::string error;
         bool success = false;
+        const float peak = mix.empty() ? 0.0f : mix.peak();
         if (!mix.empty())
             success = vwave::writeAudio(target, mix, {}, &error);
         if (control.cancelled()) return;
         m_dispatcher.post([this, request, success, error = std::move(error),
-                           target, saved = std::move(saved)]() mutable {
+                           target, peak, saved = std::move(saved)]() mutable {
             if (request != m_request) return;
             if (!success) {
                 m_status(error.empty() ? "Nothing to export"
@@ -39,7 +42,15 @@ void FileSaveController::saveAudio(vwave::Timeline timeline,
                 return;
             }
             saved(target);
-            m_status("Saved " + baseName(target));
+            if (peak > 1.0f) {
+                const double peakDb =
+                    20.0 * std::log10(static_cast<double>(peak));
+                m_status("Saved " + baseName(target) + " (peak " +
+                         ui::formatDb(peakDb) +
+                         "; integer PCM may clip)");
+            } else {
+                m_status("Saved " + baseName(target));
+            }
         });
     });
 }

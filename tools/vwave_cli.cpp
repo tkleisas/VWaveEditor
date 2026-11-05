@@ -38,6 +38,7 @@ void printUsage() {
         "      [--morph VALUE] [--blend W1,W2,...] [--oversample N] [--use-table-root]\n"
         "  vwave sweep <out.wav> [--seconds SEC] [--start-hz HZ] [--end-hz HZ]\n"
         "  vwave deconvolve <recorded> <sweep> <out.wav> [--length FRAMES]\n"
+        "  vwave project create <project.vwdoc>\n"
         "  vwave project info <project.vwdoc>\n"
         "  vwave project add-track <project> <audio> [--name NAME] [--start SEC]\n"
         "  vwave project add-empty-track <project> [--name NAME] [--start SEC]\n"
@@ -669,7 +670,21 @@ int commandProject(const std::vector<std::string>& args) {
     const std::string& projectPath = args[3];
     vwave::Session session;
     std::string error;
-    if (!session.loadProject(projectPath, &error)) return fail(error);
+    if (subcommand == "create") {
+        if (std::filesystem::exists(projectPath))
+            return fail("project already exists: " + projectPath);
+        executeOrFail(session, "add_empty_track", {{"name", "Track 1"}});
+        executeOrFail(session, "save_project", {{"path", projectPath}});
+        printJson(session.info());
+        return 0;
+    }
+    const bool projectExists = std::filesystem::exists(projectPath);
+    if (projectExists) {
+        if (!session.loadProject(projectPath, &error)) return fail(error);
+    } else if (subcommand != "add-track" &&
+               subcommand != "add-empty-track") {
+        return fail("project file not found: " + projectPath);
+    }
 
     if (subcommand == "info") {
         printJson(session.info());
@@ -924,7 +939,14 @@ int commandProject(const std::vector<std::string>& args) {
     }
     if (subcommand == "mixdown") {
         if (args.size() < 5) return fail("mixdown requires an output file");
-        executeOrFail(session, "save_mixdown", {{"path", args[4]}});
+        const json result =
+            session.execute("save_mixdown", {{"path", args[4]}}, &error);
+        if (result.is_null()) return fail(error);
+        if (result.value("clipped", false)) {
+            std::cerr << "warning: mixdown peak is "
+                      << result.value("peak_db", 0.0)
+                      << " dBFS; integer PCM export will clip\n";
+        }
         std::cout << args[4] << '\n';
         return 0;
     }

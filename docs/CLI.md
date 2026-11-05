@@ -262,6 +262,7 @@ index and saves the project. See [Track recipes](RECIPES.md).
 Multi-track project automation works on `.vwdoc` timelines:
 
 ```sh
+vwave project create take.vwdoc
 vwave project info take.vwdoc
 vwave project tracks take.vwdoc
 vwave project add-track take.vwdoc pad.wav --name Pad --start 0.5
@@ -284,6 +285,11 @@ vwave project delete-clip take.vwdoc 0 --clip 2
 vwave project flatten-clips take.vwdoc 0
 vwave project mixdown take.vwdoc mix.wav
 ```
+
+`project create` writes an empty one-track timeline. `add-track` and
+`add-empty-track` auto-create a missing project, so the first track can also be
+the project's first write. `project mixdown` warns when the mix exceeds 0 dBFS
+and integer PCM output would clip.
 
 Track indices are zero-based. `project set` accepts `--name`, `--gain`,
 `--pan`, `--start`, `--mute`/`--unmute`, `--solo`/`--unsolo`, and

@@ -249,6 +249,7 @@ vwave mastering-render session.vwdoc --profile definition --out-dir mastered
 vwave image cover.png cover.wav --duration 8 --phase fast_griffin_lim
 vwave scope scope.wav --shape lissajous --a 3 --b 2 --scan-hz 90
 
+vwave project create session.vwdoc
 vwave project info session.vwdoc
 vwave project add-track session.vwdoc pad.wav --name Pad --start 0.5
 vwave project set session.vwdoc 1 --gain -6 --pan -0.2 --mute
