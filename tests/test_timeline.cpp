@@ -835,3 +835,19 @@ VWTEST("timeline prefetches current arrangement blocks from the work area") {
     CHECK(loaded.track(0).document.audio().equals(
         timeline.track(0).document.audio()));
 }
+
+VWTEST("timeline rejects a project with a missing work area") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "missing.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(100, 0.2f), 0,
+                                   &error));
+    REQUIRE(timeline.saveProject(path, &error));
+    REQUIRE(std::filesystem::remove_all(
+        directory.path() / "missing.vwdoc.blocks"));
+    Timeline loaded;
+    CHECK(!loaded.loadProject(path, &error));
+    CHECK(!error.empty());
+}

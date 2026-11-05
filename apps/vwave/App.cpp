@@ -574,17 +574,31 @@ int App::run() {
         std::filesystem::remove(recoveryPath, removeError);
         std::filesystem::remove_all(
             recoveryPath.string() + ".blocks", removeError);
+        if (!m_timeline.track(0).document.addMarker(10, "recovery"))
+            return 1;
         markEdited();
         m_lastEditTicks = SDL_GetTicks() - 3000;
         updateAutosave();
         const bool recoverySaved = waitForFile(recoveryPath);
+        if (!recoverySaved) return 1;
+        m_timeline.track(0).document.clearMarkers();
+        recoverAutosave();
+        const Uint32 recoveryDeadline = SDL_GetTicks() + 5000;
+        while (m_timeline.track(0).document.markers().empty() &&
+               SDL_GetTicks() < recoveryDeadline) {
+            m_dispatcher.drain();
+            SDL_Delay(2);
+        }
+        const bool recovered =
+            !m_timeline.track(0).document.markers().empty() &&
+            m_timeline.track(0).document.markers()[0].name == "recovery";
         std::filesystem::remove_all(
             recoveryPath.string() + ".blocks", removeError);
         std::filesystem::remove(recoveryPath, removeError);
         std::filesystem::remove(projectPath, removeError);
         std::filesystem::remove_all(
             projectPath.string() + ".blocks", removeError);
-        if (!recoverySaved) return 1;
+        if (!recovered) return 1;
     }
     static const vwave::EditorTab kSmokeTabs[] = {
         vwave::EditorTab::Waveform, vwave::EditorTab::Spectrum,
