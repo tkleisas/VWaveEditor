@@ -37,6 +37,26 @@ Audio makeImpulse(int64_t frames, int sampleRate, int64_t position,
     return audio;
 }
 
+double zeroCrossingFrequency(const Audio& audio, int channel,
+                             double startSeconds, double endSeconds) {
+    const int sampleRate = audio.sampleRate();
+    const int64_t start = std::clamp<int64_t>(
+        static_cast<int64_t>(startSeconds * sampleRate), 0, audio.numFrames());
+    const int64_t end = std::clamp<int64_t>(
+        static_cast<int64_t>(endSeconds * sampleRate), start, audio.numFrames());
+    if (end - start < 2 || sampleRate <= 0) return 0.0;
+    int crossings = 0;
+    for (int64_t i = start + 1; i < end; ++i) {
+        const float previous = audio.sample(channel, i - 1);
+        const float current = audio.sample(channel, i);
+        if ((previous < 0.0f && current >= 0.0f) ||
+            (previous >= 0.0f && current < 0.0f))
+            ++crossings;
+    }
+    return static_cast<double>(crossings) * sampleRate /
+           (2.0 * static_cast<double>(end - start));
+}
+
 double dominantFrequency(const Audio& audio, int channel, double startSeconds,
                          double endSeconds) {
     const int sampleRate = audio.sampleRate();
@@ -162,7 +182,7 @@ VWTEST("paulstretch has exact duration and remains finite") {
     StretchOptions options;
     const Audio output = paulStretch(input, 4.0, options);
     CHECK_EQ(output.numFrames(), int64_t{19200});
-    CHECK_NEAR(dominantFrequency(output, 0, 0.05, 0.35), 220.0, 6.0);
+    CHECK_NEAR(zeroCrossingFrequency(output, 0, 0.05, 0.35), 220.0, 4.0);
     for (int64_t i = 0; i < output.numFrames(); ++i) {
         REQUIRE(std::isfinite(output.sample(0, i)));
         REQUIRE(std::isfinite(output.sample(1, i)));
@@ -200,6 +220,20 @@ VWTEST("convolution finds an impulse response delay") {
     CHECK_NEAR(output.sample(0, 14), 0.5, 1e-6);
     CHECK_NEAR(output.sample(0, 10), 0.0, 1e-6);
     CHECK_NEAR(output.sample(0, 15), 0.0, 1e-6);
+}
+
+VWTEST("convolution uses per-channel impulse responses") {
+    Audio input(2, 16, 48000);
+    input.sample(0, 0) = 1.0f;
+    input.sample(1, 0) = 1.0f;
+    Audio ir(2, 8, 48000);
+    ir.sample(0, 3) = 0.25f;
+    ir.sample(1, 5) = 0.5f;
+    const Audio output = convolve(input, ir, false);
+    CHECK_EQ(output.numFrames(), int64_t{23});
+    CHECK_NEAR(output.sample(0, 3), 0.25, 1e-6);
+    CHECK_NEAR(output.sample(1, 5), 0.5, 1e-6);
+    CHECK_NEAR(output.sample(0, 5), 0.0, 1e-6);
 }
 
 VWTEST("document time stretch changes length non-destructively") {

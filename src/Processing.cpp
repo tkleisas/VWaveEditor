@@ -188,7 +188,6 @@ Audio phaseVocoderStretch(const Audio& input, int64_t outputFrames,
     Audio output(channels, outputFrames, input.sampleRate());
     std::vector<double> windowSum(static_cast<size_t>(outputFrames), 0.0);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
-
     std::vector<std::vector<double>> previousPhase(
         static_cast<size_t>(channels),
         std::vector<double>(static_cast<size_t>(bins), 0.0));
@@ -304,14 +303,6 @@ Audio paulStretchInternal(const Audio& input, int64_t outputFrames,
     std::vector<double> windowSum(static_cast<size_t>(outputFrames), 0.0);
     std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
 
-    std::vector<std::vector<double>> previousPhase(
-        static_cast<size_t>(channels),
-        std::vector<double>(static_cast<size_t>(bins), 0.0));
-    std::vector<std::vector<double>> sumPhase(
-        static_cast<size_t>(channels),
-        std::vector<double>(static_cast<size_t>(bins), 0.0));
-    std::vector<char> firstFrame(static_cast<size_t>(channels), 1);
-
     const int64_t frameCount = (outputFrames + hop - 1) / hop;
     for (int64_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
         const int64_t outputStart = frameIndex * hop;
@@ -340,30 +331,13 @@ Audio paulStretchInternal(const Audio& input, int64_t outputFrames,
             for (int bin = 0; bin < bins; ++bin) {
                 const auto& value = spectrum[static_cast<size_t>(bin)];
                 const double magnitude = std::abs(value);
-                const double phase = std::atan2(value.imag(), value.real());
-                const double omega = 2.0 * kPi * static_cast<double>(bin) /
-                                     static_cast<double>(fftSize);
-                auto& accumulated =
-                    sumPhase[static_cast<size_t>(ch)][static_cast<size_t>(bin)];
-                auto& previous =
-                    previousPhase[static_cast<size_t>(ch)][static_cast<size_t>(bin)];
-
-                if (firstFrame[static_cast<size_t>(ch)]) {
-                    accumulated =
-                        (static_cast<double>(nextRandom(randomState)) /
-                             static_cast<double>(std::numeric_limits<uint32_t>::max()) *
-                             2.0 -
-                         1.0) *
-                        kPi;
-                } else {
-                    const double expected = omega * analysisHop;
-                    const double delta = wrapPhase(phase - previous - expected);
-                    const double instantaneous = omega + delta / analysisHop;
-                    accumulated += instantaneous * static_cast<double>(hop);
-                }
-                previous = phase;
-
-                const double synthesisPhase = accumulated;
+                const double synthesisPhase =
+                    (static_cast<double>(nextRandom(randomState)) /
+                         static_cast<double>(
+                             std::numeric_limits<uint32_t>::max()) *
+                         2.0 -
+                     1.0) *
+                    kPi;
                 spectrum[static_cast<size_t>(bin)] = {
                     static_cast<float>(magnitude * std::cos(synthesisPhase)),
                     static_cast<float>(magnitude * std::sin(synthesisPhase))};
@@ -388,7 +362,6 @@ Audio paulStretchInternal(const Audio& input, int64_t outputFrames,
                 if (ch == 0)
                     windowSum[static_cast<size_t>(outIndex)] += weight * weight;
             }
-            firstFrame[static_cast<size_t>(ch)] = 0;
         }
     }
 
@@ -499,20 +472,26 @@ Audio convolve(const Audio& audio, const Audio& impulseResponse,
     FFT fft(fftSize);
     Audio output(audio.numChannels(), outputFrames, audio.sampleRate());
     std::vector<std::complex<float>> a(static_cast<size_t>(fftSize));
-    std::vector<std::complex<float>> b(static_cast<size_t>(fftSize));
+    std::vector<std::vector<std::complex<float>>> irSpectra(
+        static_cast<size_t>(ir.numChannels()),
+        std::vector<std::complex<float>>(static_cast<size_t>(fftSize)));
+
+    for (int channel = 0; channel < ir.numChannels(); ++channel) {
+        auto& spectrum = irSpectra[static_cast<size_t>(channel)];
+        for (int64_t i = 0; i < ir.numFrames(); ++i)
+            spectrum[static_cast<size_t>(i)] = ir.sample(channel, i);
+        fft.forward(spectrum);
+    }
 
     for (int ch = 0; ch < audio.numChannels(); ++ch) {
         std::fill(a.begin(), a.end(), std::complex<float>{0.0f, 0.0f});
-        std::fill(b.begin(), b.end(), std::complex<float>{0.0f, 0.0f});
         const int irChannel = ir.numChannels() == 1 ? 0 : ch;
         for (int64_t i = 0; i < audio.numFrames(); ++i)
             a[static_cast<size_t>(i)] = audio.sample(ch, i);
-        for (int64_t i = 0; i < ir.numFrames(); ++i)
-            b[static_cast<size_t>(i)] = ir.sample(irChannel, i);
         fft.forward(a);
-        fft.forward(b);
+        const auto& irSpectrum = irSpectra[static_cast<size_t>(irChannel)];
         for (int i = 0; i < fftSize; ++i)
-            a[static_cast<size_t>(i)] *= b[static_cast<size_t>(i)];
+            a[static_cast<size_t>(i)] *= irSpectrum[static_cast<size_t>(i)];
         fft.inverse(a);
         for (int64_t i = 0; i < outputFrames; ++i)
             output.sample(ch, i) = a[static_cast<size_t>(i)].real();

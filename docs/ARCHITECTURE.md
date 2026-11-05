@@ -195,7 +195,7 @@ and rounded to powers of two at higher-level entry points.
 
 ### Resampling
 
-A windowed-sinc resampler with a Blackman-style cosine window, configurable
+A windowed-sinc resampler with a Hann cosine window, configurable
 zero crossings, low-pass rolloff for downsampling, and per-output weight
 normalization. It preserves DC and amplitude at band edges.
 
@@ -206,8 +206,9 @@ normalization. It preserves DC and amplitude at band edges.
   and is transient-friendly.
 - **Phase vocoder** propagates phase using instantaneous-frequency estimates
   and overlap-add with window-power normalization.
-- **PaulStretch** uses randomized phase initialization, phase propagation, and
-  wide windows to produce smeared ambient textures while retaining pitch.
+- **PaulStretch** randomizes spectral phase independently on every frame and
+  overlap-adds the result to produce diffuse ambient textures while retaining
+  perceived pitch.
 
 Pitch shifting time-stretches by the pitch ratio and resamples by its inverse,
 then fits the result back to the original frame count.
