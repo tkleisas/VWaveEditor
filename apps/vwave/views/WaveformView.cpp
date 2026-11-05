@@ -657,6 +657,7 @@ void App::drawTrackHeader(const SDL_Rect& header, int index) {
                   const bool muted = !m_timeline.track(index).muted;
                   m_timeline.setTrackMuted(index, muted);
                   updateMixer();
+                  markDirty();
                   setStatus(muted ? "Track muted" : "Track unmuted");
               },
               false, track.muted);
@@ -665,6 +666,7 @@ void App::drawTrackHeader(const SDL_Rect& header, int index) {
                   const bool solo = !m_timeline.track(index).solo;
                   m_timeline.setTrackSolo(index, solo);
                   updateMixer();
+                  markDirty();
                   setStatus(solo ? "Track solo" : "Solo cleared");
               },
               false, track.solo);
@@ -673,6 +675,7 @@ void App::drawTrackHeader(const SDL_Rect& header, int index) {
                   const bool armed = !m_timeline.track(index).armed;
                   for (int i = 0; i < m_timeline.trackCount(); ++i)
                       m_timeline.setTrackArmed(i, i == index && armed);
+                  markDirty();
                   setStatus(armed ? "Track armed for recording"
                                   : "Track disarmed");
               },
@@ -683,6 +686,7 @@ void App::drawTrackHeader(const SDL_Rect& header, int index) {
               [this, index](double value) {
                   m_timeline.setTrackGainDb(index, value);
                   updateMixer();
+                  markDirty();
               });
     addSlider("Pan",
               std::to_string(static_cast<int>(std::lround(
@@ -693,6 +697,7 @@ void App::drawTrackHeader(const SDL_Rect& header, int index) {
               [this, index](double value) {
                   m_timeline.setTrackPan(index, value);
                   updateMixer();
+                  markDirty();
               });
 }
 

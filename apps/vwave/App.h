@@ -193,6 +193,7 @@ private:
     void runEdit(const std::function<bool(std::string*)>& edit,
                  const std::string& success);
     void markEdited();
+    void markDirty();
     void clearAnalysis();
     void analyzeBeats();
     void detectPitch();

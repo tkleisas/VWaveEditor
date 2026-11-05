@@ -64,7 +64,7 @@ App::App()
               m_audioPath =
                   hasTracks() ? activeDocument().sourcePath() : std::string{};
               if (m_timeline.empty()) m_projectPath.clear();
-              updateWindowTitle();
+              markDirty();
           },
           [this](const std::string& status) { setStatus(status); }),
       m_playback(
@@ -1151,6 +1151,10 @@ void App::markEdited() {
     m_spectrogramDirty = true;
     m_analysisData.clear();
     m_spectralController.clear();
+    markDirty();
+}
+
+void App::markDirty() {
     ++m_editGeneration;
     ++m_prefetchGeneration;
     m_modified = true;
