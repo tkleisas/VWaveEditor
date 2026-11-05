@@ -66,11 +66,12 @@ JobHandle JobSystem::submit(Task task) {
             [task = std::move(task), control, promise]() mutable {
                 try {
                     task(*control);
+                    control->markFinished();
                     promise->set_value();
                 } catch (...) {
+                    control->markFinished();
                     promise->set_exception(std::current_exception());
                 }
-                control->markFinished();
             });
     }
     m_impl->wake.notify_one();
