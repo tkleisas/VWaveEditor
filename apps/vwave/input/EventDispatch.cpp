@@ -60,6 +60,67 @@ bool App::handleToolbarInput(const SDL_Event& event) {
     return false;
 }
 
+bool App::handleContextMenuInput(const SDL_Event& event) {
+    if (m_dialog.isOpen() || m_settingsController.isOpen()) return false;
+
+    const std::optional<Event> translated = m_uiEventAdapter.translate(event);
+    if (!translated) return false;
+
+    if (const auto* pointer = std::get_if<PointerEvent>(&*translated)) {
+        if (m_contextMenuOpen) {
+            SDL_Point point{pointer->position.x, pointer->position.y};
+            const bool inPopup =
+                SDL_PointInRect(&point, &m_contextMenuRect) != 0;
+            const bool captured = m_contextMenuHost.captured() != nullptr;
+            if (event.type == SDL_MOUSEMOTION) {
+                m_contextMenuHost.handleEvent(*translated);
+                m_cursorController.apply(m_contextMenuHost.cursor());
+                return true;
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN ||
+                event.type == SDL_MOUSEBUTTONUP) {
+                if (pointer->button != 1 || (!inPopup && !captured)) {
+                    closeContextMenu();
+                    m_cursorController.apply(CursorShape::Arrow);
+                    return true;
+                }
+                m_contextMenuHost.handleEvent(*translated);
+                m_cursorController.apply(m_contextMenuHost.cursor());
+                if (event.type == SDL_MOUSEBUTTONUP) {
+                    closeContextMenu();
+                    m_cursorController.apply(CursorShape::Arrow);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        if (event.type != SDL_MOUSEBUTTONDOWN ||
+            pointer->button != 3)
+            return false;
+
+        m_openMenu = -1;
+        if (m_tab == vwave::EditorTab::Waveform) {
+            refreshTimelineCanvas();
+            const auto& selection = m_timeline.selection();
+            const TimelineHit hit = m_timelineCanvas.hitTest(
+                {pointer->position.x, pointer->position.y}, selection,
+                m_timeline.selectionScope(), m_timeline.activeTrack(),
+                selection.active && selection.end > selection.start);
+            if (hit.trackIndex >= 0)
+                openTrackContextMenu(hit.trackIndex, pointer->position.x,
+                                     pointer->position.y);
+        }
+        return true;
+    }
+
+    if (std::holds_alternative<WindowEvent>(*translated)) {
+        m_contextMenuHost.handleEvent(*translated);
+        m_cursorController.apply(CursorShape::Arrow);
+    }
+    return false;
+}
+
 bool App::handleMenuInput(const SDL_Event& event) {
     if (m_dialog.isOpen() || m_contextMenuOpen ||
         m_settingsController.isOpen())
@@ -249,6 +310,7 @@ void App::handleEvent(const SDL_Event& event) {
     if (handleTrackHeaderInput(event)) return;
     if (handleSettingsInput(event)) return;
     if (handleMenuInput(event)) return;
+    if (handleContextMenuInput(event)) return;
     switch (event.type) {
     case SDL_QUIT:
         m_running = false;

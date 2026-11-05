@@ -35,14 +35,14 @@ void App::openTrackContextMenu(int trackIndex, int x, int y) {
     m_contextMenuItems.clear();
     auto add = [this](std::string label, std::function<void()> action,
                       bool enabled = true) {
-        MenuItem item;
+        PopupItem item;
         item.label = std::move(label);
         item.action = std::move(action);
         item.enabled = enabled;
         m_contextMenuItems.push_back(std::move(item));
     };
     auto separator = [this] {
-        MenuItem item;
+        PopupItem item;
         item.separator = true;
         m_contextMenuItems.push_back(std::move(item));
     };
@@ -164,12 +164,12 @@ void App::openTrackContextMenu(int trackIndex, int x, int y) {
 void App::closeContextMenu() {
     m_contextMenuOpen = false;
     m_contextMenuItems.clear();
-    m_contextMenuItemRects.clear();
     m_contextMenuTrack = -1;
+    m_contextMenuHost.handleEvent(
+        WindowEvent{WindowEvent::Type::FocusLost});
 }
 
 void App::drawContextMenu() {
-    m_contextMenuItemRects.clear();
     if (!m_contextMenuOpen || m_contextMenuItems.empty()) return;
     int width = 190;
     for (const auto& item : m_contextMenuItems) {
@@ -182,45 +182,12 @@ void App::drawContextMenu() {
     height += 8;
     int x = m_contextMenuPosition.x;
     int y = m_contextMenuPosition.y;
-    int windowW = 0;
-    int windowH = 0;
-    SDL_GetWindowSize(m_window, &windowW, &windowH);
-    if (x + width > windowW) x = windowW - width;
-    if (y + height > windowH) y = windowH - height;
+    if (x + width > m_menubarRect.w) x = m_menubarRect.w - width;
+    if (y + height > m_footerRect.y) y = m_footerRect.y - height;
     x = std::max(0, x);
     y = std::max(0, y);
     m_contextMenuRect = {x, y, width, height};
-    SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
-    SDL_RenderFillRect(m_renderer, &m_contextMenuRect);
-    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
-    SDL_RenderDrawRect(m_renderer, &m_contextMenuRect);
-    int mouseX = 0;
-    int mouseY = 0;
-    SDL_GetMouseState(&mouseX, &mouseY);
-    SDL_Point mouse{mouseX, mouseY};
-    int rowY = y + 8;
-    m_contextMenuItemRects.resize(m_contextMenuItems.size());
-    for (size_t index = 0; index < m_contextMenuItems.size(); ++index) {
-        const MenuItem& item = m_contextMenuItems[index];
-        if (item.separator) {
-            SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g,
-                                   kBorder.b, 100);
-            SDL_RenderDrawLine(m_renderer, x + 8, rowY + 3,
-                               x + width - 8, rowY + 3);
-            m_contextMenuItemRects[index] = {};
-            rowY += 7;
-            continue;
-        }
-        SDL_Rect row{x + 1, rowY, width - 2, 24};
-        m_contextMenuItemRects[index] = row;
-        if (item.enabled && SDL_PointInRect(&mouse, &row)) {
-            SDL_SetRenderDrawColor(m_renderer, kAccentDark.r, kAccentDark.g,
-                                   kAccentDark.b, 255);
-            SDL_RenderFillRect(m_renderer, &row);
-        }
-        drawText(item.label, row.x + 12, row.y + 4,
-                 item.enabled ? kText : kTextFaint, fontNormal());
-        rowY += 24;
-    }
+    m_contextMenuPopup.bounds = {x, y, width, height};
+    m_contextMenuPopup.setItems(m_contextMenuItems);
+    if (m_uiPainter) m_contextMenuPopup.draw(*m_uiPainter);
 }
-

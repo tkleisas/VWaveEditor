@@ -108,6 +108,7 @@ private:
     bool handleTrackHeaderInput(const SDL_Event& event);
     bool handleSettingsInput(const SDL_Event& event);
     bool handleMenuInput(const SDL_Event& event);
+    bool handleContextMenuInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);
@@ -369,8 +370,9 @@ private:
     int m_contextMenuTrack = -1;
     SDL_Point m_contextMenuPosition{};
     SDL_Rect m_contextMenuRect{};
-    std::vector<MenuItem> m_contextMenuItems;
-    std::vector<SDL_Rect> m_contextMenuItemRects;
+    std::vector<vwave::ui::PopupItem> m_contextMenuItems;
+    vwave::ui::MenuPopup m_contextMenuPopup;
+    vwave::ui::WidgetHost m_contextMenuHost;
     bool m_shiftingTrack = false;
     int m_shiftingTrackIndex = -1;
     int m_shiftStartMouseX = 0;

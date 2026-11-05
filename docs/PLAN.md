@@ -598,4 +598,7 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Migrated menu-bar titles to flat retained buttons and dropdowns to a custom
   retained `MenuPopup` with hover, separators, shortcuts, disabled items, and
   action dispatch. Settings-dialog buttons are retained and modal.
-- Next: migrate context menus and finish the remaining legacy hit-test paths.
+- Migrated track context menus to retained `MenuPopup` items with modal
+  pointer routing, hover/pressed state, separators, and action dispatch.
+- Next: audit the remaining legacy hit-test paths and finish the UI event
+  migration/documentation.

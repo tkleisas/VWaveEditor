@@ -171,6 +171,7 @@ App::App()
               if (m_uiPainter) m_uiPainter->clearTextCache();
           }) {
     m_menuHost.setRoot(&m_menuPopup);
+    m_contextMenuHost.setRoot(&m_contextMenuPopup);
     m_dialog.setConfirmHandler(
         [this](DialogMode mode, const std::string& path) {
             applyDialog(mode, path);
@@ -451,6 +452,18 @@ int App::run() {
         if (m_timeline.track(0).muted == beforeMute) return 1;
         if (!m_timeline.undo()) return 1;
         if (m_timeline.track(0).muted != beforeMute) return 1;
+        const auto* contextRow = m_timelineCanvas.rowForTrack(0);
+        if (!contextRow) return 1;
+        SDL_Event contextDown{};
+        contextDown.type = SDL_MOUSEBUTTONDOWN;
+        contextDown.button.x = contextRow->lane.x + contextRow->lane.w / 2;
+        contextDown.button.y = contextRow->lane.y + contextRow->lane.h / 2;
+        contextDown.button.button = SDL_BUTTON_RIGHT;
+        handleEvent(contextDown);
+        if (!m_contextMenuOpen) return 1;
+        drawContextMenu();
+        handleEvent(contextDown);
+        if (m_contextMenuOpen) return 1;
         m_settingsController.open();
         drawSettingsDialog();
         vwave::ui::PushButton* closeSettingsButton = nullptr;
