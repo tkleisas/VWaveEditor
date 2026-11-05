@@ -69,6 +69,7 @@ public:
 
     const std::vector<TimelineCanvasRow>& rows() const { return m_rows; }
     const std::vector<TimelineCanvasClip>& clips() const { return m_clips; }
+    const TimelineCanvasRow* rowForTrack(int trackIndex) const;
 
     int xForFrame(const Rect& lane, int64_t frame) const;
     int64_t frameAtX(const Rect& lane, int x) const;

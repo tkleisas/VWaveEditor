@@ -21,29 +21,15 @@ int64_t App::laneFrameAtX(const SDL_Rect& lane, int x) const {
 }
 
 SDL_Rect App::selectionScreenRect() const {
+    refreshTimelineCanvas();
     const auto& selection = m_timeline.selection();
-    if (!selection.active || m_waveArea.w <= 0) return {};
-    SDL_Rect bounds = m_waveArea;
-    if (m_timeline.selectionScope() == vwave::SelectionScope::ActiveTrack &&
-        m_timeline.activeTrack() >= 0 &&
-        m_timeline.activeTrack() <
-            static_cast<int>(m_trackLaneRects.size())) {
-        const auto& lane =
-            m_trackLaneRects[static_cast<size_t>(m_timeline.activeTrack())];
-        if (lane.w > 0) bounds = lane;
-    }
-    const int left = std::clamp(laneXForFrame(bounds, selection.start),
-                                bounds.x, bounds.x + bounds.w);
-    const int right = std::clamp(laneXForFrame(bounds, selection.end),
-                                 bounds.x, bounds.x + bounds.w);
-    return {left, bounds.y, std::max(1, right - left), bounds.h};
+    if (!selection.active || selection.end <= selection.start) return {};
+    const Rect selected = m_timelineCanvas.selectionRect(
+        selection, m_timeline.selectionScope(), m_timeline.activeTrack());
+    return {selected.x, selected.y, selected.w, selected.h};
 }
 
 void App::drawWaveform(const SDL_Rect& area) {
-    m_trackHeaderRects.clear();
-    m_trackLaneRects.clear();
-    m_trackHeaderRects.resize(static_cast<size_t>(m_timeline.trackCount()));
-    m_trackLaneRects.resize(static_cast<size_t>(m_timeline.trackCount()));
     if (!hasTracks() || !activeDocument().hasClips()) m_clips.reset();
 
     const int margin = 10;
@@ -185,8 +171,6 @@ void App::drawWaveform(const SDL_Rect& area) {
         {m_trackHeaderColumn.x, m_trackHeaderColumn.y,
          m_trackHeaderColumn.w, m_trackHeaderColumn.h});
     m_buildingTrackHeader = true;
-    std::fill(m_trackHeaderRects.begin(), m_trackHeaderRects.end(), SDL_Rect{});
-    std::fill(m_trackLaneRects.begin(), m_trackLaneRects.end(), SDL_Rect{});
     TimelineCanvasLayout canvasLayout;
     canvasLayout.area = {area.x, area.y, area.w, area.h};
     canvasLayout.ruler = {m_rulerArea.x, m_rulerArea.y, m_rulerArea.w,
@@ -208,8 +192,6 @@ void App::drawWaveform(const SDL_Rect& area) {
         SDL_Rect header{row.header.x, row.header.y, row.header.w,
                         row.header.h};
         SDL_Rect lane{row.lane.x, row.lane.y, row.lane.w, row.lane.h};
-        m_trackHeaderRects[static_cast<size_t>(index)] = header;
-        m_trackLaneRects[static_cast<size_t>(index)] = lane;
         drawTrackHeader(header, index);
 
         const auto& track = m_timeline.track(index);
@@ -297,65 +279,63 @@ void App::drawWaveform(const SDL_Rect& area) {
     m_ui.setControlArea(1);
 
     SDL_RenderSetClipRect(m_renderer, &m_tracksArea);
-    for (int index = 0; index < m_timeline.trackCount(); ++index) {
-        const auto& lane =
-            m_trackLaneRects[static_cast<size_t>(index)];
-        if (lane.w <= 0) continue;
+    for (const auto& clipVisual : m_timelineCanvas.clips()) {
+        const int index = clipVisual.trackIndex;
+        const int clipIndex = clipVisual.clipIndex;
+        const auto* row = m_timelineCanvas.rowForTrack(index);
+        if (!row || row->lane.w <= 0 || index < 0 ||
+            index >= m_timeline.trackCount())
+            continue;
         const auto& track = m_timeline.track(index);
-        if (!track.document.hasClips()) continue;
-        const auto& clips = track.document.clips();
-        for (size_t clipIndex = 0; clipIndex < clips.size(); ++clipIndex) {
-            const auto& clip = clips[clipIndex];
-            const int64_t clipStart = track.startFrame + clip.timelineStart;
-            const int64_t clipEnd =
-                clipStart + vwave::clipOutputFrames(clip);
-            const int x0 = laneXForFrame(lane, clipStart);
-            const int x1 = laneXForFrame(lane, clipEnd);
-            if (x1 < lane.x || x0 > lane.x + lane.w) continue;
-            const int left = std::clamp(x0, lane.x, lane.x + lane.w);
-            const int right = std::clamp(x1, lane.x, lane.x + lane.w);
-            SDL_Rect box{left, lane.y + 4, std::max(1, right - left),
-                         lane.h - 8};
-            const bool selected =
-                index == m_timeline.activeTrack() &&
-                static_cast<int>(clipIndex) == m_clips.selectedClip();
-            SDL_SetRenderDrawColor(
-                m_renderer, selected ? kAccent.r : kTextDim.r,
-                selected ? kAccent.g : kTextDim.g,
-                selected ? kAccent.b : kTextDim.b,
-                selected ? 45 : 22);
-            SDL_RenderFillRect(m_renderer, &box);
-            SDL_SetRenderDrawColor(
-                m_renderer, selected ? kAccent.r : kBorder.r,
-                selected ? kAccent.g : kBorder.g,
-                selected ? kAccent.b : kBorder.b,
-                selected ? 220 : 120);
-            SDL_RenderDrawRect(m_renderer, &box);
-            SDL_Rect bar{box.x, box.y, box.w, 3};
-            SDL_SetRenderDrawColor(
-                m_renderer, selected ? kAccent.r : kTextDim.r,
-                selected ? kAccent.g : kTextDim.g,
-                selected ? kAccent.b : kTextDim.b,
-                selected ? 230 : 90);
-            SDL_RenderFillRect(m_renderer, &bar);
-            if (box.w > 48) {
-                const std::string name =
-                    clip.name.empty()
-                        ? "Clip " + std::to_string(clipIndex + 1)
-                        : clip.name;
-                drawText(truncateText(name, fontSmall(), box.w - 8), box.x + 4,
-                         box.y + 5, selected ? kText : kTextDim, fontSmall());
-            }
+        if (clipIndex < 0 ||
+            static_cast<size_t>(clipIndex) >= track.document.clips().size())
+            continue;
+        const auto& clip =
+            track.document.clips()[static_cast<size_t>(clipIndex)];
+        SDL_Rect lane{row->lane.x, row->lane.y, row->lane.w, row->lane.h};
+        const int x0 = clipVisual.rect.x;
+        const int x1 = clipVisual.rect.x + clipVisual.rect.w;
+        if (x1 < lane.x || x0 > lane.x + lane.w) continue;
+        const int left = std::clamp(x0, lane.x, lane.x + lane.w);
+        const int right = std::clamp(x1, lane.x, lane.x + lane.w);
+        SDL_Rect box{left, lane.y + 4, std::max(1, right - left),
+                     lane.h - 8};
+        const bool selected =
+            index == m_timeline.activeTrack() &&
+            clipIndex == m_clips.selectedClip();
+        SDL_SetRenderDrawColor(
+            m_renderer, selected ? kAccent.r : kTextDim.r,
+            selected ? kAccent.g : kTextDim.g,
+            selected ? kAccent.b : kTextDim.b,
+            selected ? 45 : 22);
+        SDL_RenderFillRect(m_renderer, &box);
+        SDL_SetRenderDrawColor(
+            m_renderer, selected ? kAccent.r : kBorder.r,
+            selected ? kAccent.g : kBorder.g,
+            selected ? kAccent.b : kBorder.b,
+            selected ? 220 : 120);
+        SDL_RenderDrawRect(m_renderer, &box);
+        SDL_Rect bar{box.x, box.y, box.w, 3};
+        SDL_SetRenderDrawColor(
+            m_renderer, selected ? kAccent.r : kTextDim.r,
+            selected ? kAccent.g : kTextDim.g,
+            selected ? kAccent.b : kTextDim.b,
+            selected ? 230 : 90);
+        SDL_RenderFillRect(m_renderer, &bar);
+        if (box.w > 48) {
+            const std::string name =
+                clip.name.empty()
+                    ? "Clip " + std::to_string(clipIndex + 1)
+                    : clip.name;
+            drawText(truncateText(name, fontSmall(), box.w - 8), box.x + 4,
+                     box.y + 5, selected ? kText : kTextDim, fontSmall());
         }
         if (index == m_timeline.activeTrack() && m_clips.toolEnabled() &&
-            m_clips.selectedClip() >= 0 &&
-            static_cast<size_t>(m_clips.selectedClip()) < clips.size()) {
-            const auto& clip =
-                clips[static_cast<size_t>(m_clips.selectedClip())];
+            clipIndex == m_clips.selectedClip()) {
             const int64_t clipEnd =
                 track.startFrame + clip.timelineStart +
                 vwave::clipOutputFrames(clip);
-            const int endX = laneXForFrame(lane, clipEnd);
+            const int endX = m_timelineCanvas.xForFrame(row->lane, clipEnd);
             if (endX >= lane.x && endX <= lane.x + lane.w) {
                 SDL_Rect handle{endX - 8, lane.y + 9, 7, 7};
                 SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
@@ -409,13 +389,14 @@ void App::drawWaveform(const SDL_Rect& area) {
         }
     }
 
-    if (hasTracks() &&
-        m_timeline.activeTrack() <
-            static_cast<int>(m_trackLaneRects.size())) {
+    const auto* activeRow =
+        hasTracks() ? m_timelineCanvas.rowForTrack(m_timeline.activeTrack())
+                    : nullptr;
+    if (activeRow && activeRow->lane.w > 0) {
         const auto& active = m_timeline.track(m_timeline.activeTrack());
-        const SDL_Rect activeLane =
-            m_trackLaneRects[static_cast<size_t>(m_timeline.activeTrack())];
-        if (activeLane.w > 0) {
+        const SDL_Rect activeLane{activeRow->lane.x, activeRow->lane.y,
+                                  activeRow->lane.w, activeRow->lane.h};
+        {
             for (const auto& slice : active.document.slices()) {
                 const int64_t frame = slice.range.start + active.startFrame;
                 if (frame < m_view.startFrame ||
@@ -447,15 +428,15 @@ void App::drawWaveform(const SDL_Rect& area) {
         }
     }
 
-    for (int index = 0; index < m_timeline.trackCount(); ++index) {
-        const auto& lane =
-            m_trackLaneRects[static_cast<size_t>(index)];
-        if (lane.w <= 0) continue;
+    for (const auto& row : m_timelineCanvas.rows()) {
+        const int index = row.trackIndex;
+        if (index < 0 || index >= m_timeline.trackCount()) continue;
         const auto& track = m_timeline.track(index);
         const int64_t frames = track.document.numFrames();
         if (frames <= 0) continue;
-        const int startX = laneXForFrame(lane, track.startFrame);
-        const int endX = laneXForFrame(lane, track.startFrame + frames);
+        SDL_Rect lane{row.lane.x, row.lane.y, row.lane.w, row.lane.h};
+        const int startX = row.startX;
+        const int endX = row.endX;
         const bool active = index == m_timeline.activeTrack();
         if (startX >= lane.x && startX <= lane.x + lane.w) {
             SDL_Rect handle{startX - 4, lane.y + 2, 8, 14};
@@ -503,11 +484,12 @@ void App::drawWaveform(const SDL_Rect& area) {
                            selection.y + selection.h - 1);
     }
 
-    if (m_waveDrag != WaveDragMode::None && m_waveDragTrack >= 0 &&
-        m_waveDragTrack < static_cast<int>(m_trackLaneRects.size())) {
-        const auto& lane =
-            m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)];
-        if (lane.w > 0) {
+    if (m_waveDrag != WaveDragMode::None && m_waveDragTrack >= 0) {
+        const auto* dragRow =
+            m_timelineCanvas.rowForTrack(m_waveDragTrack);
+        if (dragRow && dragRow->lane.w > 0) {
+            const SDL_Rect lane{dragRow->lane.x, dragRow->lane.y,
+                                dragRow->lane.w, dragRow->lane.h};
             const int x = laneXForFrame(lane, m_waveDragPreviewFrame);
             if (m_waveDrag == WaveDragMode::TrackTrimStart ||
                 m_waveDrag == WaveDragMode::TrackTrimEnd) {

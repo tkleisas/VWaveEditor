@@ -344,8 +344,6 @@ private:
     SDL_Rect m_settingsThemePrev{};
     SDL_Rect m_settingsThemeNext{};
     SDL_Rect m_settingsCloseRect{};
-    std::vector<SDL_Rect> m_trackHeaderRects;
-    std::vector<SDL_Rect> m_trackLaneRects;
     double m_sidebarScroll = 0.0;
     int m_sidebarContentHeight = 0;
 

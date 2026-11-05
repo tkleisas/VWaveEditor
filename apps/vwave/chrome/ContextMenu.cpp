@@ -19,15 +19,14 @@ using namespace vwave::ui;
 void App::openTrackContextMenu(int trackIndex, int x, int y) {
     if (trackIndex < 0 || trackIndex >= m_timeline.trackCount()) return;
     selectTrack(trackIndex);
-    if (trackIndex < static_cast<int>(m_trackLaneRects.size()) &&
-        m_trackLaneRects[static_cast<size_t>(trackIndex)].w > 0) {
-        const auto& lane = m_trackLaneRects[static_cast<size_t>(trackIndex)];
+    const auto* row = m_timelineCanvas.rowForTrack(trackIndex);
+    if (row && row->lane.w > 0) {
         const auto& track = m_timeline.track(trackIndex);
-        if (x >= lane.x && x <= lane.x + lane.w &&
+        if (x >= row->lane.x && x <= row->lane.x + row->lane.w &&
             track.document.hasClips()) {
             const int64_t local = std::clamp<int64_t>(
-                laneFrameAtX(lane, x) - track.startFrame, 0,
-                track.document.numFrames());
+                m_timelineCanvas.frameAtX(row->lane, x) - track.startFrame,
+                0, track.document.numFrames());
             m_clips.setSelectedClip(track.document.clipIndexAt(local));
         }
     }

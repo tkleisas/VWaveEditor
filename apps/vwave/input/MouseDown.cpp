@@ -45,22 +45,15 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
             return;
         }
         if (m_tab == vwave::EditorTab::Waveform) {
-            SDL_Point point{event.x, event.y};
-            for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
-                if (m_trackHeaderRects[i].w > 0 &&
-                    SDL_PointInRect(&point, &m_trackHeaderRects[i])) {
-                    openTrackContextMenu(static_cast<int>(i), event.x,
-                                         event.y);
-                    return;
-                }
-            }
-            for (size_t i = 0; i < m_trackLaneRects.size(); ++i) {
-                if (m_trackLaneRects[i].w > 0 &&
-                    SDL_PointInRect(&point, &m_trackLaneRects[i])) {
-                    openTrackContextMenu(static_cast<int>(i), event.x,
-                                         event.y);
-                    return;
-                }
+            refreshTimelineCanvas();
+            const auto& selection = m_timeline.selection();
+            const TimelineHit hit = m_timelineCanvas.hitTest(
+                {event.x, event.y}, selection, m_timeline.selectionScope(),
+                m_timeline.activeTrack(),
+                selection.active && selection.end > selection.start);
+            if (hit.trackIndex >= 0) {
+                openTrackContextMenu(hit.trackIndex, event.x, event.y);
+                return;
             }
         }
         return;

@@ -231,13 +231,17 @@ void App::handleWaveformMouseDown(const SDL_MouseButtonEvent& event) {
 
 void App::handleWaveformMouseMotion(const SDL_MouseMotionEvent& event) {
 if (m_waveDrag != WaveDragMode::None) {
-    const SDL_Rect& lane =
-        m_waveDragTrack >= 0 &&
-                m_waveDragTrack < static_cast<int>(m_trackLaneRects.size()) &&
-                m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)].w > 0
-            ? m_trackLaneRects[static_cast<size_t>(m_waveDragTrack)]
-            : m_waveArea;
-    const int64_t frame = laneFrameAtX(lane, event.x);
+    const TimelineCanvasRow* dragRow =
+        m_waveDragTrack >= 0 ? m_timelineCanvas.rowForTrack(m_waveDragTrack)
+                             : nullptr;
+    const SDL_Rect lane = dragRow && dragRow->lane.w > 0
+                              ? SDL_Rect{dragRow->lane.x, dragRow->lane.y,
+                                         dragRow->lane.w, dragRow->lane.h}
+                              : m_waveArea;
+    const int64_t frame =
+        dragRow && dragRow->lane.w > 0
+            ? m_timelineCanvas.frameAtX(dragRow->lane, event.x)
+            : laneFrameAtX(lane, event.x);
     const int64_t looseFrame = std::max<int64_t>(
         0, static_cast<int64_t>(std::llround(
                m_view.startFrame +

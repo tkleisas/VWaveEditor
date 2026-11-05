@@ -57,6 +57,12 @@ void TimelineCanvas::layout(const vwave::Timeline& timeline,
     }
 }
 
+const TimelineCanvasRow* TimelineCanvas::rowForTrack(int trackIndex) const {
+    for (const auto& row : m_rows)
+        if (row.trackIndex == trackIndex) return &row;
+    return nullptr;
+}
+
 int TimelineCanvas::xForFrame(const Rect& lane, int64_t frame) const {
     return lane.x + static_cast<int>(std::lround(
                         m_viewport.pixelAt(frame, std::max(1, lane.w))));
