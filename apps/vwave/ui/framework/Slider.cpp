@@ -38,6 +38,11 @@ void Slider::paint(Painter& painter) {
     const int trackHeight = std::min(6, std::max(1, bounds.h));
     const Rect track{bounds.x, bounds.y + (bounds.h - trackHeight) / 2,
                      bounds.w, trackHeight};
+    paintTrack(painter, track);
+}
+
+void Slider::paintTrack(Painter& painter, const Rect& track) {
+    if (!slider) return;
     const ColorRole trackRole =
         enabled ? ColorRole::Content : ColorRole::Disabled;
     const ColorRole fillRole =

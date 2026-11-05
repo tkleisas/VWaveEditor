@@ -575,4 +575,6 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Migrated sidebar buttons to a pooled retained-widget bridge while preserving
   existing section layout and scroll behavior; sliders remain on the legacy
   path for now.
-- Next: migrate sidebar sliders, then continue the timeline canvas extraction.
+- Migrated sidebar sliders to retained `SidebarSlider` widgets with label/value
+  painting, drag capture, keyboard steps, and SizeWE cursors.
+- Next: continue the timeline canvas extraction and residual legacy widgets.

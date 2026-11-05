@@ -40,6 +40,30 @@ void App::addSidebarButton(const std::string& label, int x, int y, int w,
     button.visible = true;
 }
 
+void App::addSidebarSlider(const std::string& label,
+                           const std::string& valueText, int x, int y, int w,
+                           vwave::ParameterSlider& slider,
+                           std::function<void(double)> onChanged) {
+    if (!m_sidebarRoot) {
+        m_sidebarRoot = std::make_unique<Widget>();
+        m_sidebarRoot->enabled = false;
+        m_sidebarHost.setRoot(m_sidebarRoot.get());
+    }
+    if (m_sidebarSliderIndex >= m_sidebarSliders.size()) {
+        auto control = std::make_unique<SidebarSlider>();
+        auto* pointer = control.get();
+        m_sidebarRoot->addChild(std::move(control));
+        m_sidebarSliders.push_back(pointer);
+    }
+    auto& control = *m_sidebarSliders[m_sidebarSliderIndex++];
+    control.bounds = {x, y, w, 26};
+    control.label = label;
+    control.valueText = valueText;
+    control.slider = &slider;
+    control.onChanged = std::move(onChanged);
+    control.visible = true;
+}
+
 void App::drawSidebar() {
     if (!m_sidebarRoot) {
         m_sidebarRoot = std::make_unique<Widget>();
@@ -49,6 +73,7 @@ void App::drawSidebar() {
     m_sidebarRoot->bounds = {m_sidebarRect.x, m_sidebarRect.y,
                              m_sidebarRect.w, m_sidebarRect.h};
     m_sidebarButtonIndex = 0;
+    m_sidebarSliderIndex = 0;
     m_buildingSidebar = true;
     m_ui.setControlArea(1);
     SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
@@ -655,6 +680,8 @@ void App::drawSidebar() {
         std::clamp(m_sidebarScroll, 0.0, static_cast<double>(maximumScroll));
     for (size_t i = m_sidebarButtonIndex; i < m_sidebarButtons.size(); ++i)
         m_sidebarButtons[i]->visible = false;
+    for (size_t i = m_sidebarSliderIndex; i < m_sidebarSliders.size(); ++i)
+        m_sidebarSliders[i]->visible = false;
     m_buildingSidebar = false;
     if (m_uiPainter) m_sidebarRoot->draw(*m_uiPainter);
     SDL_RenderSetClipRect(m_renderer, nullptr);

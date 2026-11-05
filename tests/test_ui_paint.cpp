@@ -1,6 +1,7 @@
 #include "test_framework.h"
 
 #include "ui/framework/PushButton.h"
+#include "ui/editor/SidebarSlider.h"
 #include "ui/framework/Painter.h"
 #include "ui/framework/Slider.h"
 
@@ -142,4 +143,27 @@ VWTEST("widget tree draws parent before children") {
     REQUIRE(painter.fills.size() == size_t{2});
     CHECK(painter.fills[0].role == ColorRole::Panel);
     CHECK(painter.fills[1].role == ColorRole::Accent);
+}
+
+VWTEST("sidebar slider paints label value and track") {
+    ParameterSlider model{0.0, 100.0, 50.0, false, 0.0};
+    SidebarSlider slider;
+    slider.slider = &model;
+    slider.bounds = {10, 20, 100, 26};
+    slider.label = "Gain";
+    slider.valueText = "50";
+
+    RecordingPainter painter;
+    slider.draw(painter);
+    REQUIRE(painter.texts.size() == size_t{2});
+    CHECK(painter.texts[0].text == "Gain");
+    CHECK(painter.texts[0].role == ColorRole::TextDim);
+    CHECK(painter.texts[1].text == "50");
+    CHECK(painter.texts[1].role == ColorRole::Text);
+    CHECK(painter.texts[1].align == TextAlign::End);
+    REQUIRE(painter.fills.size() >= 3);
+    CHECK(painter.fills[0].role == ColorRole::Content);
+    CHECK(painter.fills[0].rect.y == 37);
+    CHECK(painter.fills[1].role == ColorRole::Accent);
+    CHECK(painter.fills[1].rect.w == 50);
 }

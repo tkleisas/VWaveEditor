@@ -24,6 +24,7 @@
 #include "services/FileSaveController.h"
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
+#include "ui/editor/SidebarSlider.h"
 #include "ui/framework/PushButton.h"
 #include "ui/framework/WidgetHost.h"
 #include "ui/sdl/SdlCursorController.h"
@@ -97,6 +98,10 @@ private:
     void addSidebarButton(const std::string& label, int x, int y, int w,
                           int h, std::function<void()> action, bool accent,
                           bool active, bool enabled);
+    void addSidebarSlider(const std::string& label,
+                          const std::string& valueText, int x, int y, int w,
+                          vwave::ParameterSlider& slider,
+                          std::function<void(double)> onChanged);
     bool handleSidebarInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
@@ -298,7 +303,9 @@ private:
     vwave::ui::WidgetHost m_sidebarHost;
     std::unique_ptr<vwave::ui::Widget> m_sidebarRoot;
     std::vector<vwave::ui::PushButton*> m_sidebarButtons;
+    std::vector<vwave::ui::SidebarSlider*> m_sidebarSliders;
     size_t m_sidebarButtonIndex = 0;
+    size_t m_sidebarSliderIndex = 0;
     bool m_buildingSidebar = false;
     vwave::ui::SdlEventAdapter m_uiEventAdapter;
     vwave::ui::SdlCursorController m_cursorController;

@@ -28,6 +28,7 @@ public:
 
 protected:
     void paint(Painter& painter) override;
+    void paintTrack(Painter& painter, const Rect& track);
 };
 
 } // namespace vwave::ui

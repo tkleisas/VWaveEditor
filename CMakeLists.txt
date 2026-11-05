@@ -108,6 +108,7 @@ endif()
 set_target_properties(vwave_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(vwave_ui_core STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/SidebarSlider.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/TimelineCursor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/PushButton.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/framework/CommandRegistry.cpp

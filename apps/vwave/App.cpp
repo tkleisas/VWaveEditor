@@ -405,6 +405,29 @@ int App::run() {
         sidebarUp.type = SDL_MOUSEBUTTONUP;
         handleEvent(sidebarUp);
         if (m_timeline.track(0).startFrame == beforeShift) return 1;
+        setTab(vwave::EditorTab::Spectrum);
+        drawSidebar();
+        vwave::ui::SidebarSlider* lowSlider = nullptr;
+        for (auto* control : m_sidebarSliders) {
+            if (control->visible && control->label == "Low frequency") {
+                lowSlider = control;
+                break;
+            }
+        }
+        if (!lowSlider) return 1;
+        const double beforeLow = m_spectralLow.value;
+        SDL_Event sliderDown{};
+        sliderDown.type = SDL_MOUSEBUTTONDOWN;
+        sliderDown.button.x = lowSlider->bounds.x +
+                              lowSlider->bounds.w * 3 / 4;
+        sliderDown.button.y = lowSlider->bounds.y + 20;
+        sliderDown.button.button = SDL_BUTTON_LEFT;
+        handleEvent(sliderDown);
+        SDL_Event sliderUp = sliderDown;
+        sliderUp.type = SDL_MOUSEBUTTONUP;
+        handleEvent(sliderUp);
+        if (m_spectralLow.value == beforeLow) return 1;
+        setTab(vwave::EditorTab::Waveform);
         auto waitForFile = [this](const std::filesystem::path& target) {
             const Uint32 deadline = SDL_GetTicks() + 5000;
             while (SDL_GetTicks() < deadline) {
@@ -544,6 +567,11 @@ void App::drawButton(const Button& button) {
 void App::addSlider(const std::string& label, const std::string& valueText,
                     int x, int y, int w, vwave::ParameterSlider& slider,
                     std::function<void(double)> onChanged) {
+    if (m_buildingSidebar) {
+        addSidebarSlider(label, valueText, x, y, w, slider,
+                         std::move(onChanged));
+        return;
+    }
     m_ui.addSlider(label, valueText, x, y, w, slider, std::move(onChanged));
 }
 
