@@ -235,3 +235,30 @@ VWTEST("audio block store retain releases unreferenced blocks") {
     REQUIRE(store.tryGet(first, audio));
     CHECK_NEAR(audio.sample(0, 0), 0.1, 1e-6);
 }
+
+VWTEST("audio block store spills new blocks without rewriting the manifest") {
+    TempDirectory directory;
+    AudioBlockStore store;
+    const AudioBlockId first = store.add(constantAudio(1, 16, 0.2f));
+    std::string error;
+    REQUIRE(store.save(directory.path(), &error));
+    const AudioBlockId second = store.add(constantAudio(1, 16, 0.4f));
+    REQUIRE(store.spill(directory.path(), {first, second}, &error));
+    CHECK(std::filesystem::exists(directory.path() / "live" / "2.f32"));
+
+    std::ifstream manifest(directory.path() / "blocks.json");
+    nlohmann::json root;
+    manifest >> root;
+    CHECK_EQ(root["blocks"].size(), size_t{1});
+
+    store.setCacheLimitBytes(1);
+    CHECK_EQ(store.cachedBlockCount(), size_t{0});
+    Audio reloaded;
+    REQUIRE(store.tryGet(second, reloaded, &error));
+    CHECK_NEAR(reloaded.sample(0, 0), 0.4, 1e-6);
+
+    TempDirectory compacted;
+    REQUIRE(store.save(compacted.path(), {first, second}, &error));
+    CHECK(std::filesystem::exists(compacted.path() / "2.f32"));
+    CHECK(!std::filesystem::exists(compacted.path() / "live" / "2.f32"));
+}

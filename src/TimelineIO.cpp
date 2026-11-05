@@ -306,8 +306,12 @@ bool Timeline::loadProject(const std::string& path, std::string* error) {
                 if (!entry.is_directory()) continue;
                 const std::string name = entry.path().filename().string();
                 if (name.rfind("track-", 0) != 0) continue;
-                if (keep.find(entry.path()) == keep.end())
+                if (keep.find(entry.path()) == keep.end()) {
                     std::filesystem::remove_all(entry.path(), iteratorError);
+                } else {
+                    std::filesystem::remove_all(entry.path() / "live",
+                                                iteratorError);
+                }
                 iteratorError.clear();
             }
         }

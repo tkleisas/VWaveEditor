@@ -305,6 +305,7 @@ private:
     std::vector<Marker> m_markers;
     std::vector<Slice> m_slices;
     std::string m_sourcePath;
+    mutable std::filesystem::path m_liveBlockDirectory;
 };
 
 const char* stretchAlgorithmName(StretchAlgorithm algorithm);

@@ -768,3 +768,19 @@ VWTEST("document history compaction bounds undo and block retention") {
     CHECK_EQ(doc.undoLabel(), std::string{});
     CHECK_EQ(doc.numFrames(), int64_t{100});
 }
+
+VWTEST("document spills new edit blocks into its live work area") {
+    const Audio original = makeRamp(100);
+    Document doc = Document::fromAudio(original);
+    TempDirectory directory;
+    std::string error;
+    REQUIRE(doc.writeBlockDirectory(directory.path(), &error));
+    doc.setBlockCacheLimitBytes(1);
+    doc.setSelection(10, 20);
+    REQUIRE(doc.gainDb(-6.0, &error));
+    CHECK(std::filesystem::exists(directory.path() / "live" / "2.f32"));
+    CHECK_EQ(doc.blockCacheBytes(), uint64_t{0});
+    CHECK_EQ(doc.audio().numFrames(), int64_t{100});
+    CHECK_NEAR(doc.audio().sample(0, 15),
+               original.sample(0, 15) * 0.501187, 1e-5);
+}

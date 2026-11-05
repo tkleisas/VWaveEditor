@@ -460,8 +460,6 @@ bool AudioBlockStore::saveImpl(const std::filesystem::path& directory,
         if (referenced && referenced->find(entry.info.id) ==
                               referenced->end())
             continue;
-        if (entry.info.file.empty())
-            entry.info.file = std::to_string(entry.info.id) + ".f32";
         if (!entry.loaded) {
             std::string loadError;
             loadEntry(entry, &loadError);
@@ -470,6 +468,7 @@ bool AudioBlockStore::saveImpl(const std::filesystem::path& directory,
                 return false;
             }
         }
+        entry.info.file = std::to_string(entry.info.id) + ".f32";
         const auto path = blockPath(directory, entry.info);
         const auto temporary = path.string() + ".tmp";
         if (!writeBlock(temporary, entry.data, error)) return false;
@@ -516,6 +515,51 @@ bool AudioBlockStore::saveImpl(const std::filesystem::path& directory,
         return false;
     }
 
+    m_backingDirectory = directory;
+    enforceCacheLimit();
+    return true;
+}
+
+bool AudioBlockStore::spill(const std::filesystem::path& directory,
+                            const std::set<AudioBlockId>& referenced,
+                            std::string* error) const {
+    if (error) error->clear();
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::error_code ec;
+    const auto liveDirectory = directory / "live";
+    const bool sameDirectory = m_backingDirectory == directory;
+    for (auto& item : m_entries) {
+        const AudioBlockId id = item.first;
+        Entry& entry = item.second;
+        if (referenced.find(id) == referenced.end()) continue;
+        if (entry.persisted && sameDirectory) continue;
+        if (!entry.loaded) {
+            std::string loadError;
+            loadEntry(entry, &loadError);
+            if (!loadError.empty()) {
+                setError(error, "cannot spill audio block: " + loadError);
+                return false;
+            }
+        }
+        std::filesystem::create_directories(liveDirectory, ec);
+        if (ec) {
+            setError(error, "cannot create live audio work area");
+            return false;
+        }
+        const std::string fileName =
+            "live/" + std::to_string(entry.info.id) + ".f32";
+        const auto path = directory / fileName;
+        const auto temporary = path.string() + ".tmp";
+        if (!writeBlock(temporary, entry.data, error)) return false;
+        std::filesystem::rename(temporary, path, ec);
+        if (ec) {
+            std::filesystem::remove(temporary, ec);
+            setError(error, "cannot commit live audio block");
+            return false;
+        }
+        entry.info.file = fileName;
+        entry.persisted = true;
+    }
     m_backingDirectory = directory;
     enforceCacheLimit();
     return true;

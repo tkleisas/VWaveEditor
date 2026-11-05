@@ -749,3 +749,32 @@ VWTEST("timeline loads inline version two projects without a work area") {
     CHECK(loaded.track(0).document.audio().equals(
         timeline.track(0).document.audio()));
 }
+
+VWTEST("timeline edits spill into the live work area without corrupting the saved project") {
+    TempDirectory directory;
+    const std::string path =
+        (directory.path() / "live.vwdoc").string();
+    Timeline timeline;
+    std::string error;
+    REQUIRE(timeline.addAudioTrack("one", constantAudio(300, 0.3f), 0,
+                                   &error));
+    REQUIRE(timeline.saveProject(path, &error));
+    const Audio saved = timeline.track(0).document.audio();
+
+    Timeline loaded;
+    REQUIRE(loaded.loadProject(path, &error));
+    loaded.track(0).document.setSelection(20, 80);
+    REQUIRE(loaded.track(0).document.gainDb(-6.0, &error));
+
+    std::ifstream project(path);
+    nlohmann::json root;
+    project >> root;
+    const auto generation = directory.path() / "live.vwdoc.blocks" /
+        root["tracks"][0]["blockDirectory"].get<std::string>();
+    CHECK(std::filesystem::exists(generation / "live" / "2.f32"));
+
+    Timeline recovered;
+    REQUIRE(recovered.loadProject(path, &error));
+    CHECK(recovered.track(0).document.audio().equals(saved));
+    CHECK(!std::filesystem::exists(generation / "live"));
+}

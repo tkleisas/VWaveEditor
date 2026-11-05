@@ -121,6 +121,12 @@ removes every generation directory not referenced by the loaded project file,
 which is safe because in-memory undo history is cleared on load. Unreferenced
 blocks therefore disappear on the next project load.
 
+While a project is open, blocks created by edits spill synchronously into
+`<track-generation>/live/<id>.f32`. The saved project manifest is not rewritten,
+so a crash still recovers the last explicitly saved state; the live files are
+only used by the in-memory LRU cache and are copied into the next generation on
+the next save. Loading a project removes leftover `live/` directories.
+
 The in-memory LRU cache is separate from persistence: evicting a block only
 drops its decoded copy. Loaded timeline tracks use a 256 MiB default cache limit
 and reload evicted blocks on demand. Playback/analysis consumers must hold an

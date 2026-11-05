@@ -148,8 +148,10 @@ Timeline work areas use `project.vwdoc.blocks/track-<n>-<generation>/` sidecar
 directories. A save writes new generation directories first and commits the
 project JSON last. Old generations remain available for in-session structural
 undo and are removed on the next project load when they are no longer
-referenced. Loaded tracks use an LRU cache and reload evicted blocks from disk
-on demand. See `docs/AUDIO_MODEL.md`.
+referenced. While editing, new blocks spill into the generation's `live/`
+directory without rewriting the saved manifest, so the last explicit save
+remains crash-safe. Loaded tracks use an LRU cache and reload evicted blocks
+from disk on demand. See `docs/AUDIO_MODEL.md`.
 
 Document-level audio import/export and project JSON persistence live in
 `DocumentIO.cpp`, operation execution in `DocumentExecution.cpp`, and history
@@ -442,8 +444,9 @@ The suite covers:
 - Undo history is bounded per document (1024 entries by default), but timeline
   structural snapshots and the project file can still retain older blocks until
   the next save/load cycle. Autosave is not yet implemented.
-- The disk work area is committed on explicit project save; live edits remain in
-  RAM until the next save.
+- Live edit blocks spill to the session work area for cache eviction, but the
+  project manifest/state is committed only on explicit save; crash recovery of
+  unsaved arrangement changes is not implemented.
 - Mixdown export warns on peaks above 0 dBFS but does not automatically limit;
   integer PCM output can clip if the warning is ignored.
 - Timeline structural undo keeps up to 64 snapshot entries; older structural

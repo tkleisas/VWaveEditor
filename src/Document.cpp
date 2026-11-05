@@ -39,6 +39,7 @@ bool Document::initializeSource() {
     m_arrangedValid = false;
     m_clipView.clear();
     m_clipViewValid = false;
+    m_liveBlockDirectory.clear();
     m_channels = m_source.numChannels();
     m_sampleRate = m_source.sampleRate();
     if (m_source.empty()) return true;
@@ -381,6 +382,11 @@ bool Document::commitRegions(Operation operation,
                         m_history.begin() + static_cast<std::ptrdiff_t>(drop));
     }
     m_store.retain(referencedBlockIds());
+    if (!m_liveBlockDirectory.empty()) {
+        std::string spillError;
+        m_store.spill(m_liveBlockDirectory, referencedBlockIds(),
+                      &spillError);
+    }
     return true;
 }
 
@@ -396,10 +402,12 @@ void Document::setHistoryLimit(size_t entries) {
 
 void Document::clearHistory() {
     const Audio current = audio();
+    const std::filesystem::path liveDirectory = m_liveBlockDirectory;
     m_history.clear();
     m_redo.clear();
     m_source = current;
     initializeSource();
+    m_liveBlockDirectory = liveDirectory;
     m_selection = clampSelection(m_selection, numFrames());
     ++m_revision;
 }

@@ -99,7 +99,9 @@ std::set<AudioBlockId> Document::referencedBlockIds() const {
 
 bool Document::writeBlockDirectory(const std::filesystem::path& directory,
                                    std::string* error) const {
-    return m_store.save(directory, referencedBlockIds(), error);
+    if (!m_store.save(directory, referencedBlockIds(), error)) return false;
+    m_liveBlockDirectory = directory;
+    return true;
 }
 
 void Document::setBlockCacheLimitBytes(uint64_t bytes) {
@@ -189,6 +191,8 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
         } else {
             if (externalBlocks) {
                 loaded.m_store = *externalBlocks;
+                loaded.m_liveBlockDirectory =
+                    externalBlocks->backingDirectory();
             } else {
                 if (!root.contains("blocks") || !root["blocks"].is_array()) {
                     setError(error, "project has no audio blocks");
