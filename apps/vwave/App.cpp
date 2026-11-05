@@ -33,6 +33,7 @@ App::App()
       m_fileSaver(
           m_jobs, m_dispatcher,
           [this](const std::string& status) { setStatus(status); }),
+      m_prefetch(m_jobs, m_dispatcher),
       m_analysisData(
           m_analysis, [this](const std::string& status) { setStatus(status); }),
       m_stereo(
@@ -933,6 +934,7 @@ void App::stretchSelectedClip() { m_clips.stretchSelected(); }
 int App::currentClipIndex() const { return m_clips.currentIndex(); }
 
 bool App::seekToTime(double seconds, std::string* error) {
+    requestPrefetch();
     return m_playback.seekToTime(seconds, error);
 }
 
@@ -1094,6 +1096,7 @@ void App::setTab(vwave::EditorTab tab) {
 
 void App::togglePlay() {
     if (m_recordingController.recording()) stopRecording();
+    requestPrefetch();
     m_playback.togglePlay();
 }
 
@@ -1135,6 +1138,7 @@ void App::markEdited() {
     m_analysisData.clear();
     m_spectralController.clear();
     ++m_editGeneration;
+    ++m_prefetchGeneration;
     m_modified = true;
     m_autosavePending = true;
     m_lastEditTicks = SDL_GetTicks();
@@ -1387,6 +1391,8 @@ bool App::loadAudio(const std::string& path) {
             m_autosavePending = false;
             m_autosaveInProgress = false;
             ++m_editGeneration;
+            ++m_prefetchGeneration;
+            m_prefetch.cancel();
             m_clips.reset();
             m_loop.clear();
             syncTrackControls();
@@ -1454,6 +1460,8 @@ void App::applyLoadedProject(vwave::Timeline timeline,
     m_autosavePending = false;
     m_autosaveInProgress = false;
     ++m_editGeneration;
+    ++m_prefetchGeneration;
+    m_prefetch.cancel();
     m_clips.reset();
     m_loop.clear();
     m_wavetableController.clear();
@@ -1494,6 +1502,24 @@ void App::saveProject(const std::string& path) {
                 m_autosavePending = true;
             }
             updateWindowTitle();
+        });
+}
+
+void App::requestPrefetch() {
+    if (!hasTracks()) return;
+    const uint64_t generation = m_prefetchGeneration;
+    m_prefetch.prefetch(
+        m_timeline, generation,
+        [this](uint64_t completedGeneration,
+               std::vector<PrefetchedBlock> blocks) {
+            if (completedGeneration != m_prefetchGeneration) return;
+            for (auto& block : blocks) {
+                if (block.trackIndex < 0 ||
+                    block.trackIndex >= m_timeline.trackCount())
+                    continue;
+                m_timeline.track(block.trackIndex)
+                    .document.cachePrefetchedBlock(block.block, block.audio);
+            }
         });
 }
 
@@ -1555,6 +1581,7 @@ void App::recoverAutosave() {
             m_modified = true;
             m_autosavePending = true;
             ++m_editGeneration;
+            ++m_prefetchGeneration;
             m_lastEditTicks = SDL_GetTicks();
             updateWindowTitle();
             setStatus("Recovered autosave; save project to keep changes", 6000);

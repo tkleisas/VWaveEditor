@@ -51,6 +51,7 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         if (m_timeline.undo()) {
             syncTrackControls();
             markEdited();
+            requestPrefetch();
             setStatus("Undone");
         } else {
             setStatus("Nothing to undo");
@@ -61,6 +62,7 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         if (m_timeline.redo()) {
             syncTrackControls();
             markEdited();
+            requestPrefetch();
             setStatus("Redone");
         } else {
             setStatus("Nothing to redo");

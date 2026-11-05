@@ -108,6 +108,7 @@ endif()
 set_target_properties(vwave_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(vwave_ui_core STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/services/BlockPrefetchService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/ControlPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/MenuPopup.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/editor/SidebarSlider.cpp

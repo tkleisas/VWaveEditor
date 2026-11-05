@@ -119,6 +119,15 @@ size_t Document::prefetchCurrentBlocks() const {
     return m_store.prefetch(ids);
 }
 
+bool Document::loadBlockData(AudioBlockId id, Audio& out,
+                             std::string* error) const {
+    return m_store.tryGet(id, out, error);
+}
+
+bool Document::cachePrefetchedBlock(AudioBlockId id, const Audio& audio) {
+    return m_store.cache(id, audio, nullptr);
+}
+
 nlohmann::json Document::toJson(bool includeBlockAudio) const {
     if (m_source.empty())
         throw std::runtime_error("document has no source audio");

@@ -159,6 +159,7 @@ void App::drawTrackSidebar(int& y) {
                } else {
                    syncTrackControls();
                    markEdited();
+                   requestPrefetch();
                    setStatus("Undone");
                }
            }},
@@ -169,6 +170,7 @@ void App::drawTrackSidebar(int& y) {
                } else {
                    syncTrackControls();
                    markEdited();
+                   requestPrefetch();
                    setStatus("Redone");
                }
            }},

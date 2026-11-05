@@ -136,6 +136,9 @@ public:
     void setBlockCacheLimitBytes(uint64_t bytes);
     uint64_t blockCacheBytes() const;
     size_t prefetchCurrentBlocks() const;
+    bool loadBlockData(AudioBlockId id, Audio& out,
+                       std::string* error = nullptr) const;
+    bool cachePrefetchedBlock(AudioBlockId id, const Audio& audio);
     size_t blockCount() const { return m_store.size(); }
     size_t historyLimit() const { return m_historyLimit; }
     void setHistoryLimit(size_t entries);

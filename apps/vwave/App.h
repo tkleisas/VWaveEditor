@@ -20,6 +20,7 @@
 #include "controllers/StereoController.h"
 #include "controllers/TrackController.h"
 #include "services/AnalysisService.h"
+#include "services/BlockPrefetchService.h"
 #include "services/FileLoadController.h"
 #include "services/FileSaveController.h"
 #include "services/UiDispatcher.h"
@@ -184,6 +185,7 @@ private:
     void updateAutosave();
     void recoverAutosave();
     void removeAutosaveFiles(const std::string& projectPath);
+    void requestPrefetch();
     void setTab(vwave::EditorTab tab);
     void togglePlay();
     void stopPlayback();
@@ -361,6 +363,7 @@ private:
     vwave::app::AnalysisService m_analysis;
     vwave::app::FileLoadController m_fileLoader;
     vwave::app::FileSaveController m_fileSaver;
+    vwave::app::BlockPrefetchService m_prefetch;
     vwave::app::AnalysisController m_analysisData;
     std::shared_ptr<const vwave::Audio> m_audioSnapshot;
     AudioPlayer m_player;
@@ -408,6 +411,7 @@ private:
     bool m_autosavePending = false;
     bool m_autosaveInProgress = false;
     uint64_t m_editGeneration = 0;
+    uint64_t m_prefetchGeneration = 0;
     Uint32 m_lastEditTicks = 0;
     Uint32 m_autosaveRetryAfter = 0;
     std::string m_status;

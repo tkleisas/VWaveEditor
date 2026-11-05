@@ -68,6 +68,8 @@ public:
                const std::set<AudioBlockId>& referenced,
                std::string* error = nullptr) const;
     size_t prefetch(const std::set<AudioBlockId>& ids) const;
+    bool cache(AudioBlockId id, const Audio& audio,
+               std::string* error = nullptr) const;
     bool load(const std::filesystem::path& directory,
               std::string* error = nullptr);
     std::filesystem::path backingDirectory() const;

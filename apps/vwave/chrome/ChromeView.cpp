@@ -77,6 +77,7 @@ void App::drawMenuBar() {
                    else {
                        syncTrackControls();
                        markEdited();
+                       requestPrefetch();
                        setStatus("Undone");
                    }
                }, audio, "Ctrl+Z"),
@@ -87,6 +88,7 @@ void App::drawMenuBar() {
                    else {
                        syncTrackControls();
                        markEdited();
+                       requestPrefetch();
                        setStatus("Redone");
                    }
                }, audio, "Ctrl+Y"),

@@ -476,7 +476,7 @@ blocks:
 - Session/CLI/Lua/MCP compatibility commands and tests cover the lifecycle.
 
 Remaining follow-up work is region gain/fade editing UI, broader recovery
-testing, and prefetching after undo/seek rather than only at project load.
+testing, and playback-lookahead prefetch scheduling.
 
 ### Transport: click-to-seek and loop playback (implemented)
 

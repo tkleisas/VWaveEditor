@@ -250,6 +250,31 @@ AudioBlockId AudioBlockStore::add(const Audio& audio, std::string name) {
     return id;
 }
 
+bool AudioBlockStore::cache(AudioBlockId id, const Audio& audio,
+                            std::string* error) const {
+    if (error) error->clear();
+    std::lock_guard<std::mutex> lock(m_mutex);
+    Entry* entry = findEntry(id);
+    if (!entry) {
+        setError(error, "audio block does not exist");
+        return false;
+    }
+    if (entry->loaded) return true;
+    if (audio.numChannels() != entry->info.channels ||
+        audio.numFrames() != entry->info.frames ||
+        audio.sampleRate() != entry->info.sampleRate ||
+        checksum(audio) != entry->info.checksum) {
+        setError(error, "prefetched audio block does not match its metadata");
+        return false;
+    }
+    entry->data = audio;
+    entry->loaded = true;
+    entry->cacheBytes = entry->info.bytes;
+    touch(*entry);
+    enforceCacheLimit();
+    return true;
+}
+
 bool AudioBlockStore::restore(const AudioBlockInfo& info, const Audio& audio,
                               std::string* error) {
     if (error) error->clear();

@@ -408,6 +408,9 @@ the dark/light palette are applied immediately and persisted as versioned JSON.
 - The timeline, documents, scripting, and MCP handling are control-thread objects.
 - Project parsing runs on the file-loader worker and prefetches current
   arrangement blocks before the timeline is delivered to the UI.
+- Undo/redo, seek, and playback trigger a background prefetch of current
+  arrangement blocks; loaded blocks are inserted into the live track caches on
+  the UI thread.
 - The SDL playback callback reads immutable track buffers, live mix parameters,
   and atomics for position/playing state.
 - The GUI swaps the playback track list or rebuilds live routing under the SDL
