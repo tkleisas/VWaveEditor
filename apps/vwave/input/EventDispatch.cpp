@@ -60,6 +60,22 @@ bool App::handleToolbarInput(const SDL_Event& event) {
     return false;
 }
 
+bool App::handleSettingsInput(const SDL_Event& event) {
+    if (!m_settingsController.isOpen()) return false;
+    const std::optional<Event> translated = m_uiEventAdapter.translate(event);
+    if (!translated) return false;
+    if (std::holds_alternative<PointerEvent>(*translated)) {
+        m_settingsControls.handleEvent(*translated);
+        m_cursorController.apply(m_settingsControls.cursor());
+        return true;
+    }
+    if (std::holds_alternative<WindowEvent>(*translated)) {
+        m_settingsControls.handleEvent(*translated);
+        m_cursorController.apply(m_settingsControls.cursor());
+    }
+    return false;
+}
+
 bool App::handleTrackHeaderInput(const SDL_Event& event) {
     if (m_tab != vwave::EditorTab::Waveform) return false;
     const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
@@ -159,6 +175,7 @@ void App::handleEvent(const SDL_Event& event) {
     if (handleToolbarInput(event)) return;
     if (handleSidebarInput(event)) return;
     if (handleTrackHeaderInput(event)) return;
+    if (handleSettingsInput(event)) return;
     switch (event.type) {
     case SDL_QUIT:
         m_running = false;

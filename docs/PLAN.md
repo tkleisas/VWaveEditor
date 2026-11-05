@@ -593,5 +593,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   The old per-track header/lane rectangle arrays are retired.
 - Centralized frame↔pixel and loose-drag mapping in `TimelineMapping`; canvas,
   waveform, ruler, spectrum, and loose drag previews now share it.
-- Next: migrate menu/dropdown and settings-dialog hit targets to the retained
-  widget layer, then continue broader UI cleanup.
+- Migrated settings-dialog buttons to a retained `ControlPanel`; dialog input
+  is modal through the widget host and legacy rectangle hit tests are gone.
+- Next: migrate menu dropdown items and finish the remaining legacy hit-test
+  paths.

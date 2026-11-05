@@ -450,6 +450,28 @@ int App::run() {
         if (m_timeline.track(0).muted == beforeMute) return 1;
         if (!m_timeline.undo()) return 1;
         if (m_timeline.track(0).muted != beforeMute) return 1;
+        m_settingsController.open();
+        drawSettingsDialog();
+        vwave::ui::PushButton* closeSettingsButton = nullptr;
+        for (auto* button : m_settingsControls.buttons()) {
+            if (button->visible && button->label == "Close") {
+                closeSettingsButton = button;
+                break;
+            }
+        }
+        if (!closeSettingsButton) return 1;
+        SDL_Event closeDown{};
+        closeDown.type = SDL_MOUSEBUTTONDOWN;
+        closeDown.button.x =
+            closeSettingsButton->bounds.x + closeSettingsButton->bounds.w / 2;
+        closeDown.button.y =
+            closeSettingsButton->bounds.y + closeSettingsButton->bounds.h / 2;
+        closeDown.button.button = SDL_BUTTON_LEFT;
+        handleEvent(closeDown);
+        SDL_Event closeUp = closeDown;
+        closeUp.type = SDL_MOUSEBUTTONUP;
+        handleEvent(closeUp);
+        if (m_settingsController.isOpen()) return 1;
         auto waitForFile = [this](const std::filesystem::path& target) {
             const Uint32 deadline = SDL_GetTicks() + 5000;
             while (SDL_GetTicks() < deadline) {

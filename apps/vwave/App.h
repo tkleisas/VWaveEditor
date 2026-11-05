@@ -105,6 +105,7 @@ private:
                           std::function<void(double)> onChanged);
     bool handleSidebarInput(const SDL_Event& event);
     bool handleTrackHeaderInput(const SDL_Event& event);
+    bool handleSettingsInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);
@@ -313,6 +314,7 @@ private:
     bool m_buildingTrackHeader = false;
     mutable vwave::ui::TimelineCanvas m_timelineCanvas;
     mutable vwave::ui::TimelineCanvasLayout m_timelineCanvasLayout;
+    vwave::ui::ControlPanel m_settingsControls;
     vwave::ui::SdlEventAdapter m_uiEventAdapter;
     vwave::ui::SdlCursorController m_cursorController;
     TTF_Font* m_fontSmall = nullptr;
@@ -337,13 +339,6 @@ private:
     int m_openMenu = -1;
     SDL_Rect m_openMenuRect{};
     std::vector<SDL_Rect> m_menuItemRects;
-    SDL_Rect m_settingsOutputPrev{};
-    SDL_Rect m_settingsOutputNext{};
-    SDL_Rect m_settingsInputPrev{};
-    SDL_Rect m_settingsInputNext{};
-    SDL_Rect m_settingsThemePrev{};
-    SDL_Rect m_settingsThemeNext{};
-    SDL_Rect m_settingsCloseRect{};
     double m_sidebarScroll = 0.0;
     int m_sidebarContentHeight = 0;
 

@@ -389,9 +389,12 @@ void App::drawSettingsDialog() {
     drawText("Changes are saved immediately.", box.x + 24, box.y + 40,
              kTextFaint, fontSmall());
 
+    m_settingsControls.begin(
+        {box.x, box.y, box.w, box.h});
     const auto drawRow = [&](int row, const std::string& label,
                              const std::string& value,
-                             SDL_Rect& previous, SDL_Rect& next) {
+                             std::function<void()> previousAction,
+                             std::function<void()> nextAction) {
         const int y = box.y + 84 + row * 66;
         SDL_SetRenderDrawColor(m_renderer, kPanelRaised.r, kPanelRaised.g,
                                kPanelRaised.b, 255);
@@ -400,16 +403,12 @@ void App::drawSettingsDialog() {
         drawText(label, rowRect.x + 12, rowRect.y + 8, kTextDim, fontSmall());
         drawText(truncateText(value, fontNormal(), rowRect.w - 220),
                  rowRect.x + 12, rowRect.y + 26, kText, fontNormal());
-        Button prev;
-        prev.rect = {rowRect.x + rowRect.w - 96, rowRect.y + 14, 30, 24};
-        prev.label = "<";
-        previous = prev.rect;
-        drawButton(prev);
-        Button nextButton;
-        nextButton.rect = {rowRect.x + rowRect.w - 56, rowRect.y + 14, 30, 24};
-        nextButton.label = ">";
-        next = nextButton.rect;
-        drawButton(nextButton);
+        m_settingsControls.addButton(
+            "<", {rowRect.x + rowRect.w - 96, rowRect.y + 14, 30, 24},
+            std::move(previousAction));
+        m_settingsControls.addButton(
+            ">", {rowRect.x + rowRect.w - 56, rowRect.y + 14, 30, 24},
+            std::move(nextAction));
     };
 
     const std::string output =
@@ -422,20 +421,29 @@ void App::drawSettingsDialog() {
                 m_settingsController.inputIndex() < static_cast<int>(m_settingsController.inputDevices().size())
             ? m_settingsController.inputDevices()[static_cast<size_t>(m_settingsController.inputIndex())]
             : "System Default";
-    drawRow(0, "Audio output", output, m_settingsOutputPrev,
-            m_settingsOutputNext);
-    drawRow(1, "Audio input", input, m_settingsInputPrev,
-            m_settingsInputNext);
-    drawRow(2, "Theme", m_settingsController.settings().theme == "light" ? "Light" : "Dark",
-            m_settingsThemePrev, m_settingsThemeNext);
+    drawRow(0, "Audio output", output,
+            [this] { m_settingsController.cycleOutputDevice(-1); },
+            [this] { m_settingsController.cycleOutputDevice(1); });
+    drawRow(1, "Audio input", input,
+            [this] { m_settingsController.cycleInputDevice(-1); },
+            [this] { m_settingsController.cycleInputDevice(1); });
+    drawRow(2, "Theme",
+            m_settingsController.settings().theme == "light" ? "Light" : "Dark",
+            [this] {
+                m_settingsController.setTheme(
+                    m_settingsController.settings().theme == "dark" ? "light"
+                                                                     : "dark");
+            },
+            [this] {
+                m_settingsController.setTheme(
+                    m_settingsController.settings().theme == "dark" ? "light"
+                                                                     : "dark");
+            });
 
-    Button close;
-    close.rect = {box.x + box.w - 118, box.y + box.h - 52, 94, 28};
-    close.label = "Close";
-    close.accent = true;
-    m_settingsCloseRect = close.rect;
-    drawButton(close);
+    m_settingsControls.addButton(
+        "Close", {box.x + box.w - 118, box.y + box.h - 52, 94, 28},
+        [this] { m_settingsController.close(); }, true);
+    m_settingsControls.end(m_uiPainter.get());
     drawText(m_settingsController.path(), box.x + 24, box.y + box.h - 34, kTextFaint,
              fontSmall());
 }
-

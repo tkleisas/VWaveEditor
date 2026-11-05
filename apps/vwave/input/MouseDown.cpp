@@ -16,28 +16,7 @@ using namespace vwave::ui;
 
 void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
     if (m_dialog.handleMouseDown(event.x, event.y)) return;
-    if (m_settingsController.isOpen()) {
-        if (event.button != SDL_BUTTON_LEFT) return;
-        SDL_Point point{event.x, event.y};
-        if (SDL_PointInRect(&point, &m_settingsCloseRect)) m_settingsController.close();
-        else if (SDL_PointInRect(&point, &m_settingsOutputPrev))
-            m_settingsController.cycleOutputDevice(-1);
-        else if (SDL_PointInRect(&point, &m_settingsOutputNext))
-            m_settingsController.cycleOutputDevice(1);
-        else if (SDL_PointInRect(&point, &m_settingsInputPrev))
-            m_settingsController.cycleInputDevice(-1);
-        else if (SDL_PointInRect(&point, &m_settingsInputNext))
-            m_settingsController.cycleInputDevice(1);
-        else if (SDL_PointInRect(&point, &m_settingsThemePrev))
-            m_settingsController.setTheme(
-            m_settingsController.settings().theme == "dark" ? "light"
-                                                              : "dark");
-        else if (SDL_PointInRect(&point, &m_settingsThemeNext))
-            m_settingsController.setTheme(
-            m_settingsController.settings().theme == "dark" ? "light"
-                                                              : "dark");
-        return;
-    }
+    if (m_settingsController.isOpen()) return;
     if (event.button == SDL_BUTTON_RIGHT) {
         m_openMenu = -1;
         if (m_contextMenuOpen) {
