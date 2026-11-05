@@ -372,10 +372,13 @@ A toolkit-neutral `vwave_ui_core` library owns the retained widget tree,
 normalized pointer/key/text/window events, pointer capture, hover state, focus
 traversal, and semantic cursor shapes. It has no SDL dependency and is covered
 by headless tests. A thin SDL adapter translates OS events, paints the widget
-tree, and applies cached system cursors. The editor toolbar is migrated to
-retained widgets. Timeline cursor hit targets are shared across ruler, overview,
-track headers, clips, selection handles, and trim/stretch grips; sidebar and
-custom canvas rendering remain in the legacy UI until migration is complete.
+tree, and applies cached system cursors. The editor toolbar and sidebar buttons are migrated to
+retained widgets. Sidebar buttons are pooled and repositioned from the existing
+manual layout, so scrolling and dynamic sections remain compatible during the
+transition. Timeline cursor hit targets are shared across ruler, overview,
+track headers, clips, selection handles, and trim/stretch grips. Sidebar
+sliders and custom canvas rendering remain on the legacy path until migration
+is complete.
 
 ### Standalone editor
 

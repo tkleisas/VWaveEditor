@@ -60,8 +60,56 @@ bool App::handleToolbarInput(const SDL_Event& event) {
     return false;
 }
 
+bool App::handleSidebarInput(const SDL_Event& event) {
+    if (!m_sidebarRoot) return false;
+    const bool dragging = m_waveDrag != WaveDragMode::None || m_panning ||
+                          m_panningOverview || m_shiftingTrack ||
+                          m_sliderDragging || m_draggingSpectrum ||
+                          m_drawingWavetable;
+    if (dragging && !m_sidebarHost.captured()) return false;
+
+    const bool modal = m_dialog.isOpen() || m_settingsController.isOpen() ||
+                       m_contextMenuOpen || m_openMenu >= 0;
+    if (modal) {
+        if (m_sidebarHost.captured() || m_sidebarHost.hovered()) {
+            m_sidebarHost.handleEvent(
+                WindowEvent{WindowEvent::Type::FocusLost});
+            m_cursorController.apply(m_sidebarHost.cursor());
+        }
+        return false;
+    }
+
+    const std::optional<Event> translated = m_uiEventAdapter.translate(event);
+    if (!translated) return false;
+
+    if (const auto* pointer = std::get_if<PointerEvent>(&*translated)) {
+        SDL_Point point{pointer->position.x, pointer->position.y};
+        const bool inSidebar =
+            SDL_PointInRect(&point, &m_sidebarRect) != 0;
+        const bool captured = m_sidebarHost.captured() != nullptr;
+        const bool hovered = m_sidebarHost.hovered() != nullptr;
+        if (!inSidebar && !captured && !hovered) return false;
+
+        const bool handled = m_sidebarHost.handleEvent(*translated);
+        m_cursorController.apply(m_sidebarHost.cursor());
+        if (event.type == SDL_MOUSEBUTTONDOWN ||
+            event.type == SDL_MOUSEBUTTONUP)
+            return handled;
+        if (event.type == SDL_MOUSEMOTION)
+            return handled || captured;
+        return false;
+    }
+
+    if (std::holds_alternative<WindowEvent>(*translated)) {
+        m_sidebarHost.handleEvent(*translated);
+        m_cursorController.apply(m_sidebarHost.cursor());
+    }
+    return false;
+}
+
 void App::handleEvent(const SDL_Event& event) {
     if (handleToolbarInput(event)) return;
+    if (handleSidebarInput(event)) return;
     switch (event.type) {
     case SDL_QUIT:
         m_running = false;

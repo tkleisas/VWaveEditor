@@ -16,7 +16,40 @@
 using namespace vwave::app;
 using namespace vwave::ui;
 
+void App::addSidebarButton(const std::string& label, int x, int y, int w,
+                           int h, std::function<void()> action, bool accent,
+                           bool active, bool enabled) {
+    if (!m_sidebarRoot) {
+        m_sidebarRoot = std::make_unique<Widget>();
+        m_sidebarRoot->enabled = false;
+        m_sidebarHost.setRoot(m_sidebarRoot.get());
+    }
+    if (m_sidebarButtonIndex >= m_sidebarButtons.size()) {
+        auto button = std::make_unique<PushButton>();
+        auto* pointer = button.get();
+        m_sidebarRoot->addChild(std::move(button));
+        m_sidebarButtons.push_back(pointer);
+    }
+    auto& button = *m_sidebarButtons[m_sidebarButtonIndex++];
+    button.bounds = {x, y, w, h};
+    button.label = label;
+    button.onClick = std::move(action);
+    button.accent = accent;
+    button.active = active;
+    button.enabled = enabled;
+    button.visible = true;
+}
+
 void App::drawSidebar() {
+    if (!m_sidebarRoot) {
+        m_sidebarRoot = std::make_unique<Widget>();
+        m_sidebarRoot->enabled = false;
+        m_sidebarHost.setRoot(m_sidebarRoot.get());
+    }
+    m_sidebarRoot->bounds = {m_sidebarRect.x, m_sidebarRect.y,
+                             m_sidebarRect.w, m_sidebarRect.h};
+    m_sidebarButtonIndex = 0;
+    m_buildingSidebar = true;
     m_ui.setControlArea(1);
     SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
     SDL_RenderFillRect(m_renderer, &m_sidebarRect);
@@ -620,6 +653,10 @@ void App::drawSidebar() {
         std::max(0, m_sidebarContentHeight - m_sidebarRect.h);
     m_sidebarScroll =
         std::clamp(m_sidebarScroll, 0.0, static_cast<double>(maximumScroll));
+    for (size_t i = m_sidebarButtonIndex; i < m_sidebarButtons.size(); ++i)
+        m_sidebarButtons[i]->visible = false;
+    m_buildingSidebar = false;
+    if (m_uiPainter) m_sidebarRoot->draw(*m_uiPainter);
     SDL_RenderSetClipRect(m_renderer, nullptr);
 
     if (maximumScroll > 0) {

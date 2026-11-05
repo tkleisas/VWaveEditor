@@ -572,4 +572,7 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Added shared timeline cursor hit targets for rulers, overview, headers,
   selection handles, clips, trim/stretch grips, and empty lanes; wired waveform
   hover/drag states to system cursors.
-- Next: migrate sidebar controls and continue the timeline canvas extraction.
+- Migrated sidebar buttons to a pooled retained-widget bridge while preserving
+  existing section layout and scroll behavior; sliders remain on the legacy
+  path for now.
+- Next: migrate sidebar sliders, then continue the timeline canvas extraction.

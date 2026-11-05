@@ -94,6 +94,10 @@ private:
     void createToolbarWidgets();
     void syncToolbarWidgets();
     bool handleToolbarInput(const SDL_Event& event);
+    void addSidebarButton(const std::string& label, int x, int y, int w,
+                          int h, std::function<void()> action, bool accent,
+                          bool active, bool enabled);
+    bool handleSidebarInput(const SDL_Event& event);
     void drawSidebar();
     void drawTrackSidebar(int& y);
     void drawWaveform(const SDL_Rect& area);
@@ -291,6 +295,11 @@ private:
     vwave::ui::WidgetHost m_toolbarHost;
     std::unique_ptr<vwave::ui::Widget> m_toolbarRoot;
     std::vector<vwave::ui::PushButton*> m_toolbarButtons;
+    vwave::ui::WidgetHost m_sidebarHost;
+    std::unique_ptr<vwave::ui::Widget> m_sidebarRoot;
+    std::vector<vwave::ui::PushButton*> m_sidebarButtons;
+    size_t m_sidebarButtonIndex = 0;
+    bool m_buildingSidebar = false;
     vwave::ui::SdlEventAdapter m_uiEventAdapter;
     vwave::ui::SdlCursorController m_cursorController;
     TTF_Font* m_fontSmall = nullptr;

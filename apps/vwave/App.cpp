@@ -385,6 +385,26 @@ int App::run() {
         handleEvent(buttonUp);
         if (m_tab != vwave::EditorTab::Spectrum) return 1;
         setTab(vwave::EditorTab::Waveform);
+        drawSidebar();
+        vwave::ui::PushButton* shiftButton = nullptr;
+        for (auto* button : m_sidebarButtons) {
+            if (button->visible && button->label == "Shift +1 s") {
+                shiftButton = button;
+                break;
+            }
+        }
+        if (!shiftButton) return 1;
+        const int64_t beforeShift = m_timeline.track(0).startFrame;
+        SDL_Event sidebarDown{};
+        sidebarDown.type = SDL_MOUSEBUTTONDOWN;
+        sidebarDown.button.x = shiftButton->bounds.x + shiftButton->bounds.w / 2;
+        sidebarDown.button.y = shiftButton->bounds.y + shiftButton->bounds.h / 2;
+        sidebarDown.button.button = SDL_BUTTON_LEFT;
+        handleEvent(sidebarDown);
+        SDL_Event sidebarUp = sidebarDown;
+        sidebarUp.type = SDL_MOUSEBUTTONUP;
+        handleEvent(sidebarUp);
+        if (m_timeline.track(0).startFrame == beforeShift) return 1;
         auto waitForFile = [this](const std::filesystem::path& target) {
             const Uint32 deadline = SDL_GetTicks() + 5000;
             while (SDL_GetTicks() < deadline) {
@@ -639,6 +659,11 @@ vwave::StretchAlgorithm App::selectedStretchAlgorithm() const {
 void App::addButton(const std::string& label, int x, int y, int w, int h,
                     std::function<void()> action, bool accent, bool active,
                     bool enabled) {
+    if (m_buildingSidebar) {
+        addSidebarButton(label, x, y, w, h, std::move(action), accent, active,
+                         enabled);
+        return;
+    }
     m_ui.addButton(label, x, y, w, h, std::move(action), accent, active,
                    enabled);
 }
