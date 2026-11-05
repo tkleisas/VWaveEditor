@@ -185,14 +185,28 @@ void App::drawWaveform(const SDL_Rect& area) {
         {m_trackHeaderColumn.x, m_trackHeaderColumn.y,
          m_trackHeaderColumn.w, m_trackHeaderColumn.h});
     m_buildingTrackHeader = true;
-    for (int index = 0; index < m_timeline.trackCount(); ++index) {
-        const int rowY = rowsTop + index * rowHeight -
-                         static_cast<int>(std::lround(m_trackScroll));
-        if (rowY + rowHeight <= rowsTop || rowY >= rowsTop + laneHeight)
-            continue;
-        SDL_Rect header{area.x + margin, rowY + 2, headerWidth - 8,
-                        rowHeight - 6};
-        SDL_Rect lane{laneX, rowY + 2, laneWidth, rowHeight - 6};
+    std::fill(m_trackHeaderRects.begin(), m_trackHeaderRects.end(), SDL_Rect{});
+    std::fill(m_trackLaneRects.begin(), m_trackLaneRects.end(), SDL_Rect{});
+    TimelineCanvasLayout canvasLayout;
+    canvasLayout.area = {area.x, area.y, area.w, area.h};
+    canvasLayout.ruler = {m_rulerArea.x, m_rulerArea.y, m_rulerArea.w,
+                          m_rulerArea.h};
+    canvasLayout.overview = {m_overviewArea.x, m_overviewArea.y,
+                             m_overviewArea.w, m_overviewArea.h};
+    canvasLayout.headerColumn = {m_trackHeaderColumn.x, m_trackHeaderColumn.y,
+                                 m_trackHeaderColumn.w,
+                                 m_trackHeaderColumn.h};
+    canvasLayout.laneArea = {laneX, rowsTop, laneWidth, laneHeight};
+    canvasLayout.rowHeight = rowHeight;
+    canvasLayout.trackScroll =
+        static_cast<int>(std::lround(m_trackScroll));
+    canvasLayout.clipToolEnabled = m_clips.toolEnabled();
+    m_timelineCanvas.layout(m_timeline, m_view, canvasLayout);
+    for (const auto& row : m_timelineCanvas.rows()) {
+        const int index = row.trackIndex;
+        SDL_Rect header{row.header.x, row.header.y, row.header.w,
+                        row.header.h};
+        SDL_Rect lane{row.lane.x, row.lane.y, row.lane.w, row.lane.h};
         m_trackHeaderRects[static_cast<size_t>(index)] = header;
         m_trackLaneRects[static_cast<size_t>(index)] = lane;
         drawTrackHeader(header, index);

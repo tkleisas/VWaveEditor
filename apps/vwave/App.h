@@ -25,6 +25,7 @@
 #include "services/UiDispatcher.h"
 #include "ui/DialogController.h"
 #include "ui/editor/ControlPanel.h"
+#include "ui/editor/TimelineCanvas.h"
 #include "ui/editor/SidebarSlider.h"
 #include "ui/framework/PushButton.h"
 #include "ui/framework/WidgetHost.h"
@@ -309,6 +310,7 @@ private:
     bool m_buildingSidebar = false;
     vwave::ui::ControlPanel m_trackHeaderControls;
     bool m_buildingTrackHeader = false;
+    mutable vwave::ui::TimelineCanvas m_timelineCanvas;
     vwave::ui::SdlEventAdapter m_uiEventAdapter;
     vwave::ui::SdlCursorController m_cursorController;
     TTF_Font* m_fontSmall = nullptr;

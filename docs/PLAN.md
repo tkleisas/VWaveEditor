@@ -582,4 +582,8 @@ automation presets; the cut-up arrangement model itself is implemented.
   hit-testing, and cursor behavior.
 - Removed the legacy immediate-mode button/slider registration and hit-testing
   path now that toolbar, sidebar, and track-header controls are retained.
-- Next: extract the timeline canvas interaction/rendering.
+- Introduced `TimelineCanvas` geometry for visible track rows, frame mapping,
+  clips, selection bounds, and cursor hit targets; waveform drawing and cursor
+  resolution now use it.
+- Next: move waveform mouse hit-testing/drag setup onto `TimelineCanvas` and
+  retire the remaining App-side geometry helpers.

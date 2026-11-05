@@ -20,55 +20,31 @@ Rect fromSdl(const SDL_Rect& rect) {
 CursorShape App::waveformCursorAt(int x, int y) const {
     if (m_tab != vwave::EditorTab::Waveform) return CursorShape::Arrow;
 
-    TimelineCursorGeometry geometry;
-    geometry.waveArea = fromSdl(m_waveArea);
-    geometry.ruler = fromSdl(m_rulerArea);
-    geometry.overview = fromSdl(m_overviewArea);
-    geometry.clipToolEnabled = m_clips.toolEnabled();
-
-    const size_t trackCount = static_cast<size_t>(m_timeline.trackCount());
-    const size_t count =
-        std::min(trackCount, std::min(m_trackHeaderRects.size(),
-                                      m_trackLaneRects.size()));
-    geometry.tracks.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-        const auto& track = m_timeline.track(static_cast<int>(i));
-        const SDL_Rect& header = m_trackHeaderRects[i];
-        const SDL_Rect& lane = m_trackLaneRects[i];
-        const int64_t frames = track.document.numFrames();
-        const bool hasAudio = !track.empty && frames > 0;
-        TimelineTrackVisual visual;
-        visual.header = fromSdl(header);
-        visual.lane = fromSdl(lane);
-        visual.trackIndex = static_cast<int>(i);
-        visual.startX = laneXForFrame(lane, track.startFrame);
-        visual.endX = laneXForFrame(lane, track.startFrame + frames);
-        visual.hasAudio = hasAudio;
-        geometry.tracks.push_back(visual);
-
-        if (!geometry.clipToolEnabled || track.document.clips().empty())
+    TimelineCanvasLayout layout;
+    layout.area = fromSdl(m_waveArea);
+    layout.ruler = fromSdl(m_rulerArea);
+    layout.overview = fromSdl(m_overviewArea);
+    layout.headerColumn = fromSdl(m_trackHeaderColumn);
+    layout.trackScroll = static_cast<int>(std::lround(m_trackScroll));
+    layout.clipToolEnabled = m_clips.toolEnabled();
+    layout.laneArea = {layout.headerColumn.x + layout.headerColumn.w,
+                       layout.headerColumn.y, 0, layout.headerColumn.h};
+    for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
+        if (m_trackHeaderRects[i].w <= 0 ||
+            i >= m_trackLaneRects.size() || m_trackLaneRects[i].w <= 0)
             continue;
-        const auto& clips = track.document.clips();
-        for (size_t clipIndex = 0; clipIndex < clips.size(); ++clipIndex) {
-            const auto& clip = clips[clipIndex];
-            const int64_t clipFrames = vwave::clipOutputFrames(clip);
-            const int64_t globalStart =
-                track.startFrame + clip.timelineStart;
-            const int left = laneXForFrame(lane, globalStart);
-            const int right = laneXForFrame(lane, globalStart + clipFrames);
-            geometry.clips.push_back(
-                {{std::min(left, right), lane.y, std::abs(right - left),
-                  lane.h},
-                 static_cast<int>(i), static_cast<int>(clipIndex)});
-        }
+        layout.rowHeight = m_trackHeaderRects[i].h + 6;
+        layout.laneArea = fromSdl(m_trackLaneRects[i]);
+        layout.laneArea.y = layout.headerColumn.y;
+        layout.laneArea.h = layout.headerColumn.h;
+        break;
     }
 
-    if (hasTracks()) {
-        const SDL_Rect selection = selectionScreenRect();
-        geometry.selection = fromSdl(selection);
-        geometry.selectionActive = selection.w > 0 && selection.h > 0;
-    }
-    return timelineCursorAt(geometry, {x, y});
+    m_timelineCanvas.layout(m_timeline, m_view, layout);
+    const auto& selection = m_timeline.selection();
+    return m_timelineCanvas.cursorAt(
+        {x, y}, selection, m_timeline.selectionScope(),
+        m_timeline.activeTrack(), selection.active && selection.end > selection.start);
 }
 
 void App::updateUiCursor(int x, int y) {
