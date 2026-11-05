@@ -135,6 +135,11 @@ void App::drawSidebar() {
                  fontSmall());
     }
     y += 18;
+    if (m_timeline.selection().active) {
+        drawText("Handles: blue move; orange stretch/repeat", 18, y,
+                 kTextFaint, fontSmall());
+        y += 18;
+    }
     if (m_analysisData.hasBeats() || m_analysisData.hasPitch()) {
         std::ostringstream analysis;
         if (m_analysisData.hasBeats()) {

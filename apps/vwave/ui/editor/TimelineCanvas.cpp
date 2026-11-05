@@ -272,4 +272,21 @@ TimelineHit TimelineCanvas::hitTest(
     return {};
 }
 
+const char* timelineHitHint(TimelineHitKind kind) {
+    switch (kind) {
+    case TimelineHitKind::SelectionStart: return "Resize selection start";
+    case TimelineHitKind::SelectionEnd: return "Resize selection end";
+    case TimelineHitKind::SelectionRepeat: return "Repeat selection";
+    case TimelineHitKind::SelectionStretch: return "Stretch selection";
+    case TimelineHitKind::SelectionMove: return "Move selection";
+    case TimelineHitKind::ClipBody: return "Move clip";
+    case TimelineHitKind::ClipEnd: return "Stretch clip";
+    case TimelineHitKind::TrackTrimStart:
+    case TimelineHitKind::TrackTrimEnd:
+        return "Trim track edge";
+    case TimelineHitKind::TrackStretch: return "Stretch track";
+    default: return nullptr;
+    }
+}
+
 } // namespace vwave::ui

@@ -97,4 +97,6 @@ private:
     bool m_clipToolEnabled = false;
 };
 
+const char* timelineHitHint(TimelineHitKind kind);
+
 } // namespace vwave::ui

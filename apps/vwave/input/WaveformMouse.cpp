@@ -397,7 +397,22 @@ void App::updateWaveDragAutoscroll() {
         direction = static_cast<double>(mouseX - right) /
                     static_cast<double>(kMargin);
     if (direction == 0.0) return;
-    m_view.pan(direction * 18.0, m_waveArea.w, m_timeline.lengthFrames());
+    const bool extendsContent =
+        m_waveDrag == WaveDragMode::SelectionRepeat ||
+        m_waveDrag == WaveDragMode::SelectionStretch ||
+        m_waveDrag == WaveDragMode::TrackStretch ||
+        m_waveDrag == WaveDragMode::ClipStretch;
+    const double pixelsPerFrame =
+        m_view.samplesPerPixel(std::max(1, m_waveArea.w));
+    const double step =
+        direction * 18.0 * std::max(1e-9, pixelsPerFrame);
+    m_view.startFrame += step;
+    double maximumStart =
+        std::max(0.0, static_cast<double>(m_timeline.lengthFrames()) -
+                          m_view.visibleFrames);
+    if (extendsContent)
+        maximumStart += m_view.visibleFrames * 8.0;
+    m_view.startFrame = std::clamp(m_view.startFrame, 0.0, maximumStart);
     updateWaveDragPreview(mouseX, mouseY);
 }
 
@@ -569,4 +584,5 @@ if (m_waveDrag != WaveDragMode::None) {
     }
     m_clickCandidate = false;
 }
+m_view.clamp(m_timeline.lengthFrames());
 }

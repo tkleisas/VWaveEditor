@@ -5,6 +5,7 @@
 #include "vwave/Timeline.h"
 
 #include <memory>
+#include <string>
 
 using namespace vwave;
 using namespace vwave::ui;
@@ -133,4 +134,18 @@ VWTEST("timeline canvas hit testing follows handle precedence") {
                          true).kind == TimelineHitKind::Ruler);
     CHECK(plain.hitTest({150, 55}, selection, SelectionScope::AllTracks, 0,
                          false).kind == TimelineHitKind::Lane);
+}
+
+VWTEST("timeline hit hints describe editing handles") {
+    CHECK(std::string(timelineHitHint(TimelineHitKind::SelectionMove)) ==
+          "Move selection");
+    CHECK(std::string(timelineHitHint(TimelineHitKind::SelectionStretch)) ==
+          "Stretch selection");
+    CHECK(std::string(timelineHitHint(TimelineHitKind::SelectionRepeat)) ==
+          "Repeat selection");
+    CHECK(std::string(timelineHitHint(TimelineHitKind::TrackStretch)) ==
+          "Stretch track");
+    CHECK(std::string(timelineHitHint(TimelineHitKind::ClipEnd)) ==
+          "Stretch clip");
+    CHECK(timelineHitHint(TimelineHitKind::Lane) == nullptr);
 }

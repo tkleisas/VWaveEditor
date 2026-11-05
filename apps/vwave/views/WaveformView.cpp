@@ -567,6 +567,38 @@ void App::drawWaveform(const SDL_Rect& area) {
         }
     }
 
+    if (m_waveDrag == WaveDragMode::None && m_waveArea.w > 0) {
+        int mouseX = 0;
+        int mouseY = 0;
+        SDL_GetMouseState(&mouseX, &mouseY);
+        SDL_Point mouse{mouseX, mouseY};
+        if (SDL_PointInRect(&mouse, &m_waveArea)) {
+            const auto& selection = m_timeline.selection();
+            const TimelineHit hit = m_timelineCanvas.hitTest(
+                {mouseX, mouseY}, selection, m_timeline.selectionScope(),
+                m_timeline.activeTrack(),
+                selection.active && selection.end > selection.start);
+            const char* hint = timelineHitHint(hit.kind);
+            if (hint) {
+                const int width = textWidth(hint, fontSmall()) + 16;
+                const int height = 24;
+                int x = std::clamp(mouseX + 14, m_contentRect.x,
+                                   m_contentRect.x + m_contentRect.w - width);
+                int y = mouseY + 18;
+                if (y + height > m_contentRect.y + m_contentRect.h)
+                    y = mouseY - height - 10;
+                SDL_Rect box{x, y, width, height};
+                SDL_SetRenderDrawColor(m_renderer, kPanelRaised.r,
+                                       kPanelRaised.g, kPanelRaised.b, 245);
+                SDL_RenderFillRect(m_renderer, &box);
+                SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                       kAccent.b, 220);
+                SDL_RenderDrawRect(m_renderer, &box);
+                drawText(hint, x + 8, y + 7, kText, fontSmall());
+            }
+        }
+    }
+
     if (m_playhead >= m_view.startFrame &&
         m_playhead <= m_view.startFrame + m_view.visibleFrames) {
         const int x = laneX + static_cast<int>(
