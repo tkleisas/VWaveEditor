@@ -127,13 +127,14 @@ if(VWAVE_BUILD_GUI)
     add_library(vwave_ui_sdl STATIC
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/sdl/SdlCursorController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/sdl/SdlEventAdapter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/ui/sdl/SdlPainter.cpp
     )
     add_library(vwave::ui_sdl ALIAS vwave_ui_sdl)
     vwave_set_warnings(vwave_ui_sdl)
     target_include_directories(vwave_ui_sdl PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave)
     target_link_libraries(vwave_ui_sdl PUBLIC
-        vwave::ui_core PkgConfig::SDL2)
+        vwave::ui_core PkgConfig::SDL2 PkgConfig::SDL2_TTF)
     set_target_properties(vwave_ui_sdl PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 

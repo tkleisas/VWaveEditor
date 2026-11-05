@@ -27,4 +27,18 @@ void Button::activate() {
     if (enabled && onClick) onClick();
 }
 
+void Button::paint(Painter& painter) {
+    ColorRole fill = ColorRole::PanelRaised;
+    if (!enabled) fill = ColorRole::Disabled;
+    else if (accent || active || pressed) fill = ColorRole::AccentDark;
+    painter.fillRect(bounds, fill);
+    painter.strokeRect(bounds, enabled ? ColorRole::Border
+                                       : ColorRole::TextFaint);
+    const ColorRole text =
+        !enabled ? ColorRole::TextFaint
+                 : ((accent || active) ? ColorRole::AccentText
+                                       : ColorRole::Text);
+    painter.drawText(label, bounds, text, FontRole::Small, TextAlign::Center);
+}
+
 } // namespace vwave::ui

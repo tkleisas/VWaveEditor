@@ -25,6 +25,9 @@ public:
     void setFromX(int x);
 
     bool dragging = false;
+
+protected:
+    void paint(Painter& painter) override;
 };
 
 } // namespace vwave::ui

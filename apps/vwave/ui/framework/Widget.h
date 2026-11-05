@@ -2,6 +2,7 @@
 
 #include "ui/framework/Event.h"
 #include "ui/framework/Geometry.h"
+#include "ui/framework/Painter.h"
 
 #include <memory>
 #include <vector>
@@ -23,6 +24,7 @@ public:
 
     Widget& addChild(std::unique_ptr<Widget> child);
     Widget* hitTest(Point point);
+    void draw(Painter& painter);
 
     virtual CursorShape cursorAt(Point) const { return CursorShape::Arrow; }
     virtual bool focusable() const { return false; }
@@ -36,6 +38,9 @@ public:
     virtual void onHoverChanged(bool) {}
     virtual void onFocusChanged(bool) {}
     virtual void onPointerCaptureLost() {}
+
+protected:
+    virtual void paint(Painter&) {}
 
 private:
     std::vector<std::unique_ptr<Widget>> m_children;

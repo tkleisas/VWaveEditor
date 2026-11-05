@@ -561,5 +561,7 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Added normalized wheel events and hover-target wheel routing.
 - Added the SDL event adapter for pointer/wheel/key/text/window events and a
   cached SDL system-cursor controller.
-- Next: scroll/layout controls, SDL painter, and migration of toolbar/sidebar/
-  timeline controls to the widget layer.
+- Added semantic `Painter` support and widget paint traversal, plus an SDL
+  painter with role colors, clipped drawing, and a bounded text-texture cache.
+- Next: scroll/layout controls and migration of toolbar/sidebar/timeline
+  controls to the widget layer.

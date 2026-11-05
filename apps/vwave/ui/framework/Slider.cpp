@@ -33,6 +33,26 @@ bool Slider::onPointerUp(const PointerEvent&) {
     return true;
 }
 
+void Slider::paint(Painter& painter) {
+    if (!slider) return;
+    const int trackHeight = std::min(6, std::max(1, bounds.h));
+    const Rect track{bounds.x, bounds.y + (bounds.h - trackHeight) / 2,
+                     bounds.w, trackHeight};
+    const ColorRole trackRole =
+        enabled ? ColorRole::Content : ColorRole::Disabled;
+    const ColorRole fillRole =
+        enabled ? ColorRole::Accent : ColorRole::TextFaint;
+    const ColorRole handleRole =
+        enabled ? ColorRole::Text : ColorRole::TextFaint;
+    painter.fillRect(track, trackRole);
+    const int filled = static_cast<int>(
+        std::lround(slider->normalized() * static_cast<double>(track.w)));
+    painter.fillRect({track.x, track.y, filled, track.h}, fillRole);
+    painter.strokeRect(track, ColorRole::Border);
+    const int handleX = track.x + filled;
+    painter.fillRect({handleX - 3, track.y - 4, 7, track.h + 8}, handleRole);
+}
+
 bool Slider::onKeyDown(const KeyEvent& event) {
     if (!enabled || !slider) return false;
     const double range = slider->maximum - slider->minimum;

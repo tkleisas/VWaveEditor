@@ -25,6 +25,11 @@ public:
 
     bool hovered = false;
     bool pressed = false;
+    bool accent = false;
+    bool active = false;
+
+protected:
+    void paint(Painter& painter) override;
 };
 
 } // namespace vwave::ui

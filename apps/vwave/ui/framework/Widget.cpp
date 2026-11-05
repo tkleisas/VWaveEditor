@@ -19,4 +19,10 @@ Widget* Widget::hitTest(Point point) {
     return enabled ? this : nullptr;
 }
 
+void Widget::draw(Painter& painter) {
+    if (!visible) return;
+    paint(painter);
+    for (const auto& child : m_children) child->draw(painter);
+}
+
 } // namespace vwave::ui
