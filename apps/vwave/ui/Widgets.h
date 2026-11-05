@@ -10,16 +10,6 @@
 
 namespace vwave::ui {
 
-struct Button {
-    SDL_Rect rect{};
-    std::string label;
-    std::function<void()> action;
-    bool accent = false;
-    bool active = false;
-    bool enabled = true;
-    int area = 0;
-};
-
 struct TrackControls {
     vwave::ParameterSlider gain;
     vwave::ParameterSlider pan;

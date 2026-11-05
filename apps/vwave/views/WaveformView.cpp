@@ -165,7 +165,6 @@ void App::drawWaveform(const SDL_Rect& area) {
     m_trackScroll = std::clamp(m_trackScroll, 0.0,
                                static_cast<double>(maximumScroll));
 
-    m_ui.setControlArea(2);
     SDL_Rect rowsClip{area.x + margin, rowsTop, headerWidth + 8 + laneWidth,
                       laneHeight};
     SDL_RenderSetClipRect(m_renderer, &rowsClip);
@@ -278,7 +277,6 @@ void App::drawWaveform(const SDL_Rect& area) {
     m_buildingTrackHeader = false;
     m_trackHeaderControls.end(m_uiPainter.get());
     SDL_RenderSetClipRect(m_renderer, &m_contentRect);
-    m_ui.setControlArea(1);
 
     SDL_RenderSetClipRect(m_renderer, &m_tracksArea);
     for (const auto& clipVisual : m_timelineCanvas.clips()) {

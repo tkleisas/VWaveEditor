@@ -665,10 +665,6 @@ void App::draw() {
     SDL_RenderPresent(m_renderer);
 }
 
-void App::drawButton(const Button& button) {
-    m_ui.drawButton(button);
-}
-
 void App::addSlider(const std::string& label, const std::string& valueText,
                     int x, int y, int w, vwave::ParameterSlider& slider,
                     std::function<void(double)> onChanged) {

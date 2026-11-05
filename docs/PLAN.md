@@ -604,4 +604,8 @@ automation presets; the cut-up arrangement model itself is implemented.
   dialog pointer input now routes through the widget host.
 - The remaining direct rectangle checks are canvas-local interaction regions
   (spectrum, wavetable, scope, wheel routing) rather than control hit tests.
-- Next: consolidate canvas-local input regions and finish UI migration docs.
+- Retained UI migration is complete for controls, menus, dialogs, and shared
+  timeline geometry. Remaining direct rectangle checks are canvas-local
+  interaction regions.
+- Next: new UI work can build on `vwave_ui_core`, `vwave_ui_sdl`, `TimelineCanvas`,
+  and the command registry.

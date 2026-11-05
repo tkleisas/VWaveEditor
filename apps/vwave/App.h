@@ -68,7 +68,6 @@ public:
 private:
     using Color = SDL_Color;
 
-    using Button = vwave::ui::Button;
     using MenuItem = vwave::ui::MenuItem;
     using Menu = vwave::ui::Menu;
 
@@ -120,7 +119,6 @@ private:
     void drawImage(const SDL_Rect& area);
     void drawOscilloscope(const SDL_Rect& area);
     void drawFooter();
-    void drawButton(const Button& button);
     void drawSection(const std::string& title, int& y);
     void addButton(const std::string& label, int x, int y, int w, int h,
                    std::function<void()> action, bool accent = false,

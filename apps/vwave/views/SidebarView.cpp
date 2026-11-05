@@ -75,7 +75,6 @@ void App::drawSidebar() {
     m_sidebarButtonIndex = 0;
     m_sidebarSliderIndex = 0;
     m_buildingSidebar = true;
-    m_ui.setControlArea(1);
     SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
     SDL_RenderFillRect(m_renderer, &m_sidebarRect);
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);

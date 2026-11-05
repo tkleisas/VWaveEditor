@@ -370,16 +370,20 @@ permissions of the user running it.
 
 A toolkit-neutral `vwave_ui_core` library owns the retained widget tree,
 normalized pointer/key/text/window events, pointer capture, hover state, focus
-traversal, and semantic cursor shapes. It has no SDL dependency and is covered
-by headless tests. A thin SDL adapter translates OS events, paints the widget
-tree, and applies cached system cursors. The editor toolbar and sidebar buttons are migrated to
-retained widgets. Sidebar buttons are pooled and repositioned from the existing
-manual layout, so scrolling and dynamic sections remain compatible during the
-transition. Timeline cursor hit targets are shared across ruler, overview,
-track headers, clips, selection handles, and trim/stretch grips. Sidebar sliders now use retained `SidebarSlider` controls as well, and
-  track-header buttons/sliders use a pooled retained `ControlPanel`. The legacy
-  immediate-mode button/slider registration path has been removed; custom
-  canvas rendering remains on the legacy path until migration is complete.
+traversal, semantic cursor shapes, layout helpers, scrolling, and the command
+registry. It has no SDL dependency and is covered by headless tests.
+
+`vwave_ui_sdl` provides the SDL event adapter, cached system cursors, and a
+painter with semantic color roles and a bounded text-texture cache. The editor
+uses retained controls for the toolbar, sidebar, track headers, menu bar,
+dropdowns, context menus, and dialogs. Shared command/shortcut definitions keep
+menus, buttons, and keyboard bindings aligned.
+
+`TimelineCanvas` and `TimelineMapping` centralize waveform row/clip geometry,
+selection bounds, hit targets, cursor shapes, and frame↔pixel mapping. Spectrum,
+wavetable, scope, and wheel handling still contain local rectangle checks; these
+are intentional canvas interaction regions rather than legacy control hit tests.
+The old immediate-mode button/slider/control-area path has been removed.
 
 ### Standalone editor
 

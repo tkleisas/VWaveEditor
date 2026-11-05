@@ -41,23 +41,6 @@ void UiRenderer::drawTextCentered(const std::string& text,
              rect.y + (rect.h - height) / 2, color, font);
 }
 
-void UiRenderer::drawButton(const Button& button) {
-    SDL_Color fill = button.accent ? kAccentDark : kPanelRaised;
-    if (button.active) fill = kAccentDark;
-    if (!button.enabled) fill = kDisabled;
-    SDL_SetRenderDrawColor(m_renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(m_renderer, &button.rect);
-    SDL_SetRenderDrawColor(m_renderer,
-                           button.enabled ? kBorder.r : kTextFaint.r,
-                           button.enabled ? kBorder.g : kTextFaint.g,
-                           button.enabled ? kBorder.b : kTextFaint.b, 255);
-    SDL_RenderDrawRect(m_renderer, &button.rect);
-    const SDL_Color textColor = !button.enabled
-                                    ? kTextFaint
-                                    : (button.accent ? kAccentText : kText);
-    drawTextCentered(button.label, button.rect, textColor, m_fontSmall);
-}
-
 void UiRenderer::drawSection(const std::string& title, int sidebarWidth,
                              int& y) {
     drawText(title, 18, y, kAccent, m_fontSmall);
