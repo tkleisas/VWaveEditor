@@ -9,42 +9,21 @@
 
 using namespace vwave::ui;
 
-namespace {
-
-Rect fromSdl(const SDL_Rect& rect) {
-    return {rect.x, rect.y, rect.w, rect.h};
+void App::refreshTimelineCanvas() const {
+    m_timelineCanvasLayout.trackScroll =
+        static_cast<int>(std::lround(m_trackScroll));
+    m_timelineCanvasLayout.clipToolEnabled = m_clips.toolEnabled();
+    m_timelineCanvas.layout(m_timeline, m_view, m_timelineCanvasLayout);
 }
-
-} // namespace
 
 CursorShape App::waveformCursorAt(int x, int y) const {
     if (m_tab != vwave::EditorTab::Waveform) return CursorShape::Arrow;
-
-    TimelineCanvasLayout layout;
-    layout.area = fromSdl(m_waveArea);
-    layout.ruler = fromSdl(m_rulerArea);
-    layout.overview = fromSdl(m_overviewArea);
-    layout.headerColumn = fromSdl(m_trackHeaderColumn);
-    layout.trackScroll = static_cast<int>(std::lround(m_trackScroll));
-    layout.clipToolEnabled = m_clips.toolEnabled();
-    layout.laneArea = {layout.headerColumn.x + layout.headerColumn.w,
-                       layout.headerColumn.y, 0, layout.headerColumn.h};
-    for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
-        if (m_trackHeaderRects[i].w <= 0 ||
-            i >= m_trackLaneRects.size() || m_trackLaneRects[i].w <= 0)
-            continue;
-        layout.rowHeight = m_trackHeaderRects[i].h + 6;
-        layout.laneArea = fromSdl(m_trackLaneRects[i]);
-        layout.laneArea.y = layout.headerColumn.y;
-        layout.laneArea.h = layout.headerColumn.h;
-        break;
-    }
-
-    m_timelineCanvas.layout(m_timeline, m_view, layout);
+    refreshTimelineCanvas();
     const auto& selection = m_timeline.selection();
     return m_timelineCanvas.cursorAt(
         {x, y}, selection, m_timeline.selectionScope(),
-        m_timeline.activeTrack(), selection.active && selection.end > selection.start);
+        m_timeline.activeTrack(),
+        selection.active && selection.end > selection.start);
 }
 
 void App::updateUiCursor(int x, int y) {

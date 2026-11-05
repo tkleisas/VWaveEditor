@@ -95,3 +95,37 @@ VWTEST("timeline canvas builds clip rects and selection") {
     CHECK(canvas.cursorAt({150, 55}, selection, SelectionScope::AllTracks, 0,
                           true) == CursorShape::SizeAll);
 }
+
+VWTEST("timeline canvas hit testing follows handle precedence") {
+    Timeline timeline;
+    REQUIRE(timeline.addAudioTrack("one", audio(1000), 0));
+    REQUIRE(timeline.track(0).document.createClipArrangement());
+    REQUIRE(timeline.track(0).document.splitClipAt(500));
+    WaveformViewport view;
+    view.fit(1000);
+    auto config = layout();
+    config.clipToolEnabled = true;
+
+    TimelineCanvas canvas;
+    canvas.layout(timeline, view, config);
+    Selection selection{200, 600, true};
+
+    CHECK(canvas.hitTest({150, 55}, selection, SelectionScope::AllTracks, 0,
+                         true).kind == TimelineHitKind::ClipBody);
+    auto plainConfig = config;
+    plainConfig.clipToolEnabled = false;
+    TimelineCanvas plain;
+    plain.layout(timeline, view, plainConfig);
+    CHECK(plain.hitTest({150, 55}, selection, SelectionScope::AllTracks, 0,
+                        true).kind == TimelineHitKind::Lane);
+    CHECK(canvas.hitTest({290, 55}, selection, SelectionScope::AllTracks, 0,
+                         true).kind == TimelineHitKind::ClipBody);
+    CHECK(canvas.hitTest({499, 55}, selection, SelectionScope::AllTracks, 0,
+                         true).kind == TimelineHitKind::ClipEnd);
+    CHECK(canvas.hitTest({30, 55}, selection, SelectionScope::AllTracks, 0,
+                         true).kind == TimelineHitKind::TrackHeader);
+    CHECK(canvas.hitTest({150, 35}, selection, SelectionScope::AllTracks, 0,
+                         true).kind == TimelineHitKind::Ruler);
+    CHECK(plain.hitTest({150, 55}, selection, SelectionScope::AllTracks, 0,
+                         false).kind == TimelineHitKind::Lane);
+}

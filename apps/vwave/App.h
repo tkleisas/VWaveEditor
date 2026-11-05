@@ -162,6 +162,7 @@ private:
     void handleWaveformMouseUp(const SDL_MouseButtonEvent& event);
     void handleSpectrumMouseUp(const SDL_MouseButtonEvent& event);
     vwave::ui::CursorShape waveformCursorAt(int x, int y) const;
+    void refreshTimelineCanvas() const;
     void updateUiCursor(int x, int y);
     void handleWheel(const SDL_MouseWheelEvent& event);
 
@@ -311,6 +312,7 @@ private:
     vwave::ui::ControlPanel m_trackHeaderControls;
     bool m_buildingTrackHeader = false;
     mutable vwave::ui::TimelineCanvas m_timelineCanvas;
+    mutable vwave::ui::TimelineCanvasLayout m_timelineCanvasLayout;
     vwave::ui::SdlEventAdapter m_uiEventAdapter;
     vwave::ui::SdlCursorController m_cursorController;
     TTF_Font* m_fontSmall = nullptr;

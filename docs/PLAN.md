@@ -585,5 +585,8 @@ automation presets; the cut-up arrangement model itself is implemented.
 - Introduced `TimelineCanvas` geometry for visible track rows, frame mapping,
   clips, selection bounds, and cursor hit targets; waveform drawing and cursor
   resolution now use it.
-- Next: move waveform mouse hit-testing/drag setup onto `TimelineCanvas` and
-  retire the remaining App-side geometry helpers.
+- Moved waveform press hit-testing and drag setup onto `TimelineCanvas`,
+  including ruler/overview, headers, lanes, clips, selection handles, and
+  trim/stretch grips.
+- Next: move drag-motion/up geometry and selection rendering fully onto the
+  canvas, then retire the remaining App-side helpers.

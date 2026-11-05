@@ -35,6 +35,32 @@ struct TimelineCanvasClip {
     int clipIndex = -1;
 };
 
+enum class TimelineHitKind {
+    None,
+    Ruler,
+    Overview,
+    TrackHeader,
+    Lane,
+    SelectionStart,
+    SelectionEnd,
+    SelectionRepeat,
+    ClipBody,
+    ClipEnd,
+    TrackTrimStart,
+    TrackTrimEnd,
+    TrackStretch,
+    WaveArea,
+};
+
+struct TimelineHit {
+    TimelineHitKind kind = TimelineHitKind::None;
+    int trackIndex = -1;
+    int clipIndex = -1;
+    int64_t frame = 0;
+    Rect bounds;
+    Rect lane;
+};
+
 class TimelineCanvas {
 public:
     void layout(const vwave::Timeline& timeline,
@@ -52,6 +78,9 @@ public:
     CursorShape cursorAt(Point point, const vwave::Selection& selection,
                          vwave::SelectionScope scope, int activeTrack,
                          bool selectionActive) const;
+    TimelineHit hitTest(Point point, const vwave::Selection& selection,
+                        vwave::SelectionScope scope, int activeTrack,
+                        bool selectionActive) const;
 
 private:
     std::vector<TimelineCanvasRow> m_rows;

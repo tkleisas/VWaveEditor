@@ -201,6 +201,7 @@ void App::drawWaveform(const SDL_Rect& area) {
     canvasLayout.trackScroll =
         static_cast<int>(std::lround(m_trackScroll));
     canvasLayout.clipToolEnabled = m_clips.toolEnabled();
+    m_timelineCanvasLayout = canvasLayout;
     m_timelineCanvas.layout(m_timeline, m_view, canvasLayout);
     for (const auto& row : m_timelineCanvas.rows()) {
         const int index = row.trackIndex;

@@ -18,12 +18,26 @@ void App::handleWaveformMouseDown(const SDL_MouseButtonEvent& event) {
     if (m_clips.toolEnabled() && !activeDocument().hasClips())
         m_clips.reset();
     m_clickCandidate = false;
-    SDL_Point point{event.x, event.y};
-    if (SDL_PointInRect(&point, &m_rulerArea)) {
-        const int64_t frame =
-            laneFrameAtX(m_rulerArea, event.x);
+    refreshTimelineCanvas();
+
+    const auto& selection = m_timeline.selection();
+    const bool selectionActive =
+        selection.active && selection.end > selection.start;
+    const TimelineHit hit = m_timelineCanvas.hitTest(
+        {event.x, event.y}, selection, m_timeline.selectionScope(),
+        m_timeline.activeTrack(), selectionActive);
+
+    auto beginShift = [this, &event](int trackIndex) {
+        selectTrack(trackIndex);
+        m_shiftingTrack = true;
+        m_shiftingTrackIndex = trackIndex;
+        m_shiftStartMouseX = event.x;
+        m_shiftStartFrame = m_timeline.track(trackIndex).startFrame;
+    };
+
+    if (hit.kind == TimelineHitKind::Ruler) {
         m_player.stop();
-        m_playhead = clampFrame(frame, m_timeline.lengthFrames());
+        m_playhead = clampFrame(hit.frame, m_timeline.lengthFrames());
         m_timeline.clearSelection();
         if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
             m_waveDrag = WaveDragMode::LoopSelection;
@@ -33,195 +47,8 @@ void App::handleWaveformMouseDown(const SDL_MouseButtonEvent& event) {
         }
         return;
     }
-    if ((SDL_GetModState() & KMOD_ALT) != 0) {
-        for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
-            if (m_trackHeaderRects[i].w > 0 &&
-                SDL_PointInRect(&point, &m_trackHeaderRects[i])) {
-                selectTrack(static_cast<int>(i));
-                m_shiftingTrack = true;
-                m_shiftingTrackIndex = static_cast<int>(i);
-                m_shiftStartMouseX = event.x;
-                m_shiftStartFrame = m_timeline.track(
-                    m_shiftingTrackIndex).startFrame;
-                return;
-            }
-        }
-        for (size_t i = 0; i < m_trackLaneRects.size(); ++i) {
-            if (m_trackLaneRects[i].w > 0 &&
-                SDL_PointInRect(&point, &m_trackLaneRects[i])) {
-                selectTrack(static_cast<int>(i));
-                m_shiftingTrack = true;
-                m_shiftingTrackIndex = static_cast<int>(i);
-                m_shiftStartMouseX = event.x;
-                m_shiftStartFrame = m_timeline.track(
-                    m_shiftingTrackIndex).startFrame;
-                return;
-            }
-        }
-    }
-    for (size_t i = 0; i < m_trackHeaderRects.size(); ++i) {
-        if (m_trackHeaderRects[i].w > 0 &&
-            SDL_PointInRect(&point, &m_trackHeaderRects[i])) {
-            selectTrack(static_cast<int>(i));
-            return;
-        }
-    }
-    int laneIndex = -1;
-    for (size_t i = 0; i < m_trackLaneRects.size(); ++i) {
-        if (m_trackLaneRects[i].w > 0 &&
-            SDL_PointInRect(&point, &m_trackLaneRects[i])) {
-            laneIndex = static_cast<int>(i);
-            break;
-        }
-    }
-    if (laneIndex >= 0) {
-        selectTrack(laneIndex);
-        const SDL_Rect& clipLane =
-            m_trackLaneRects[static_cast<size_t>(laneIndex)];
-        const auto& clipTrack = m_timeline.track(laneIndex);
-        if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
-            const int64_t frame =
-                clampFrame(laneFrameAtX(clipLane, event.x),
-                           m_timeline.lengthFrames());
-            m_player.stop();
-            m_playhead = frame;
-            m_timeline.clearSelection();
-            m_waveDrag = WaveDragMode::LoopSelection;
-            m_waveDragTrack = laneIndex;
-            m_waveDragMouseX = event.x;
-            m_loop.beginDrag(frame, clipLane);
-            return;
-        }
-        if (m_clips.toolEnabled()) {
-            m_player.stop();
-            m_playhead = clampFrame(laneFrameAtX(clipLane, event.x),
-                                    m_timeline.lengthFrames());
-            m_timeline.clearSelection();
-            if (!clipTrack.document.hasClips()) {
-                setStatus("Make clips first");
-                return;
-            }
-            const int64_t local = std::clamp<int64_t>(
-                laneFrameAtX(clipLane, event.x) - clipTrack.startFrame,
-                0, clipTrack.document.numFrames());
-            const int clipIndex =
-                clipTrack.document.clipIndexAt(local);
-            if (clipIndex < 0) {
-                m_clips.setSelectedClip(-1);
-                setStatus("Click inside a clip");
-                return;
-            }
-            m_clips.setSelectedClip(clipIndex);
-            const auto& clip =
-                clipTrack.document.clips()[static_cast<size_t>(clipIndex)];
-            const int64_t frames = vwave::clipOutputFrames(clip);
-            const int64_t startGlobal =
-                clipTrack.startFrame + clip.timelineStart;
-            const int64_t endGlobal = startGlobal + frames;
-            const int endX = laneXForFrame(clipLane, endGlobal);
-            m_waveDragTrack = laneIndex;
-            m_waveDragMouseX = event.x;
-            m_waveDragOriginalStart = clip.timelineStart;
-            m_waveDragOriginalEnd = clip.timelineStart + frames;
-            m_clipDragOriginalFrames = frames;
-            m_waveDragPreviewFrame = startGlobal;
-            if (std::abs(event.x - endX) <= 8) {
-                m_waveDrag = WaveDragMode::ClipStretch;
-                m_waveDragPreviewFrame = endGlobal;
-            } else {
-                m_waveDrag = WaveDragMode::ClipMove;
-            }
-            setStatus("Selected " +
-                      (clip.name.empty()
-                           ? "clip " + std::to_string(clipIndex + 1)
-                           : clip.name));
-            return;
-        }
-        const SDL_Rect selection = selectionScreenRect();
-        if (selection.w > 0) {
-            SDL_Rect repeatHandle{selection.x + selection.w - 6,
-                                  selection.y + selection.h - 12, 12, 12};
-            if (SDL_PointInRect(&point, &repeatHandle)) {
-                m_waveDrag = WaveDragMode::SelectionRepeat;
-                m_waveDragTrack = m_timeline.activeTrack();
-                m_waveDragMouseX = event.x;
-                m_waveDragPreviewFrame = m_timeline.selection().end;
-                m_repeatDragCount = 0;
-                return;
-            }
-            SDL_Rect startHandle{selection.x - 4, selection.y, 9,
-                                 selection.h};
-            SDL_Rect endHandle{selection.x + selection.w - 5, selection.y,
-                               9, selection.h};
-            if (SDL_PointInRect(&point, &startHandle)) {
-                m_waveDrag = WaveDragMode::SelectionStart;
-                m_waveDragFixedFrame = m_timeline.selection().end;
-                m_waveDragMouseX = event.x;
-                return;
-            }
-            if (SDL_PointInRect(&point, &endHandle)) {
-                m_waveDrag = WaveDragMode::SelectionEnd;
-                m_waveDragFixedFrame = m_timeline.selection().start;
-                m_waveDragMouseX = event.x;
-                return;
-            }
-        }
 
-        const SDL_Rect& lane =
-            m_trackLaneRects[static_cast<size_t>(laneIndex)];
-        const auto& track = m_timeline.track(laneIndex);
-        const int64_t frames = track.document.numFrames();
-        if (frames > 0) {
-            const int startX = laneXForFrame(lane, track.startFrame);
-            const int endX =
-                laneXForFrame(lane, track.startFrame + frames);
-            SDL_Rect stretchHandle{endX - 13, lane.y + 2, 11, 11};
-            SDL_Rect trimStart{startX - 4, lane.y + 2, 8, 14};
-            SDL_Rect trimEnd{endX - 4, lane.y + lane.h - 16, 8, 14};
-            if (endX >= lane.x && endX <= lane.x + lane.w &&
-                SDL_PointInRect(&point, &stretchHandle)) {
-                m_waveDrag = WaveDragMode::TrackStretch;
-                m_waveDragTrack = laneIndex;
-                m_waveDragMouseX = event.x;
-                m_waveDragOriginalStart = track.startFrame;
-                m_waveDragOriginalEnd = track.startFrame + frames;
-                m_waveDragPreviewFrame = m_waveDragOriginalEnd;
-                return;
-            }
-            if (startX >= lane.x && startX <= lane.x + lane.w &&
-                SDL_PointInRect(&point, &trimStart)) {
-                m_waveDrag = WaveDragMode::TrackTrimStart;
-                m_waveDragTrack = laneIndex;
-                m_waveDragMouseX = event.x;
-                m_waveDragOriginalStart = track.startFrame;
-                m_waveDragOriginalEnd = track.startFrame + frames;
-                m_waveDragPreviewFrame = m_waveDragOriginalStart;
-                return;
-            }
-            if (endX >= lane.x && endX <= lane.x + lane.w &&
-                SDL_PointInRect(&point, &trimEnd)) {
-                m_waveDrag = WaveDragMode::TrackTrimEnd;
-                m_waveDragTrack = laneIndex;
-                m_waveDragMouseX = event.x;
-                m_waveDragOriginalStart = track.startFrame;
-                m_waveDragOriginalEnd = track.startFrame + frames;
-                m_waveDragPreviewFrame = m_waveDragOriginalEnd;
-                return;
-            }
-        }
-
-        m_selectionAnchor = laneFrameAtX(lane, event.x);
-        m_timeline.setSelection(m_selectionAnchor, m_selectionAnchor);
-        m_clips.setSelectedClip(-1);
-        m_waveDrag = WaveDragMode::NewSelection;
-        m_waveDragTrack = laneIndex;
-        m_waveDragMouseX = event.x;
-        m_clickCandidate = true;
-        m_clickFrame = m_selectionAnchor;
-        m_clickMouseX = event.x;
-        return;
-    }
-    if (SDL_PointInRect(&point, &m_overviewArea)) {
+    if (hit.kind == TimelineHitKind::Overview) {
         const double fraction =
             static_cast<double>(event.x - m_overviewArea.x) /
             std::max(1, m_overviewArea.w);
@@ -239,7 +66,155 @@ void App::handleWaveformMouseDown(const SDL_MouseButtonEvent& event) {
         m_lastMouseX = event.x;
         return;
     }
-    if (SDL_PointInRect(&point, &m_waveArea)) {
+
+    if (hit.kind == TimelineHitKind::TrackHeader) {
+        if ((SDL_GetModState() & KMOD_ALT) != 0) {
+            beginShift(hit.trackIndex);
+            return;
+        }
+        selectTrack(hit.trackIndex);
+        return;
+    }
+
+    if (hit.kind == TimelineHitKind::Lane ||
+        hit.kind == TimelineHitKind::SelectionStart ||
+        hit.kind == TimelineHitKind::SelectionEnd ||
+        hit.kind == TimelineHitKind::SelectionRepeat ||
+        hit.kind == TimelineHitKind::ClipBody ||
+        hit.kind == TimelineHitKind::ClipEnd ||
+        hit.kind == TimelineHitKind::TrackTrimStart ||
+        hit.kind == TimelineHitKind::TrackTrimEnd ||
+        hit.kind == TimelineHitKind::TrackStretch) {
+        selectTrack(hit.trackIndex);
+        if ((SDL_GetModState() & KMOD_ALT) != 0) {
+            beginShift(hit.trackIndex);
+            return;
+        }
+
+        const SDL_Rect lane{hit.lane.x, hit.lane.y, hit.lane.w, hit.lane.h};
+        if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
+            m_player.stop();
+            m_playhead = clampFrame(hit.frame, m_timeline.lengthFrames());
+            m_timeline.clearSelection();
+            m_waveDrag = WaveDragMode::LoopSelection;
+            m_waveDragTrack = hit.trackIndex;
+            m_waveDragMouseX = event.x;
+            m_loop.beginDrag(m_playhead, lane);
+            return;
+        }
+
+        if (m_clips.toolEnabled()) {
+            const auto& track = m_timeline.track(hit.trackIndex);
+            m_player.stop();
+            m_playhead = clampFrame(hit.frame, m_timeline.lengthFrames());
+            m_timeline.clearSelection();
+            if (!track.document.hasClips()) {
+                setStatus("Make clips first");
+                return;
+            }
+            if (hit.kind != TimelineHitKind::ClipBody &&
+                hit.kind != TimelineHitKind::ClipEnd) {
+                m_clips.setSelectedClip(-1);
+                setStatus("Click inside a clip");
+                return;
+            }
+            if (hit.clipIndex < 0 ||
+                static_cast<size_t>(hit.clipIndex) >=
+                    track.document.clips().size()) {
+                m_clips.setSelectedClip(-1);
+                setStatus("Click inside a clip");
+                return;
+            }
+            m_clips.setSelectedClip(hit.clipIndex);
+            const auto& clip =
+                track.document.clips()[static_cast<size_t>(hit.clipIndex)];
+            const int64_t frames = vwave::clipOutputFrames(clip);
+            const int64_t startGlobal =
+                track.startFrame + clip.timelineStart;
+            const int64_t endGlobal = startGlobal + frames;
+            m_waveDragTrack = hit.trackIndex;
+            m_waveDragMouseX = event.x;
+            m_waveDragOriginalStart = clip.timelineStart;
+            m_waveDragOriginalEnd = clip.timelineStart + frames;
+            m_clipDragOriginalFrames = frames;
+            m_waveDragPreviewFrame = startGlobal;
+            if (hit.kind == TimelineHitKind::ClipEnd) {
+                m_waveDrag = WaveDragMode::ClipStretch;
+                m_waveDragPreviewFrame = endGlobal;
+            } else {
+                m_waveDrag = WaveDragMode::ClipMove;
+            }
+            setStatus("Selected " +
+                      (clip.name.empty()
+                           ? "clip " + std::to_string(hit.clipIndex + 1)
+                           : clip.name));
+            return;
+        }
+
+        if (hit.kind == TimelineHitKind::SelectionRepeat) {
+            m_waveDrag = WaveDragMode::SelectionRepeat;
+            m_waveDragTrack = m_timeline.activeTrack();
+            m_waveDragMouseX = event.x;
+            m_waveDragPreviewFrame = selection.end;
+            m_repeatDragCount = 0;
+            return;
+        }
+        if (hit.kind == TimelineHitKind::SelectionStart) {
+            m_waveDrag = WaveDragMode::SelectionStart;
+            m_waveDragFixedFrame = selection.end;
+            m_waveDragMouseX = event.x;
+            return;
+        }
+        if (hit.kind == TimelineHitKind::SelectionEnd) {
+            m_waveDrag = WaveDragMode::SelectionEnd;
+            m_waveDragFixedFrame = selection.start;
+            m_waveDragMouseX = event.x;
+            return;
+        }
+
+        const auto& track = m_timeline.track(hit.trackIndex);
+        const int64_t frames = track.document.numFrames();
+        if (hit.kind == TimelineHitKind::TrackStretch) {
+            m_waveDrag = WaveDragMode::TrackStretch;
+            m_waveDragTrack = hit.trackIndex;
+            m_waveDragMouseX = event.x;
+            m_waveDragOriginalStart = track.startFrame;
+            m_waveDragOriginalEnd = track.startFrame + frames;
+            m_waveDragPreviewFrame = m_waveDragOriginalEnd;
+            return;
+        }
+        if (hit.kind == TimelineHitKind::TrackTrimStart) {
+            m_waveDrag = WaveDragMode::TrackTrimStart;
+            m_waveDragTrack = hit.trackIndex;
+            m_waveDragMouseX = event.x;
+            m_waveDragOriginalStart = track.startFrame;
+            m_waveDragOriginalEnd = track.startFrame + frames;
+            m_waveDragPreviewFrame = m_waveDragOriginalStart;
+            return;
+        }
+        if (hit.kind == TimelineHitKind::TrackTrimEnd) {
+            m_waveDrag = WaveDragMode::TrackTrimEnd;
+            m_waveDragTrack = hit.trackIndex;
+            m_waveDragMouseX = event.x;
+            m_waveDragOriginalStart = track.startFrame;
+            m_waveDragOriginalEnd = track.startFrame + frames;
+            m_waveDragPreviewFrame = m_waveDragOriginalEnd;
+            return;
+        }
+
+        m_selectionAnchor = hit.frame;
+        m_timeline.setSelection(m_selectionAnchor, m_selectionAnchor);
+        m_clips.setSelectedClip(-1);
+        m_waveDrag = WaveDragMode::NewSelection;
+        m_waveDragTrack = hit.trackIndex;
+        m_waveDragMouseX = event.x;
+        m_clickCandidate = true;
+        m_clickFrame = m_selectionAnchor;
+        m_clickMouseX = event.x;
+        return;
+    }
+
+    if (hit.kind == TimelineHitKind::WaveArea) {
         m_selectionAnchor =
             m_view.frameAt(event.x - m_waveArea.x, m_waveArea.w,
                            m_timeline.lengthFrames());
@@ -252,7 +227,6 @@ void App::handleWaveformMouseDown(const SDL_MouseButtonEvent& event) {
         m_clickFrame = m_selectionAnchor;
         m_clickMouseX = event.x;
     }
-
 }
 
 void App::handleWaveformMouseMotion(const SDL_MouseMotionEvent& event) {

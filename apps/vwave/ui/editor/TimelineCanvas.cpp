@@ -115,4 +115,137 @@ CursorShape TimelineCanvas::cursorAt(
     return timelineCursorAt(geometry, point);
 }
 
+TimelineHit TimelineCanvas::hitTest(
+    Point point, const vwave::Selection& selection,
+    vwave::SelectionScope scope, int activeTrack,
+    bool selectionActive) const {
+    auto hit = [](TimelineHitKind kind, Rect bounds, int track = -1,
+                  int clip = -1, int64_t frame = 0) {
+        return TimelineHit{kind, track, clip, frame, bounds, {}};
+    };
+
+    if (m_overview.contains(point))
+        return hit(TimelineHitKind::Overview, m_overview);
+    if (m_ruler.contains(point))
+        return hit(TimelineHitKind::Ruler, m_ruler, -1, -1,
+                   frameAtX(m_ruler, point.x));
+
+    for (const auto& row : m_rows) {
+        if (row.header.contains(point))
+            return hit(TimelineHitKind::TrackHeader, row.header,
+                       row.trackIndex);
+    }
+
+    const TimelineCanvasRow* row = nullptr;
+    for (const auto& candidate : m_rows) {
+        if (candidate.lane.contains(point)) {
+            row = &candidate;
+            break;
+        }
+    }
+    if (row) {
+        const int64_t frame = frameAtX(row->lane, point.x);
+        if (m_clipToolEnabled) {
+            for (auto it = m_clips.rbegin(); it != m_clips.rend(); ++it) {
+                if (it->trackIndex != row->trackIndex ||
+                    !it->rect.contains(point))
+                    continue;
+                constexpr int kEdge = 8;
+                if (std::abs(point.x - (it->rect.x + it->rect.w)) <= kEdge)
+                    {
+                        TimelineHit result =
+                            hit(TimelineHitKind::ClipEnd, it->rect,
+                                it->trackIndex, it->clipIndex, frame);
+                        result.lane = row->lane;
+                        return result;
+                    }
+                {
+                    TimelineHit result =
+                        hit(TimelineHitKind::ClipBody, it->rect,
+                            it->trackIndex, it->clipIndex, frame);
+                    result.lane = row->lane;
+                    return result;
+                }
+            }
+        }
+
+        if (selectionActive) {
+            const Rect selected = selectionRect(selection, scope, activeTrack);
+            if (selected.w > 0 && selected.h > 0) {
+                const Rect startHandle{selected.x - 4, selected.y, 9,
+                                       selected.h};
+                const Rect endHandle{selected.x + selected.w - 5, selected.y,
+                                     9, selected.h};
+                const Rect repeatHandle{selected.x + selected.w - 6,
+                                         selected.y + selected.h - 12, 12, 12};
+                if (repeatHandle.contains(point)) {
+                    TimelineHit result =
+                        hit(TimelineHitKind::SelectionRepeat, selected,
+                            row->trackIndex, -1, frame);
+                    result.lane = row->lane;
+                    return result;
+                }
+                if (startHandle.contains(point)) {
+                    TimelineHit result =
+                        hit(TimelineHitKind::SelectionStart, selected,
+                            row->trackIndex, -1, frame);
+                    result.lane = row->lane;
+                    return result;
+                }
+                if (endHandle.contains(point)) {
+                    TimelineHit result =
+                        hit(TimelineHitKind::SelectionEnd, selected,
+                            row->trackIndex, -1, frame);
+                    result.lane = row->lane;
+                    return result;
+                }
+            }
+        }
+
+        if (row->hasAudio) {
+            const Rect& lane = row->lane;
+            const Rect stretch{row->endX - 13, lane.y + 2, 11, 11};
+            const Rect trimStart{row->startX - 4, lane.y + 2, 8, 14};
+            const Rect trimEnd{row->endX - 4, lane.y + lane.h - 16, 8, 14};
+            if (row->endX >= lane.x && row->endX <= lane.x + lane.w &&
+                stretch.contains(point))
+                {
+                    TimelineHit result =
+                        hit(TimelineHitKind::TrackStretch, lane,
+                            row->trackIndex, -1, frame);
+                    result.lane = lane;
+                    return result;
+                }
+            if (row->startX >= lane.x && row->startX <= lane.x + lane.w &&
+                trimStart.contains(point))
+                {
+                    TimelineHit result =
+                        hit(TimelineHitKind::TrackTrimStart, lane,
+                            row->trackIndex, -1, frame);
+                    result.lane = lane;
+                    return result;
+                }
+            if (row->endX >= lane.x && row->endX <= lane.x + lane.w &&
+                trimEnd.contains(point))
+                {
+                    TimelineHit result =
+                        hit(TimelineHitKind::TrackTrimEnd, lane,
+                            row->trackIndex, -1, frame);
+                    result.lane = lane;
+                    return result;
+                }
+        }
+        {
+            TimelineHit result = hit(TimelineHitKind::Lane, row->lane,
+                                     row->trackIndex, -1, frame);
+            result.lane = row->lane;
+            return result;
+        }
+    }
+
+    if (m_area.contains(point))
+        return hit(TimelineHitKind::WaveArea, m_area);
+    return {};
+}
+
 } // namespace vwave::ui
