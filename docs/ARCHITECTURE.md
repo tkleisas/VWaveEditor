@@ -222,7 +222,9 @@ then fits the result back to the original frame count.
 - Onsets use spectral flux plus energy rise, normalized and peak-picked with a
   local adaptive threshold and minimum inter-onset gap.
 - Tempo scoring uses inter-onset intervals from strong onsets, a log-tempo
-  prior, and a beat grid phased from the first onset.
+  prior, and a beat grid phased from the first onset. The 60–200 BPM scan has
+  no half/double-time disambiguation, so ambiguous or heavily smeared material
+  can be reported at an octave-related tempo.
 - Pitch uses YIN difference/CMND analysis with parabolic interpolation.
 - Slicing supports transient, beat-grid, and marker boundaries.
 
@@ -424,6 +426,8 @@ The suite covers:
 ## Known limitations
 
 - Undo beyond the oldest retained checkpoint replays from the source.
+- Mixdown export warns on peaks above 0 dBFS but does not automatically limit;
+  integer PCM output can clip if the warning is ignored.
 - Track addition/removal/routing is not part of track-document undo history.
 - Spectral operations process the selected region in memory.
 - Real-time spectral monitoring is not implemented.
