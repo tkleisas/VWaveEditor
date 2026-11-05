@@ -620,6 +620,8 @@ bool Document::apply(const Operation& operation, std::string* error) {
         m_selection = clampSelection(m_selection, m_arranged.numFrames());
         m_history.push_back({operation, before, m_selection});
         m_redo.clear();
+        dropCheckpointsAtOrAfter(m_history.size());
+        captureCheckpoint();
         return true;
     }
 
@@ -638,6 +640,8 @@ bool Document::apply(const Operation& operation, std::string* error) {
         m_selection = clampSelection(m_selection, m_arranged.numFrames());
         m_history.push_back({operation, before, m_selection});
         m_redo.clear();
+        dropCheckpointsAtOrAfter(m_history.size());
+        captureCheckpoint();
         return true;
     }
 
@@ -660,6 +664,8 @@ bool Document::apply(const Operation& operation, std::string* error) {
     m_selection = clampSelection(after, m_rendered.numFrames());
     m_history.push_back({operation, before, m_selection});
     m_redo.clear();
+    dropCheckpointsAtOrAfter(m_history.size());
+    captureCheckpoint();
     return true;
 }
 

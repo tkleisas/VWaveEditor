@@ -208,6 +208,36 @@ VWTEST("document undo redo stack handles branches") {
     CHECK_EQ(doc.redoCount(), size_t{0});
 }
 
+VWTEST("document undo remains correct across checkpointed histories") {
+    Audio original(1, 64, 48000);
+    for (int64_t i = 0; i < original.numFrames(); ++i)
+        original.sample(0, i) = 0.25f;
+    Document doc = Document::fromAudio(original);
+    doc.setSelection(0, 64);
+    for (int i = 0; i < 40; ++i) REQUIRE(doc.invertSelection());
+    CHECK(doc.checkpointCount() > 0);
+    CHECK_NEAR(doc.audio().sample(0, 0), 0.25, 1e-6);
+
+    for (int i = 0; i < 35; ++i) REQUIRE(doc.undo());
+    CHECK_EQ(doc.undoCount(), size_t{5});
+    CHECK_NEAR(doc.audio().sample(0, 0), -0.25, 1e-6);
+
+    for (int i = 0; i < 35; ++i) REQUIRE(doc.redo());
+    CHECK_EQ(doc.undoCount(), size_t{40});
+    CHECK_NEAR(doc.audio().sample(0, 0), 0.25, 1e-6);
+
+    for (int i = 0; i < 30; ++i) REQUIRE(doc.undo());
+    REQUIRE(doc.invertSelection());
+    CHECK_EQ(doc.undoCount(), size_t{11});
+    CHECK_EQ(doc.redoCount(), size_t{0});
+    CHECK_EQ(doc.checkpointCount(), size_t{0});
+    CHECK_NEAR(doc.audio().sample(0, 0), -0.25, 1e-6);
+
+    for (int i = 0; i < 11; ++i) REQUIRE(doc.undo());
+    CHECK_NEAR(doc.audio().sample(0, 0), 0.25, 1e-6);
+    CHECK_EQ(doc.undoCount(), size_t{0});
+}
+
 VWTEST("document markers and slices are project metadata") {
     Document doc = Document::fromAudio(makeRamp(1000));
     REQUIRE(doc.addMarker(0, "start"));

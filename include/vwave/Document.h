@@ -171,6 +171,7 @@ public:
     bool canRedo() const { return !m_redo.empty(); }
     size_t undoCount() const { return m_history.size(); }
     size_t redoCount() const { return m_redo.size(); }
+    size_t checkpointCount() const { return m_checkpoints.size(); }
     std::string undoLabel() const;
     std::string redoLabel() const;
     std::vector<Operation> operationHistory() const;
@@ -244,9 +245,27 @@ private:
         Selection after;
     };
 
+    struct Checkpoint {
+        size_t historySize = 0;
+        Audio rendered;
+        std::vector<Clip> clips;
+        Selection selection;
+    };
+
+    static constexpr size_t kCheckpointInterval = 16;
+    static constexpr size_t kMaxCheckpoints = 32;
+
+    void captureCheckpoint();
+    void captureCheckpoint(size_t historySize, const Audio& rendered,
+                           const std::vector<Clip>& clips,
+                           const Selection& selection);
+    void dropCheckpointsAtOrAfter(size_t historySize);
+    const Checkpoint* checkpointFor(size_t historySize) const;
+
     Audio m_source;
     std::vector<HistoryEntry> m_history;
     std::vector<HistoryEntry> m_redo;
+    std::vector<Checkpoint> m_checkpoints;
     mutable Audio m_rendered;
     mutable Audio m_arranged;
     mutable bool m_cacheValid = false;

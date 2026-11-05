@@ -22,6 +22,7 @@ bool Document::loadAudio(const std::string& path, std::string* error) {
     m_sourcePath = path;
     m_history.clear();
     m_redo.clear();
+    m_checkpoints.clear();
     m_rendered = m_source;
     m_arranged = m_rendered;
     m_clips.clear();
@@ -149,6 +150,8 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
                     item.value("before", nlohmann::json{}));
                 loaded.m_history.push_back(
                     {std::move(operation), before, after});
+                loaded.captureCheckpoint(loaded.m_history.size(), working,
+                                         clips, after);
             }
             loaded.m_rendered = std::move(working);
             loaded.m_clips.assign(std::move(clips));
@@ -157,6 +160,7 @@ bool Document::fromJson(const nlohmann::json& root, Document& out,
             loaded.m_cacheValid = true;
             loaded.m_redo.clear();
         } else {
+            loaded.m_checkpoints.clear();
             loaded.m_rendered = loaded.m_source;
             loaded.m_arranged = loaded.m_rendered;
             loaded.m_cacheValid = true;

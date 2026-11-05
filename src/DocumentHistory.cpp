@@ -2,6 +2,7 @@
 
 #include "DocumentInternal.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -14,6 +15,38 @@ std::vector<Operation> Document::operationHistory() const {
     result.reserve(m_history.size());
     for (const auto& entry : m_history) result.push_back(entry.operation);
     return result;
+}
+
+void Document::captureCheckpoint() {
+    captureCheckpoint(m_history.size(), m_rendered, m_clips.clips(),
+                      m_selection);
+}
+
+void Document::captureCheckpoint(size_t historySize, const Audio& rendered,
+                                 const std::vector<Clip>& clips,
+                                 const Selection& selection) {
+    if (historySize == 0 || historySize % kCheckpointInterval != 0) return;
+    m_checkpoints.push_back(
+        {historySize, rendered, clips, selection});
+    if (m_checkpoints.size() > kMaxCheckpoints) m_checkpoints.erase(
+        m_checkpoints.begin());
+}
+
+void Document::dropCheckpointsAtOrAfter(size_t historySize) {
+    m_checkpoints.erase(
+        std::remove_if(m_checkpoints.begin(), m_checkpoints.end(),
+                       [historySize](const Checkpoint& checkpoint) {
+                           return checkpoint.historySize >= historySize;
+                       }),
+        m_checkpoints.end());
+}
+
+const Document::Checkpoint* Document::checkpointFor(
+    size_t historySize) const {
+    for (auto it = m_checkpoints.rbegin(); it != m_checkpoints.rend(); ++it) {
+        if (it->historySize <= historySize) return &*it;
+    }
+    return nullptr;
 }
 
 bool Document::undo() {
@@ -68,6 +101,7 @@ void Document::clearHistory() {
     m_arranged = m_rendered;
     m_history.clear();
     m_redo.clear();
+    m_checkpoints.clear();
     m_cacheValid = true;
     m_arrangedValid = true;
     ++m_revision;
@@ -78,7 +112,15 @@ bool Document::rebuild() {
     Audio working = m_source;
     std::vector<Clip> clips;
     Selection selection;
-    for (const auto& entry : m_history) {
+    size_t firstOperation = 0;
+    if (const Checkpoint* checkpoint = checkpointFor(m_history.size())) {
+        working = checkpoint->rendered;
+        clips = checkpoint->clips;
+        selection = checkpoint->selection;
+        firstOperation = checkpoint->historySize;
+    }
+    for (size_t i = firstOperation; i < m_history.size(); ++i) {
+        const auto& entry = m_history[i];
         Selection after = selection;
         if (!applyHistoryOperation(entry.operation, working, clips, after,
                                    nullptr)) {
