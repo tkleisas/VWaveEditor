@@ -57,6 +57,20 @@ public:
                   std::string* error = nullptr) const;
     bool splitAt(int64_t frame, std::vector<AudioRegion>& out,
                  std::string* error = nullptr) const;
+    bool splitAllAt(int64_t frame, std::vector<AudioRegion>& out,
+                    std::string* error = nullptr) const;
+    bool eraseRange(int64_t start, int64_t end,
+                    std::vector<AudioRegion>& out,
+                    std::string* error = nullptr) const;
+    bool insertRegion(int64_t timelineStart, AudioBlockId block,
+                      int64_t sourceLength, std::vector<AudioRegion>& out,
+                      std::string* error = nullptr) const;
+    bool replaceRange(int64_t start, int64_t end, AudioBlockId block,
+                      int64_t sourceLength, std::vector<AudioRegion>& out,
+                      std::string* error = nullptr) const;
+    bool cropRange(int64_t start, int64_t end,
+                   std::vector<AudioRegion>& out,
+                   std::string* error = nullptr) const;
     bool remove(size_t index, std::vector<AudioRegion>& out,
                 std::string* error = nullptr) const;
     bool move(size_t index, int64_t timelineStart,

@@ -294,6 +294,231 @@ bool RegionArrangement::splitAt(int64_t frame,
     return true;
 }
 
+bool RegionArrangement::splitAllAt(int64_t frame,
+                                    std::vector<AudioRegion>& out,
+                                    std::string* error) const {
+    if (error) error->clear();
+    if (frame < 0 || frame > durationFrames()) {
+        setError(error, "split point is outside the arrangement");
+        return false;
+    }
+    std::vector<AudioRegion> result;
+    result.reserve(m_regions.size() + 1);
+    for (const auto& region : m_regions) {
+        const int64_t end =
+            region.timelineStart + regionOutputFrames(region);
+        if (frame <= region.timelineStart || frame >= end) {
+            result.push_back(region);
+            continue;
+        }
+        if (region.sourceLength < 2) {
+            setError(error, "audio region is too short to split");
+            return false;
+        }
+        const int64_t local = frame - region.timelineStart;
+        const int64_t sourceOffset = std::clamp<int64_t>(
+            static_cast<int64_t>(std::llround(
+                static_cast<double>(local) / region.stretch)),
+            1, region.sourceLength - 1);
+        AudioRegion left = region;
+        left.sourceLength = sourceOffset;
+        left.fadeOutSeconds = 0.0;
+        AudioRegion right = region;
+        right.sourceStart += sourceOffset;
+        right.sourceLength -= sourceOffset;
+        right.timelineStart = region.timelineStart + regionOutputFrames(left);
+        right.fadeInSeconds = 0.0;
+        if (!left.name.empty()) left.name += " A";
+        if (!right.name.empty()) right.name += " B";
+        result.push_back(std::move(left));
+        result.push_back(std::move(right));
+    }
+    out = std::move(result);
+    return true;
+}
+
+bool RegionArrangement::eraseRange(int64_t start, int64_t end,
+                                   std::vector<AudioRegion>& out,
+                                   std::string* error) const {
+    if (error) error->clear();
+    const int64_t duration = durationFrames();
+    end = std::min(end, duration);
+    start = std::clamp<int64_t>(start, 0, duration);
+    if (start >= end) {
+        setError(error, "erase range is empty");
+        return false;
+    }
+    if (!splitAllAt(start, out, error)) return false;
+    std::vector<AudioRegion> split = std::move(out);
+    RegionArrangement afterStart;
+    afterStart.assign(split);
+    if (!afterStart.splitAllAt(end, split, error)) return false;
+    const int64_t removed = end - start;
+    std::vector<AudioRegion> result;
+    result.reserve(split.size());
+    for (auto region : split) {
+        const int64_t regionStart = region.timelineStart;
+        const int64_t regionEnd =
+            regionStart + regionOutputFrames(region);
+        if (regionEnd <= start) {
+            result.push_back(std::move(region));
+        } else if (regionStart >= end) {
+            region.timelineStart -= removed;
+            result.push_back(std::move(region));
+        } else if (regionStart >= start && regionEnd <= end) {
+            continue;
+        } else {
+            setError(error, "erase range does not align with audio regions");
+            return false;
+        }
+    }
+    out = std::move(result);
+    return true;
+}
+
+bool RegionArrangement::insertRegion(int64_t timelineStart,
+                                     AudioBlockId block,
+                                     int64_t sourceLength,
+                                     std::vector<AudioRegion>& out,
+                                     std::string* error) const {
+    if (error) error->clear();
+    if (timelineStart < 0 || timelineStart > durationFrames()) {
+        setError(error, "insert position is outside the arrangement");
+        return false;
+    }
+    if (block == kInvalidAudioBlock || sourceLength <= 0) {
+        setError(error, "inserted audio region needs a positive source length");
+        return false;
+    }
+    std::vector<AudioRegion> split;
+    if (!splitAllAt(timelineStart, split, error)) return false;
+    AudioRegion inserted;
+    inserted.block = block;
+    inserted.sourceLength = sourceLength;
+    inserted.timelineStart = timelineStart;
+    inserted.name = "Inserted region";
+    const int64_t added = regionOutputFrames(inserted);
+    if (added <= 0) {
+        setError(error, "inserted audio region has an invalid length");
+        return false;
+    }
+
+    std::vector<AudioRegion> result;
+    result.reserve(split.size() + 1);
+    bool placed = false;
+    for (auto region : split) {
+        if (!placed && region.timelineStart >= timelineStart) {
+            result.push_back(inserted);
+            placed = true;
+        }
+        if (region.timelineStart >= timelineStart)
+            region.timelineStart += added;
+        result.push_back(std::move(region));
+    }
+    if (!placed) result.push_back(std::move(inserted));
+    out = std::move(result);
+    return true;
+}
+
+bool RegionArrangement::replaceRange(int64_t start, int64_t end,
+                                     AudioBlockId block,
+                                     int64_t sourceLength,
+                                     std::vector<AudioRegion>& out,
+                                     std::string* error) const {
+    if (error) error->clear();
+    const int64_t duration = durationFrames();
+    end = std::min(end, duration);
+    start = std::clamp<int64_t>(start, 0, duration);
+    if (start >= end) {
+        setError(error, "replace range is empty");
+        return false;
+    }
+    if (block == kInvalidAudioBlock || sourceLength <= 0) {
+        setError(error, "replacement audio region needs a positive source length");
+        return false;
+    }
+    std::vector<AudioRegion> split;
+    if (!splitAllAt(start, split, error)) return false;
+    RegionArrangement afterStart;
+    afterStart.assign(split);
+    if (!afterStart.splitAllAt(end, split, error)) return false;
+
+    AudioRegion replacement;
+    replacement.block = block;
+    replacement.sourceLength = sourceLength;
+    replacement.timelineStart = start;
+    replacement.name = "Replaced region";
+    const int64_t added = regionOutputFrames(replacement);
+    if (added <= 0) {
+        setError(error, "replacement audio region has an invalid length");
+        return false;
+    }
+    const int64_t delta = added - (end - start);
+
+    std::vector<AudioRegion> result;
+    result.reserve(split.size() + 1);
+    bool placed = false;
+    for (auto region : split) {
+        const int64_t regionStart = region.timelineStart;
+        const int64_t regionEnd =
+            regionStart + regionOutputFrames(region);
+        if (regionEnd <= start) {
+            result.push_back(std::move(region));
+        } else if (regionStart >= end) {
+            if (!placed) {
+                result.push_back(std::move(replacement));
+                placed = true;
+            }
+            region.timelineStart += delta;
+            result.push_back(std::move(region));
+        } else if (regionStart >= start && regionEnd <= end) {
+            continue;
+        } else {
+            setError(error, "replace range does not align with audio regions");
+            return false;
+        }
+    }
+    if (!placed) result.push_back(std::move(replacement));
+    out = std::move(result);
+    return true;
+}
+
+bool RegionArrangement::cropRange(int64_t start, int64_t end,
+                                  std::vector<AudioRegion>& out,
+                                  std::string* error) const {
+    if (error) error->clear();
+    const int64_t duration = durationFrames();
+    start = std::clamp<int64_t>(start, 0, duration);
+    end = std::clamp<int64_t>(end, 0, duration);
+    if (start >= end) {
+        setError(error, "crop range is empty");
+        return false;
+    }
+    std::vector<AudioRegion> split;
+    if (!splitAllAt(start, split, error)) return false;
+    RegionArrangement afterStart;
+    afterStart.assign(split);
+    if (!afterStart.splitAllAt(end, split, error)) return false;
+    std::vector<AudioRegion> result;
+    result.reserve(split.size());
+    for (auto region : split) {
+        const int64_t regionStart = region.timelineStart;
+        const int64_t regionEnd =
+            regionStart + regionOutputFrames(region);
+        if (regionStart >= start && regionEnd <= end) {
+            region.timelineStart -= start;
+            result.push_back(std::move(region));
+        } else if (regionEnd <= start || regionStart >= end) {
+            continue;
+        } else {
+            setError(error, "crop range does not align with audio regions");
+            return false;
+        }
+    }
+    out = std::move(result);
+    return true;
+}
+
 bool RegionArrangement::remove(size_t index,
                                std::vector<AudioRegion>& out,
                                std::string* error) const {

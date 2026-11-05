@@ -244,3 +244,146 @@ VWTEST("region arrangement json round-trips") {
     CHECK_NEAR(parsed.fadeOutSeconds, region.fadeOutSeconds, 1e-12);
     CHECK_EQ(parsed.name, region.name);
 }
+
+VWTEST("region splitAllAt splits every overlapping region") {
+    AudioBlockStore store;
+    const Audio source = makeRamp(100);
+    const AudioBlockId block = store.add(source);
+    RegionArrangement arrangement;
+    std::vector<AudioRegion> regions;
+    REQUIRE(arrangement.makeFull(block, 100, regions));
+    arrangement.assign(regions);
+    REQUIRE(arrangement.splitAt(40, regions));
+    arrangement.assign(regions);
+
+    std::vector<AudioRegion> split;
+    REQUIRE(arrangement.splitAllAt(20, split));
+    arrangement.assign(split);
+    CHECK_EQ(arrangement.size(), size_t{3});
+    CHECK_EQ(arrangement.regions()[0].sourceStart, int64_t{0});
+    CHECK_EQ(arrangement.regions()[0].sourceLength, int64_t{20});
+    CHECK_EQ(arrangement.regions()[1].sourceStart, int64_t{20});
+    CHECK_EQ(arrangement.regions()[1].sourceLength, int64_t{20});
+    CHECK_EQ(arrangement.regions()[2].sourceStart, int64_t{40});
+    CHECK_EQ(arrangement.regions()[2].sourceLength, int64_t{60});
+    CHECK(arrangement.render(store).equals(source));
+
+    REQUIRE(arrangement.splitAllAt(100, split));
+    arrangement.assign(split);
+    CHECK_EQ(arrangement.size(), size_t{3});
+    CHECK(!arrangement.splitAllAt(101, split));
+}
+
+VWTEST("region eraseRange ripples later regions") {
+    AudioBlockStore store;
+    const Audio source = makeRamp(100);
+    const AudioBlockId block = store.add(source);
+    RegionArrangement arrangement;
+    std::vector<AudioRegion> regions;
+    REQUIRE(arrangement.makeFull(block, 100, regions));
+    arrangement.assign(regions);
+    REQUIRE(arrangement.splitAt(40, regions));
+    arrangement.assign(regions);
+
+    std::vector<AudioRegion> erased;
+    std::string error;
+    REQUIRE(arrangement.eraseRange(20, 60, erased, &error));
+    arrangement.assign(erased);
+    CHECK_EQ(arrangement.size(), size_t{2});
+    CHECK_EQ(arrangement.durationFrames(), int64_t{60});
+    CHECK_EQ(arrangement.regions()[0].sourceStart, int64_t{0});
+    CHECK_EQ(arrangement.regions()[0].sourceLength, int64_t{20});
+    CHECK_EQ(arrangement.regions()[1].sourceStart, int64_t{60});
+    CHECK_EQ(arrangement.regions()[1].timelineStart, int64_t{20});
+    const Audio audio = arrangement.render(store);
+    for (int64_t i = 0; i < 20; ++i)
+        CHECK_NEAR(audio.sample(0, i), source.sample(0, i), 1e-9);
+    for (int64_t i = 0; i < 40; ++i)
+        CHECK_NEAR(audio.sample(0, 20 + i), source.sample(0, 60 + i), 1e-9);
+    CHECK(!arrangement.eraseRange(5, 5, erased, &error));
+}
+
+VWTEST("region insertRegion inserts a block and ripples later regions") {
+    AudioBlockStore store;
+    const Audio source = makeRamp(100);
+    const AudioBlockId block = store.add(source);
+    const Audio insertedAudio = makeRamp(10);
+    const AudioBlockId insertedBlock = store.add(insertedAudio);
+    RegionArrangement arrangement;
+    std::vector<AudioRegion> regions;
+    REQUIRE(arrangement.makeFull(block, 100, regions));
+    arrangement.assign(regions);
+
+    std::vector<AudioRegion> inserted;
+    REQUIRE(arrangement.insertRegion(40, insertedBlock, 10, inserted));
+    arrangement.assign(inserted);
+    CHECK_EQ(arrangement.size(), size_t{3});
+    CHECK_EQ(arrangement.durationFrames(), int64_t{110});
+    CHECK_EQ(arrangement.regions()[1].block, insertedBlock);
+    CHECK_EQ(arrangement.regions()[1].timelineStart, int64_t{40});
+    CHECK_EQ(arrangement.regions()[2].timelineStart, int64_t{50});
+    const Audio audio = arrangement.render(store);
+    for (int64_t i = 0; i < 10; ++i)
+        CHECK_NEAR(audio.sample(0, 40 + i), insertedAudio.sample(0, i), 1e-9);
+    for (int64_t i = 0; i < 60; ++i)
+        CHECK_NEAR(audio.sample(0, 50 + i), source.sample(0, 40 + i), 1e-9);
+}
+
+VWTEST("region replaceRange swaps a block and shifts the tail") {
+    AudioBlockStore store;
+    const Audio source = makeRamp(100);
+    const AudioBlockId block = store.add(source);
+    const Audio shortAudio = makeRamp(10);
+    const Audio longAudio = makeRamp(20);
+    const AudioBlockId shortBlock = store.add(shortAudio);
+    const AudioBlockId longBlock = store.add(longAudio);
+    RegionArrangement arrangement;
+    std::vector<AudioRegion> regions;
+    REQUIRE(arrangement.makeFull(block, 100, regions));
+    arrangement.assign(regions);
+
+    std::vector<AudioRegion> replaced;
+    REQUIRE(arrangement.replaceRange(40, 60, shortBlock, 10, replaced));
+    arrangement.assign(replaced);
+    CHECK_EQ(arrangement.size(), size_t{3});
+    CHECK_EQ(arrangement.durationFrames(), int64_t{90});
+    CHECK_EQ(arrangement.regions()[1].block, shortBlock);
+    CHECK_EQ(arrangement.regions()[1].timelineStart, int64_t{40});
+    CHECK_EQ(arrangement.regions()[2].timelineStart, int64_t{50});
+    const Audio shortened = arrangement.render(store);
+    for (int64_t i = 0; i < 10; ++i)
+        CHECK_NEAR(shortened.sample(0, 40 + i), shortAudio.sample(0, i), 1e-9);
+    for (int64_t i = 0; i < 40; ++i)
+        CHECK_NEAR(shortened.sample(0, 50 + i), source.sample(0, 60 + i), 1e-9);
+
+    REQUIRE(arrangement.replaceRange(40, 50, longBlock, 20, replaced));
+    arrangement.assign(replaced);
+    CHECK_EQ(arrangement.durationFrames(), int64_t{100});
+    CHECK_EQ(arrangement.regions()[2].timelineStart, int64_t{60});
+}
+
+VWTEST("region cropRange keeps the selection and shifts it to zero") {
+    AudioBlockStore store;
+    const Audio source = makeRamp(100);
+    const AudioBlockId block = store.add(source);
+    RegionArrangement arrangement;
+    std::vector<AudioRegion> regions;
+    REQUIRE(arrangement.makeFull(block, 100, regions));
+    arrangement.assign(regions);
+    REQUIRE(arrangement.splitAt(40, regions));
+    arrangement.assign(regions);
+
+    std::vector<AudioRegion> cropped;
+    REQUIRE(arrangement.cropRange(20, 60, cropped));
+    arrangement.assign(cropped);
+    CHECK_EQ(arrangement.size(), size_t{2});
+    CHECK_EQ(arrangement.durationFrames(), int64_t{40});
+    CHECK_EQ(arrangement.regions()[0].timelineStart, int64_t{0});
+    CHECK_EQ(arrangement.regions()[0].sourceStart, int64_t{20});
+    CHECK_EQ(arrangement.regions()[0].sourceLength, int64_t{20});
+    CHECK_EQ(arrangement.regions()[1].timelineStart, int64_t{20});
+    CHECK_EQ(arrangement.regions()[1].sourceStart, int64_t{40});
+    const Audio audio = arrangement.render(store);
+    for (int64_t i = 0; i < 40; ++i)
+        CHECK_NEAR(audio.sample(0, i), source.sample(0, 20 + i), 1e-9);
+}

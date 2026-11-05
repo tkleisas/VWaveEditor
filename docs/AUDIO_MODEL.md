@@ -66,8 +66,10 @@ the current state and the undo/redo graph.
 the metadata operations:
 
 - initial full region;
-- split at a timeline frame, preserving source mapping for stretched regions;
+- split one region, or every region crossing a frame, preserving source
+  mapping for stretched regions;
 - remove, move, stretch, repeat;
+- erase, insert, replace, and crop timeline ranges with ripple behaviour;
 - gain and fades;
 - overlap mixing and gap rendering;
 - validation against the block store;
@@ -146,5 +148,5 @@ reference for as long as they use it.
 cache eviction, corruption, unsafe manifests, and metadata serialization.
 
 `tests/test_region_arrangement.cpp` covers reference-based splits, stretched
-source mapping, gaps/overlaps, ripple repeat, gain/fades, removal, validation,
-format consistency, and JSON round-trips.
+source mapping, gaps/overlaps, ripple repeat, range erase/insert/replace/crop,
+gain/fades, removal, validation, format consistency, and JSON round-trips.
