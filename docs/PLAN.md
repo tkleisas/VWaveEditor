@@ -552,5 +552,7 @@ automation presets; the cut-up arrangement model itself is implemented.
   coalescing, and cross-track ordering.
 - Started an SDL-free retained-mode UI core with normalized pointer/key/text
   events, hover/capture/focus routing, cursor shapes, and headless tests.
-- Next: command registry, SDL adapter, and migration of toolbar/sidebar/timeline
+- Added an SDL-free command/shortcut registry with stable IDs, dynamic enabled
+  predicates, and shared actions for menus, buttons, and key bindings.
+- Next: basic widgets, SDL adapter, and migration of toolbar/sidebar/timeline
   controls to the widget layer.
