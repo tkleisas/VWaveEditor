@@ -287,7 +287,7 @@ Deferred:
 
 ## Implementation status
 
-As of the v0.0.8 development line:
+As of the v0.0.9 development line:
 
 - Phases 0–8 are implemented and test-green.
 - Multi-track Timeline, track controls, multi-track playback/export, recording,
@@ -295,12 +295,15 @@ As of the v0.0.8 development line:
   time/frequency zoom are implemented.
 - Neural capture, real-time spectral monitoring, plugin hosting, and
   multichannel UI remain deferred.
-- The automated suite covers audio I/O, non-destructive history, Timeline
-  tracks/mixdown/persistence, track-aware Session/Lua/MCP automation, FFT,
-  resampling, WSOLA/phase-vocoder/PaulStretch, pitch shift, onsets, tempo,
-  pitch, slicing, spectral editing, wavetables, synthesis, sweep deconvolution,
-  settings, ring buffers, UI viewport math, C ABI, and a headless desktop smoke
-  test.
+- Documents are region-based over immutable audio blocks, with generation-based
+  project work areas, live block spill, autosave recovery, background prefetch,
+  and bounded history.
+- The automated suite covers audio I/O, region/block models, non-destructive
+  history, Timeline tracks/mixdown/persistence, track-aware Session/Lua/MCP
+  automation, FFT, resampling, WSOLA/phase-vocoder/PaulStretch, pitch shift,
+  onsets, tempo, pitch, slicing, spectral editing, wavetables, synthesis, sweep
+  deconvolution, settings, ring buffers, UI viewport math, C ABI, and a
+  headless desktop smoke test plus scope image/SVG/composition coverage.
 
 ## Future feature plan (post-v0.0.6, implemented through v0.0.7)
 
@@ -387,12 +390,18 @@ Implemented:
   forward/reverse/ping-pong direction.
 - Raw and band-limited rendering with 1x–8x oversampling, low-pass filtering,
   smoothing, and normalization.
-- `.vscope` path save/load, Scope tab, CLI, Lua, MCP, and Session automation.
+- Multi-stroke drawings, raster contour tracing, SVG geometry import, and
+  `.vscope` v2 compositions with v1 migration.
+- Keyframed drawings, transforms, scan rates, gains, easing, and
+  hold/crossfade transitions; 12-TET note/frequency scan entry.
+- Live XY windows, audible preview, frame tone/nearest-note analysis, dominant
+  partial reporting, and composition track recipes.
 - Tests for shapes, arc-length sampling, stereo circle output, direction,
-  limits, path persistence, and invalid input.
+  limits, path/composition persistence, image/SVG import, tone detection, and
+  invalid input.
 
-Remaining from the original scope: text/SVG import, multi-pass thickness,
-embedded track recipes, and editing existing stereo audio in the XY domain.
+Remaining from the original scope: text import, multi-pass thickness, reusable
+drawing asset management, and editing existing stereo audio in the XY domain.
 
 ### Phase 14: Mastering processing (implemented)
 
