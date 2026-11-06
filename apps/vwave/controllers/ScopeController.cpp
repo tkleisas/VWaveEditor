@@ -147,18 +147,17 @@ void ScopeController::save(const std::string& path) const {
     const std::string target = withExtension(path, ".vscope");
     std::string error;
     const bool success =
-        m_keyframes.size() >= 2
+        !m_keyframes.empty()
             ? vwave::saveScopeComposition(composition(), target, &error)
             : vwave::saveScopePath(m_path, target, &error);
     if (!success) {
         m_status(error.empty() ? "Scope path save failed" : error);
         return;
     }
-    m_status(m_keyframes.size() >= 2 ? "Saved scope composition "
-                                    : "Saved scope path " +
-                                          baseName(target));
-    if (m_keyframes.size() >= 2) m_status("Saved scope composition " +
-                                           baseName(target));
+    if (!m_keyframes.empty())
+        m_status("Saved scope composition " + baseName(target));
+    else
+        m_status("Saved scope path " + baseName(target));
 }
 
 void ScopeController::render(int64_t playhead,
@@ -184,7 +183,7 @@ void ScopeController::render(int64_t playhead,
 
     const vwave::ScopePath path = m_path;
     const vwave::ScopeComposition composition = this->composition();
-    const bool animate = m_keyframes.size() >= 2;
+    const bool animate = !m_keyframes.empty();
     const int64_t start = ui::clampFrame(playhead, m_timeline.lengthFrames());
     const std::string name =
         path.name.empty() ? std::string("Scope") : path.name;
@@ -253,6 +252,28 @@ vwave::ScopeTransform ScopeController::selectedTransform() const {
         m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
         return {};
     return m_keyframes[static_cast<size_t>(m_selectedKeyframe)].transform;
+}
+
+vwave::ScopeTransform ScopeController::transformAt(double time) const {
+    if (m_keyframes.empty()) return {};
+    if (time <= m_keyframes.front().time)
+        return m_keyframes.front().transform;
+    if (time >= m_keyframes.back().time)
+        return m_keyframes.back().transform;
+    auto upper = std::upper_bound(
+        m_keyframes.begin(), m_keyframes.end(), time,
+        [](double value, const vwave::ScopeKeyframe& keyframe) {
+            return value < keyframe.time;
+        });
+    const vwave::ScopeKeyframe& first = *(upper - 1);
+    const vwave::ScopeKeyframe& second = *upper;
+    const double span = second.time - first.time;
+    const double progress =
+        span > 1e-12 ? std::clamp((time - first.time) / span, 0.0, 1.0)
+                     : 1.0;
+    return vwave::interpolateScopeTransform(
+        first.transform, second.transform,
+        vwave::scopeEasingValue(first.easing, progress));
 }
 
 vwave::ScopeEasing ScopeController::selectedEasing() const {

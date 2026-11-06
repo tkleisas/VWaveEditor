@@ -700,9 +700,13 @@ void App::drawSidebar() {
                   m_scopeScale,
                   [applyScopeKeyTransform](double) { applyScopeKeyTransform(); });
         y += 30;
-        if (!m_scopeController.animated()) {
-            drawText("Add two or more keyframes to animate.", 18, y,
+        if (m_scopeController.selectedKeyframe() < 0) {
+            drawText("Add/select a keyframe to edit transforms.", 18, y,
                      kTextFaint, fontSmall());
+            y += 18;
+        } else if (!m_scopeController.animated()) {
+            drawText("Add a second keyframe to animate.", 18, y, kTextFaint,
+                     fontSmall());
             y += 18;
         }
 

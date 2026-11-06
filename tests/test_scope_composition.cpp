@@ -198,3 +198,22 @@ VWTEST("scope composition json round-trips and loads legacy paths") {
     CHECK_EQ(migrated.keyframes.size(), size_t{1});
     CHECK_EQ(migrated.keyframes[0].drawing, std::string("path"));
 }
+
+VWTEST("single scope keyframe applies its transform") {
+    ScopeComposition composition;
+    composition.duration = 0.05;
+    composition.drawings = {constantDrawing("a", {0.5, 0.0})};
+    ScopeKeyframe keyframe;
+    keyframe.time = 0.0;
+    keyframe.drawing = "a";
+    keyframe.transform.translateX = 0.1;
+    keyframe.transform.scaleX = 2.0;
+    keyframe.transform.scaleY = 2.0;
+    composition.keyframes = {keyframe};
+    ScopeRenderOptions options = renderOptions();
+    options.sampleRate = 8000;
+    options.duration = composition.duration;
+    const Audio audio = renderScopeComposition(composition, options);
+    REQUIRE(!audio.empty());
+    CHECK_NEAR(audio.sample(0, 10), 1.0, 1e-6);
+}

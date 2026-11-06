@@ -143,7 +143,7 @@ void App::drawOscilloscope(const SDL_Rect& area) {
     drawText(info.str(), area.x + 20, area.y + 28, kTextFaint, fontSmall());
 
     const int availableW = area.w - 40;
-    const int availableH = area.h - 140;
+    const int availableH = area.h - 172;
     const int side = std::clamp(std::min(availableW, availableH), 160,
                                 std::max(160, availableH));
     SDL_Rect rect{area.x + (area.w - side) / 2, area.y + 46, side, side};
@@ -165,9 +165,20 @@ void App::drawOscilloscope(const SDL_Rect& area) {
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
     SDL_RenderDrawRect(m_renderer, &rect);
 
-    auto mapPoint = [&](const vwave::ScopePoint& point) {
-        const double x = std::clamp(point.x, -1.0, 1.0);
-        const double y = std::clamp(point.y, -1.0, 1.0);
+    vwave::ScopeTransform previewTransform;
+    if (!m_scopeController.pointEditing() &&
+        !m_scopeController.keyframes().empty()) {
+        previewTransform =
+            m_scopeController.transformAt(m_scopeKeyTime.value);
+    }
+    auto mapPoint = [&](const vwave::ScopePoint& source) {
+        const vwave::ScopePoint transformed =
+            m_scopeController.pointEditing() ||
+                    m_scopeController.keyframes().empty()
+                ? source
+                : vwave::applyScopeTransform(previewTransform, source);
+        const double x = std::clamp(transformed.x, -1.0, 1.0);
+        const double y = std::clamp(transformed.y, -1.0, 1.0);
         return SDL_Point{
             rect.x + static_cast<int>(std::llround((x + 1.0) * 0.5 * rect.w)),
             rect.y + static_cast<int>(std::llround((1.0 - y) * 0.5 * rect.h))};
@@ -197,8 +208,8 @@ void App::drawOscilloscope(const SDL_Rect& area) {
     drawText("y", rect.x + rect.w / 2 - 3, rect.y - 16, kTextFaint,
              fontSmall());
 
-    m_scopeTimelineArea = {area.x + 20, area.y + area.h - 108,
-                           area.w - 40, 58};
+    m_scopeTimelineArea = {area.x + 20, area.y + area.h - 128,
+                           area.w - 40, 72};
     SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
     SDL_RenderFillRect(m_renderer, &m_scopeTimelineArea);
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 180);
@@ -206,17 +217,47 @@ void App::drawOscilloscope(const SDL_Rect& area) {
     const int timelineLeft = m_scopeTimelineArea.x + 10;
     const int timelineRight =
         m_scopeTimelineArea.x + m_scopeTimelineArea.w - 10;
-    const int timelineY =
-        m_scopeTimelineArea.y + m_scopeTimelineArea.h / 2;
-    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 180);
-    SDL_RenderDrawLine(m_renderer, timelineLeft, timelineY, timelineRight,
-                       timelineY);
+    const int timelineY = m_scopeTimelineArea.y + 40;
     const double duration = std::max(0.01, m_scopeDuration.value);
     auto timeX = [&](double time) {
         const double fraction = std::clamp(time / duration, 0.0, 1.0);
         return timelineLeft + static_cast<int>(std::llround(
                                   fraction * (timelineRight - timelineLeft)));
     };
+    drawText("KEYFRAMES", m_scopeTimelineArea.x + 8,
+             m_scopeTimelineArea.y + 3, kTextFaint, fontSmall());
+    const std::string summary =
+        std::to_string(m_scopeController.keyframes().size()) + " keys  " +
+        formatSeconds(duration);
+    drawText(summary, timelineRight - textWidth(summary, fontSmall()),
+             m_scopeTimelineArea.y + 3, kTextFaint, fontSmall());
+
+    double tickStep = duration / 6.0;
+    const double magnitude =
+        std::pow(10.0, std::floor(std::log10(std::max(1e-6, tickStep))));
+    const double normalized = tickStep / magnitude;
+    tickStep = (normalized <= 1.0 ? 1.0
+                                   : normalized <= 2.0 ? 2.0
+                                   : normalized <= 5.0 ? 5.0
+                                                       : 10.0) *
+               magnitude;
+    int lastLabelRight = -1000;
+    for (double tick = 0.0; tick <= duration + 1e-9; tick += tickStep) {
+        const int x = timeX(tick);
+        SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b,
+                               160);
+        SDL_RenderDrawLine(m_renderer, x, timelineY + 7, x, timelineY + 12);
+        const std::string label = formatSeconds(tick);
+        const int width = textWidth(label, fontSmall());
+        if (x - width / 2 > lastLabelRight + 6) {
+            drawText(label, x - width / 2, m_scopeTimelineArea.y + 53,
+                     kTextFaint, fontSmall());
+            lastLabelRight = x + width / 2;
+        }
+    }
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 200);
+    SDL_RenderDrawLine(m_renderer, timelineLeft, timelineY, timelineRight,
+                       timelineY);
     const auto& keyframes = m_scopeController.keyframes();
     for (size_t i = 0; i < keyframes.size(); ++i) {
         const int x = timeX(keyframes[i].time);
@@ -231,17 +272,14 @@ void App::drawOscilloscope(const SDL_Rect& area) {
     }
     const int keyX = timeX(m_scopeKeyTime.value);
     SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b, 220);
-    SDL_RenderDrawLine(m_renderer, keyX, m_scopeTimelineArea.y + 5, keyX,
-                       m_scopeTimelineArea.y + m_scopeTimelineArea.h - 5);
-    drawText("KEYFRAMES", m_scopeTimelineArea.x + 8,
-             m_scopeTimelineArea.y + 4, kTextFaint, fontSmall());
+    SDL_RenderDrawLine(m_renderer, keyX, timelineY - 15, keyX, timelineY + 17);
     if (keyframes.empty()) {
-        drawText("Add a keyframe to animate this path.", timelineLeft,
-                 m_scopeTimelineArea.y + 30, kTextFaint, fontSmall());
+        drawText("Click the timeline to place the key time, then press Add Key.",
+                 timelineLeft, m_scopeTimelineArea.y + 20, kTextFaint,
+                 fontSmall());
     } else {
-        drawText(std::to_string(keyframes.size()) + " keys  " +
-                     formatSeconds(m_scopeDuration.value),
-                 timelineLeft, m_scopeTimelineArea.y + 30, kTextFaint,
+        drawText("Click a key to select; double-click empty timeline to add.",
+                 timelineLeft, m_scopeTimelineArea.y + 20, kTextFaint,
                  fontSmall());
     }
 

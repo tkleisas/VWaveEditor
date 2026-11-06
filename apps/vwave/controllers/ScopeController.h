@@ -55,6 +55,7 @@ public:
     int selectedKeyframe() const { return m_selectedKeyframe; }
     void setSelectedKeyframe(int index);
     vwave::ScopeTransform selectedTransform() const;
+    vwave::ScopeTransform transformAt(double time) const;
     vwave::ScopeEasing selectedEasing() const;
     vwave::ScopeTransition selectedTransition() const;
     double selectedKeyframeTime() const;

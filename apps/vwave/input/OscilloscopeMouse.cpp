@@ -41,6 +41,12 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
                 nearest = static_cast<int>(i);
             }
         }
+        if (nearest < 0 && event.clicks >= 2) {
+            m_scopeKeyTime.setValue(time);
+            m_scopeController.addKeyframe(time);
+            syncScopeKeyframeControls();
+            return;
+        }
         m_scopeController.setSelectedKeyframe(nearest);
         m_scopeKeyTime.setValue(time);
         if (nearest >= 0) syncScopeKeyframeControls();
