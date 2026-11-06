@@ -26,12 +26,90 @@ ScopeController::ScopeController(vwave::JobSystem& jobs,
       m_status(std::move(status)),
       m_rendered(std::move(rendered)) {}
 
+const vwave::ScopeDrawing* ScopeController::drawingById(
+    const std::string& id) const {
+    for (const auto& drawing : m_drawings) {
+        if (drawing.id == id) return &drawing;
+    }
+    return nullptr;
+}
+
+vwave::ScopeDrawing* ScopeController::drawingById(const std::string& id) {
+    for (auto& drawing : m_drawings) {
+        if (drawing.id == id) return &drawing;
+    }
+    return nullptr;
+}
+
+std::string ScopeController::allocateDrawingId() {
+    while (true) {
+        const std::string id = "d" + std::to_string(m_nextDrawingId++);
+        if (!drawingById(id)) return id;
+    }
+}
+
+void ScopeController::loadDrawingForKeyframe(int index) {
+    if (index < 0 || index >= static_cast<int>(m_keyframes.size())) return;
+    const auto& keyframe = m_keyframes[static_cast<size_t>(index)];
+    const vwave::ScopeDrawing* drawing = drawingById(keyframe.drawing);
+    if (!drawing) return;
+    m_activeDrawingId = drawing->id;
+    m_path = drawing->flatten();
+    m_shape = 0;
+    m_pointEditing = false;
+}
+
+void ScopeController::bindPathToKeyframe() {
+    if (!m_path.valid()) return;
+    if (m_keyframes.empty()) {
+        if (m_activeDrawingId.empty() || !drawingById(m_activeDrawingId)) {
+            m_activeDrawingId = allocateDrawingId();
+            vwave::ScopeDrawing drawing;
+            drawing.id = m_activeDrawingId;
+            drawing.name = m_path.name;
+            m_drawings.push_back(std::move(drawing));
+        }
+        vwave::ScopeDrawing* drawing = drawingById(m_activeDrawingId);
+        if (drawing) {
+            drawing->name = m_path.name;
+            drawing->strokes = {m_path};
+        }
+        return;
+    }
+    int index = m_selectedKeyframe;
+    if (index < 0 || index >= static_cast<int>(m_keyframes.size()))
+        index = static_cast<int>(m_keyframes.size()) - 1;
+    std::string& drawingId = m_keyframes[static_cast<size_t>(index)].drawing;
+    bool shared = false;
+    for (size_t i = 0; i < m_keyframes.size(); ++i) {
+        if (static_cast<int>(i) != index &&
+            m_keyframes[i].drawing == drawingId) {
+            shared = true;
+            break;
+        }
+    }
+    if (drawingId.empty() || !drawingById(drawingId) || shared) {
+        drawingId = allocateDrawingId();
+    }
+    vwave::ScopeDrawing* drawing = drawingById(drawingId);
+    if (!drawing) {
+        vwave::ScopeDrawing created;
+        created.id = drawingId;
+        m_drawings.push_back(std::move(created));
+        drawing = &m_drawings.back();
+    }
+    drawing->name = m_path.name;
+    drawing->strokes = {m_path};
+    m_activeDrawingId = drawingId;
+}
+
 void ScopeController::generate(const ScopeShapeParams& params) {
     if (m_shape <= 0) return;
     m_pointEditing = false;
     m_path = makeScopeShape(static_cast<vwave::ScopeShape>(m_shape),
                             params.pointCount, params.size, params.a,
                             params.b, params.phase, params.turns);
+    bindPathToKeyframe();
 }
 
 void ScopeController::cycleShape(const ScopeShapeParams& params) {
@@ -60,7 +138,10 @@ void ScopeController::setPath(vwave::ScopePath path) {
     m_shape = 0;
     m_pointEditing = false;
     m_path = std::move(path);
+    bindPathToKeyframe();
 }
+
+void ScopeController::commitPathToKeyframe() { bindPathToKeyframe(); }
 
 void ScopeController::startPolyline() {
     m_shape = 0;
@@ -116,6 +197,9 @@ bool ScopeController::load(const std::string& path) {
         }
         m_path = std::move(legacy);
         m_keyframes.clear();
+        m_drawings.clear();
+        m_activeDrawingId.clear();
+        m_nextDrawingId = 1;
         m_selectedKeyframe = -1;
         m_shape = 0;
         m_pointEditing = false;
@@ -123,16 +207,14 @@ bool ScopeController::load(const std::string& path) {
         return true;
     }
     m_duration = loaded.duration;
+    m_drawings = loaded.drawings;
     m_keyframes = loaded.keyframes;
+    m_nextDrawingId = 1;
     m_selectedKeyframe = m_keyframes.empty() ? -1 : 0;
-    for (auto& keyframe : m_keyframes) keyframe.drawing = "main";
-    vwave::ScopeDrawing merged;
-    merged.id = "main";
-    for (const auto& drawing : loaded.drawings) {
-        merged.strokes.insert(merged.strokes.end(), drawing.strokes.begin(),
-                              drawing.strokes.end());
-    }
-    m_path = merged.flatten();
+    if (m_selectedKeyframe >= 0)
+        loadDrawingForKeyframe(m_selectedKeyframe);
+    else if (!m_drawings.empty())
+        m_path = m_drawings.front().flatten();
     m_shape = 0;
     m_pointEditing = false;
     m_status("Loaded scope composition " + baseName(path));
@@ -140,7 +222,7 @@ bool ScopeController::load(const std::string& path) {
 }
 
 void ScopeController::save(const std::string& path) const {
-    if (!m_path.valid()) {
+    if (m_keyframes.empty() && !m_path.valid()) {
         m_status("Create a scope path first");
         return;
     }
@@ -162,7 +244,7 @@ void ScopeController::save(const std::string& path) const {
 
 void ScopeController::render(int64_t playhead,
                              const ScopeRenderParams& params) {
-    if (!m_path.valid()) {
+    if (m_keyframes.empty() && !m_path.valid()) {
         m_status("Create or load a scope path first");
         return;
     }
@@ -238,12 +320,33 @@ vwave::ScopeComposition ScopeController::composition() const {
     vwave::ScopeComposition result;
     result.name = m_path.name.empty() ? "Scope path" : m_path.name;
     result.duration = std::max(0.01, m_duration);
-    vwave::ScopeDrawing drawing;
-    drawing.id = "main";
-    drawing.name = result.name;
-    if (m_path.valid()) drawing.strokes.push_back(m_path);
-    result.drawings.push_back(std::move(drawing));
+    result.drawings = m_drawings;
     result.keyframes = m_keyframes;
+    if (result.drawings.empty() && m_path.valid()) {
+        vwave::ScopeDrawing drawing;
+        drawing.id = "main";
+        drawing.name = result.name;
+        drawing.strokes.push_back(m_path);
+        result.drawings.push_back(std::move(drawing));
+    }
+    if (result.drawings.empty()) return result;
+    if (result.keyframes.empty()) {
+        vwave::ScopeKeyframe keyframe;
+        keyframe.time = 0.0;
+        keyframe.drawing = result.drawings.front().id;
+        result.keyframes.push_back(std::move(keyframe));
+    } else {
+        for (auto& keyframe : result.keyframes) {
+            bool found = false;
+            for (const auto& drawing : result.drawings) {
+                if (drawing.id == keyframe.drawing) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) keyframe.drawing = result.drawings.front().id;
+        }
+    }
     return result;
 }
 
@@ -312,6 +415,7 @@ void ScopeController::setSelectedKeyframe(int index) {
     }
     m_selectedKeyframe =
         std::clamp(index, 0, static_cast<int>(m_keyframes.size()) - 1);
+    loadDrawingForKeyframe(m_selectedKeyframe);
 }
 
 void ScopeController::addKeyframe(double time) {
@@ -328,8 +432,10 @@ void ScopeController::addKeyframe(double time) {
     }
     vwave::ScopeKeyframe keyframe;
     keyframe.time = time;
-    keyframe.drawing = "main";
     if (m_keyframes.empty()) {
+        if (m_activeDrawingId.empty() || !drawingById(m_activeDrawingId))
+            bindPathToKeyframe();
+        keyframe.drawing = m_activeDrawingId;
         m_keyframes.push_back(keyframe);
         m_selectedKeyframe = 0;
         m_status("Keyframe 1 added");
@@ -341,10 +447,13 @@ void ScopeController::addKeyframe(double time) {
         previous = &existing;
     }
     if (previous) {
+        keyframe.drawing = previous->drawing;
         keyframe.transform = previous->transform;
         keyframe.gain = previous->gain;
         keyframe.easing = previous->easing;
         keyframe.transition = previous->transition;
+    } else {
+        keyframe.drawing = m_keyframes.front().drawing;
     }
     m_keyframes.push_back(std::move(keyframe));
     std::stable_sort(m_keyframes.begin(), m_keyframes.end(),
@@ -359,6 +468,7 @@ void ScopeController::addKeyframe(double time) {
             break;
         }
     }
+    loadDrawingForKeyframe(m_selectedKeyframe);
     m_status("Keyframe " + std::to_string(m_selectedKeyframe + 1) + " added");
 }
 
@@ -375,6 +485,7 @@ void ScopeController::deleteSelectedKeyframe() {
         m_selectedKeyframe =
             std::clamp(m_selectedKeyframe, 0,
                        static_cast<int>(m_keyframes.size()) - 1);
+        loadDrawingForKeyframe(m_selectedKeyframe);
     }
     m_status("Keyframe deleted");
 }
@@ -433,7 +544,7 @@ void ScopeController::cycleSelectedTransition() {
 
 void ScopeController::renderPreview(const ScopeRenderParams& params,
                                      PreviewSink preview) {
-    if (!m_path.valid()) {
+    if (m_keyframes.empty() && !m_path.valid()) {
         m_status("Create or load a scope path first");
         return;
     }

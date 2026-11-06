@@ -95,6 +95,7 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
         if (std::hypot(candidate.x - first.x, candidate.y - first.y) <
             0.06) {
             path.closed = true;
+            m_scopeController.commitPathToKeyframe();
             setStatus("Scope path closed");
             return;
         }
@@ -102,6 +103,7 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
     path.name = "Path";
     path.points.push_back(candidate);
     path.closed = false;
+    m_scopeController.commitPathToKeyframe();
     setStatus("Scope point " +
               std::to_string(path.points.size()) +
               " added");

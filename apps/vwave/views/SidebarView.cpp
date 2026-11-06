@@ -704,10 +704,15 @@ void App::drawSidebar() {
             drawText("Add/select a keyframe to edit transforms.", 18, y,
                      kTextFaint, fontSmall());
             y += 18;
-        } else if (!m_scopeController.animated()) {
-            drawText("Add a second keyframe to animate.", 18, y, kTextFaint,
-                     fontSmall());
+        } else {
+            drawText("Shape and transform edits apply to this key.", 18, y,
+                     kTextFaint, fontSmall());
             y += 18;
+            if (!m_scopeController.animated()) {
+                drawText("Add a second keyframe to animate.", 18, y,
+                         kTextFaint, fontSmall());
+                y += 18;
+            }
         }
 
         drawSection("RENDER", y);

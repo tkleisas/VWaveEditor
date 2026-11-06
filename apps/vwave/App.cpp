@@ -373,6 +373,15 @@ int App::run() {
         std::error_code removeError;
         std::filesystem::remove(path, removeError);
         if (!hasTracks()) return 1;
+        m_scopeController.setPath(vwave::makeScopeCircle(0.5, 32));
+        m_scopeController.addKeyframe(0.0);
+        m_scopeController.addKeyframe(0.5);
+        m_scopeController.setPath(vwave::makeScopeLine(0.5));
+        if (m_scopeController.keyframes().size() != size_t{2} ||
+            m_scopeController.drawings().size() < size_t{2} ||
+            m_scopeController.keyframes()[0].drawing ==
+                m_scopeController.keyframes()[1].drawing)
+            return 1;
         const int baseTracks = m_timeline.trackCount();
         if (!m_timeline.addEmptyTrack("Smoke undo", 0, &error)) return 1;
         if (!m_timeline.undo() ||

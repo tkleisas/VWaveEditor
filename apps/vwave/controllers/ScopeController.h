@@ -53,6 +53,9 @@ public:
     const std::vector<vwave::ScopeKeyframe>& keyframes() const {
         return m_keyframes;
     }
+    const std::vector<vwave::ScopeDrawing>& drawings() const {
+        return m_drawings;
+    }
     int selectedKeyframe() const { return m_selectedKeyframe; }
     void setSelectedKeyframe(int index);
     vwave::ScopeTransform selectedTransform() const;
@@ -77,6 +80,7 @@ public:
     void toggleBandLimited() { m_bandLimited = !m_bandLimited; }
     void toggleNormalize() { m_normalize = !m_normalize; }
     void setPath(vwave::ScopePath path);
+    void commitPathToKeyframe();
     void startPolyline();
     void importImage(const std::string& path);
     void importSvg(const std::string& path);
@@ -87,6 +91,12 @@ public:
     void cancel();
 
 private:
+    const vwave::ScopeDrawing* drawingById(const std::string& id) const;
+    vwave::ScopeDrawing* drawingById(const std::string& id);
+    std::string allocateDrawingId();
+    void loadDrawingForKeyframe(int index);
+    void bindPathToKeyframe();
+
     vwave::JobSystem& m_jobs;
     UiDispatcher& m_dispatcher;
     vwave::Timeline& m_timeline;
@@ -103,6 +113,9 @@ private:
     bool m_normalize = true;
     bool m_pointEditing = false;
     std::vector<vwave::ScopeKeyframe> m_keyframes;
+    std::vector<vwave::ScopeDrawing> m_drawings;
+    std::string m_activeDrawingId;
+    uint64_t m_nextDrawingId = 1;
     int m_selectedKeyframe = -1;
     double m_duration = 2.0;
 };

@@ -105,8 +105,15 @@ The Scope tab now includes a keyframe strip and sidebar transform controls:
 - click a key marker to select it, or click empty strip space to move the key
   time cursor;
 - double-click empty strip space to insert a keyframe there, or use **Add Key**;
-- a new key inherits transform, gain, easing, and transition from the previous
-  keyframe in time; if there is no earlier key, defaults are used;
+- every keyframe stores its own drawing/shape as well as transform, gain,
+  easing, and transition;
+- a new key inherits all of those values from the previous keyframe in time; if
+  there is no earlier key, the following key's shape is used and transform
+  defaults apply;
+- selecting a key loads its shape into the design editor; changing the shape,
+  importing an image/SVG, or editing polyline points updates the selected key's
+  drawing. Shared drawings are copied before mutation so earlier keys keep
+  their shape;
 - edit key time, add, delete, or move the selected key;
 - choose hold/linear/ease/smoothstep and hold/crossfade transitions;
 - animate translation, rotation, and uniform scale; the design preview applies
@@ -193,7 +200,7 @@ points.
 - Image/SVG tracing is a core operation but not yet wired into the Scope tab UI.
 - Keyframe markers are click-selected; dragging key times and an on-canvas
   transform gizmo are not implemented yet.
-- Image/SVG import currently replaces the single editable scope path rather
-  than adding multiple drawing assets to the composition timeline.
+- Shapes are retained per keyframe, but there is no separate reusable drawing
+  asset browser yet.
 - Preview Audio renders on demand; it does not live-resynthesize while
   keyframe controls are being dragged during playback.
