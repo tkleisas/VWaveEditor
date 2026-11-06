@@ -54,6 +54,21 @@ and XY audio verification view.
 Multi-stroke travel is rendered as a direct connector, which is intentional:
 on a stereo XY display there is no separate beam-blanking channel.
 
+## SVG import
+
+`ScopeSvg` imports SVG geometry directly into a `ScopeDrawing`:
+
+- supported elements: `path`, `line`, `polyline`, `polygon`, `rect`, `circle`,
+  `ellipse`;
+- nested group transforms: translate, scale, rotate, matrix, skewX, skewY;
+- SVG path commands: M/L/H/V, C/S, Q/T, A, and Z, including relative forms;
+- cubic/quadratic curves and arcs are flattened at a configurable resolution;
+- multiple subpaths become multiple strokes;
+- coordinates are normalized to the scope's -1..1 drawing space.
+
+Ignored: text, gradients, filters, masks, CSS styling, and external resources.
+Fills and strokes are imported as geometry outlines for now.
+
 ## Rendering
 
 - Scan rate in Hz: how many path traversals per second
@@ -114,11 +129,13 @@ points.
 ## Limitations
 
 - Raster tracing is contour-only for now; no skeleton/centerline mode yet.
-- No SVG import or multi-pass thickness tools yet.
+- SVG import supports a geometry subset; text, filters, gradients, and CSS
+  styling are ignored.
+- No multi-pass thickness tools yet.
 - Polyline editing is click-only; no drag handles or undo for individual
   points.
 - Path recipes are stored as `.vscope` files; generated tracks do not yet carry
   an embedded recipe.
 - Editing existing stereo audio in the XY domain is future work.
 - Render/analyze jobs are synchronous and do not yet expose progress/cancel.
-- Image tracing is a core operation but not yet wired into the Scope tab UI.
+- Image/SVG tracing is a core operation but not yet wired into the Scope tab UI.
