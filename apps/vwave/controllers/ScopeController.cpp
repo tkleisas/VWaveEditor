@@ -335,10 +335,16 @@ void ScopeController::addKeyframe(double time) {
         m_status("Keyframe 1 added");
         return;
     }
-    if (m_selectedKeyframe >= 0 &&
-               m_selectedKeyframe < static_cast<int>(m_keyframes.size())) {
-        keyframe.transform =
-            m_keyframes[static_cast<size_t>(m_selectedKeyframe)].transform;
+    const vwave::ScopeKeyframe* previous = nullptr;
+    for (const auto& existing : m_keyframes) {
+        if (existing.time >= time) break;
+        previous = &existing;
+    }
+    if (previous) {
+        keyframe.transform = previous->transform;
+        keyframe.gain = previous->gain;
+        keyframe.easing = previous->easing;
+        keyframe.transition = previous->transition;
     }
     m_keyframes.push_back(std::move(keyframe));
     std::stable_sort(m_keyframes.begin(), m_keyframes.end(),

@@ -105,6 +105,8 @@ The Scope tab now includes a keyframe strip and sidebar transform controls:
 - click a key marker to select it, or click empty strip space to move the key
   time cursor;
 - double-click empty strip space to insert a keyframe there, or use **Add Key**;
+- a new key inherits transform, gain, easing, and transition from the previous
+  keyframe in time; if there is no earlier key, defaults are used;
 - edit key time, add, delete, or move the selected key;
 - choose hold/linear/ease/smoothstep and hold/crossfade transitions;
 - animate translation, rotation, and uniform scale; the design preview applies
