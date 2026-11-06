@@ -258,6 +258,7 @@ private:
     void toggleScopeXYMode();
     void importScopeImage(const std::string& path);
     void importScopeSvg(const std::string& path);
+    void syncScopeKeyframeControls();
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -376,6 +377,7 @@ private:
     vwave::WaveformViewport m_view;
     vwave::SpectralViewport m_spectralView;
     SDL_Rect m_scopeArea{};
+    SDL_Rect m_scopeTimelineArea{};
     vwave::Spectrogram m_spectrogram;
     vwave::PhaseSpectrogram m_phaseSpectrogram;
     bool m_phaseSpectrogramDirty = true;
@@ -505,6 +507,11 @@ private:
     vwave::ParameterSlider m_scopeDuration;
     vwave::ParameterSlider m_scopeGain;
     vwave::ParameterSlider m_scopeSmoothing;
+    vwave::ParameterSlider m_scopeKeyTime;
+    vwave::ParameterSlider m_scopeTranslateX;
+    vwave::ParameterSlider m_scopeTranslateY;
+    vwave::ParameterSlider m_scopeRotation;
+    vwave::ParameterSlider m_scopeScale;
     vwave::ParameterSlider m_masteringBands;
     vwave::ParameterSlider m_masteringMaxCut;
     vwave::ParameterSlider m_masteringMaxBoost;

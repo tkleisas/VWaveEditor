@@ -98,6 +98,15 @@ SVG** loads SVG geometry. Imported multi-stroke drawings are flattened into the
 current editable path, with travel connectors retained as intentional glitch
 lines. Imported paths do not show per-point editing dots.
 
+The Scope tab now includes a keyframe strip and sidebar transform controls:
+
+- click a key marker to select it;
+- edit key time, add, delete, or move the selected key;
+- choose hold/linear/ease/smoothstep and hold/crossfade transitions;
+- animate translation, rotation, and uniform scale;
+- animated paths render through `renderScopeComposition` and store a v2
+  composition recipe on the generated track.
+
 ## XY verification
 
 `ScopeXY` converts stereo audio into an accumulation plot:
@@ -159,7 +168,7 @@ points.
 - Editing existing stereo audio in the XY domain is future work.
 - Render/analyze jobs are synchronous and do not yet expose progress/cancel.
 - Image/SVG tracing is a core operation but not yet wired into the Scope tab UI.
-- Keyframe timeline strip and transform gizmo are not yet wired; composition
-  authoring currently requires core/recipe data.
+- Keyframe markers are click-selected; dragging key times and an on-canvas
+  transform gizmo are not implemented yet.
 - Image/SVG import currently replaces the single editable scope path rather
-  than adding a drawing asset to the composition timeline.
+  than adding multiple drawing assets to the composition timeline.

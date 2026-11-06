@@ -4,6 +4,7 @@
 #include "services/UiDispatcher.h"
 #include "vwave/JobSystem.h"
 #include "vwave/Oscilloscope.h"
+#include "vwave/ScopeComposition.h"
 #include "vwave/Timeline.h"
 
 #include <functional>
@@ -47,6 +48,25 @@ public:
     bool pointEditing() const {
         return m_shape == 0 && m_pointEditing;
     }
+    bool animated() const { return m_keyframes.size() >= 2; }
+    const std::vector<vwave::ScopeKeyframe>& keyframes() const {
+        return m_keyframes;
+    }
+    int selectedKeyframe() const { return m_selectedKeyframe; }
+    void setSelectedKeyframe(int index);
+    vwave::ScopeTransform selectedTransform() const;
+    vwave::ScopeEasing selectedEasing() const;
+    vwave::ScopeTransition selectedTransition() const;
+    double selectedKeyframeTime() const;
+    double duration() const { return m_duration; }
+    void setDuration(double duration);
+    void addKeyframe(double time);
+    void deleteSelectedKeyframe();
+    void moveSelectedKeyframe(double time);
+    void setSelectedTransform(const vwave::ScopeTransform& transform);
+    void cycleSelectedEasing();
+    void cycleSelectedTransition();
+    vwave::ScopeComposition composition() const;
 
     void generate(const ScopeShapeParams& params);
     void cycleShape(const ScopeShapeParams& params);
@@ -79,6 +99,9 @@ private:
     bool m_bandLimited = true;
     bool m_normalize = true;
     bool m_pointEditing = false;
+    std::vector<vwave::ScopeKeyframe> m_keyframes;
+    int m_selectedKeyframe = -1;
+    double m_duration = 2.0;
 };
 
 } // namespace vwave::app

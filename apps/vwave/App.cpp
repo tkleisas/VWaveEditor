@@ -217,6 +217,11 @@ App::App()
     m_scopeDuration = {0.1, 30.0, 2.0, true, 0.1};
     m_scopeGain = {0.0, 1.0, 0.8, false, 0.01};
     m_scopeSmoothing = {0.0, 0.95, 0.0, false, 0.01};
+    m_scopeKeyTime = {0.0, 30.0, 0.0, false, 0.01};
+    m_scopeTranslateX = {-2.0, 2.0, 0.0, false, 0.01};
+    m_scopeTranslateY = {-2.0, 2.0, 0.0, false, 0.01};
+    m_scopeRotation = {-180.0, 180.0, 0.0, false, 1.0};
+    m_scopeScale = {0.05, 4.0, 1.0, false, 0.01};
     m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
     m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
     m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};
@@ -1092,11 +1097,14 @@ void App::renderScopeToTrack() {
 }
 
 void App::loadScopePathFile(const std::string& path) {
-    if (m_scopeController.load(path))
+    if (m_scopeController.load(path)) {
+        syncScopeKeyframeControls();
         setTab(vwave::EditorTab::Oscilloscope);
+    }
 }
 
 void App::saveScopePathFile(const std::string& path) {
+    m_scopeController.setDuration(m_scopeDuration.value);
     m_scopeController.save(path);
 }
 
@@ -1114,6 +1122,16 @@ void App::importScopeImage(const std::string& path) {
 void App::importScopeSvg(const std::string& path) {
     m_scopeController.importSvg(path);
     setTab(vwave::EditorTab::Oscilloscope);
+}
+
+void App::syncScopeKeyframeControls() {
+    const vwave::ScopeTransform transform =
+        m_scopeController.selectedTransform();
+    m_scopeKeyTime.setValue(m_scopeController.selectedKeyframeTime());
+    m_scopeTranslateX.setValue(transform.translateX);
+    m_scopeTranslateY.setValue(transform.translateY);
+    m_scopeRotation.setValue(transform.rotation * 180.0 / 3.14159265358979323846);
+    m_scopeScale.setValue(transform.scaleX);
 }
 
 void App::setTab(vwave::EditorTab tab) {

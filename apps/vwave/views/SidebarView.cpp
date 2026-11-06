@@ -640,6 +640,72 @@ void App::drawSidebar() {
                                  "Import SVG into scope", "", false);
                   });
         y += buttonHeight + 6;
+
+        drawSection("KEYFRAMES", y);
+        addSlider("Key time", formatSecondsControl(m_scopeKeyTime.value), 18,
+                  y, 256, m_scopeKeyTime);
+        y += 30;
+        addButton("Add Key", 18, y, buttonWidth, buttonHeight, [this] {
+            m_scopeController.addKeyframe(m_scopeKeyTime.value);
+            syncScopeKeyframeControls();
+        }, false, false, hasScope);
+        addButton("Delete Key", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      m_scopeController.deleteSelectedKeyframe();
+                      syncScopeKeyframeControls();
+                  }, false, false, m_scopeController.selectedKeyframe() >= 0);
+        y += buttonHeight + 6;
+        addButton("Move Key Here", 18, y, buttonWidth, buttonHeight, [this] {
+            m_scopeController.moveSelectedKeyframe(m_scopeKeyTime.value);
+            syncScopeKeyframeControls();
+        }, false, false, m_scopeController.selectedKeyframe() >= 0);
+        addButton(std::string("Ease: ") +
+                      vwave::scopeEasingName(
+                          m_scopeController.selectedEasing()),
+                  18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                  [this] { m_scopeController.cycleSelectedEasing(); },
+                  false, false, m_scopeController.selectedKeyframe() >= 0);
+        y += buttonHeight + 6;
+        addButton(std::string("Transition: ") +
+                      vwave::scopeTransitionName(
+                          m_scopeController.selectedTransition()),
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { m_scopeController.cycleSelectedTransition(); },
+                  false, false, m_scopeController.selectedKeyframe() >= 0);
+        y += buttonHeight + 6;
+        auto applyScopeKeyTransform = [this] {
+            vwave::ScopeTransform transform =
+                m_scopeController.selectedTransform();
+            transform.translateX = m_scopeTranslateX.value;
+            transform.translateY = m_scopeTranslateY.value;
+            transform.rotation = m_scopeRotation.value *
+                                 3.14159265358979323846 / 180.0;
+            transform.scaleX = m_scopeScale.value;
+            transform.scaleY = m_scopeScale.value;
+            m_scopeController.setSelectedTransform(transform);
+        };
+        addSlider("Move X", formatMorph(m_scopeTranslateX.value), 18, y, 256,
+                  m_scopeTranslateX,
+                  [applyScopeKeyTransform](double) { applyScopeKeyTransform(); });
+        y += 30;
+        addSlider("Move Y", formatMorph(m_scopeTranslateY.value), 18, y, 256,
+                  m_scopeTranslateY,
+                  [applyScopeKeyTransform](double) { applyScopeKeyTransform(); });
+        y += 30;
+        addSlider("Rotate", formatInt(m_scopeRotation.value) + " deg", 18, y,
+                  256, m_scopeRotation,
+                  [applyScopeKeyTransform](double) { applyScopeKeyTransform(); });
+        y += 30;
+        addSlider("Scale", formatMorph(m_scopeScale.value), 18, y, 256,
+                  m_scopeScale,
+                  [applyScopeKeyTransform](double) { applyScopeKeyTransform(); });
+        y += 30;
+        if (!m_scopeController.animated()) {
+            drawText("Add two or more keyframes to animate.", 18, y,
+                     kTextFaint, fontSmall());
+            y += 18;
+        }
+
         drawSection("RENDER", y);
         addSlider("Scan", formatHz(m_scopeScanHz.value), 18, y, 256,
                   m_scopeScanHz);

@@ -8,6 +8,8 @@
 #include "vwave/ScopeTrace.h"
 #include "vwave/Recipe.h"
 
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace vwave::app {
@@ -104,16 +106,36 @@ void ScopeController::importSvg(const std::string& path) {
 }
 
 bool ScopeController::load(const std::string& path) {
-    vwave::ScopePath loaded;
+    vwave::ScopeComposition loaded;
     std::string error;
-    if (!vwave::loadScopePath(path, loaded, &error)) {
-        m_status(error.empty() ? "Scope path load failed" : error);
-        return false;
+    if (!vwave::loadScopeComposition(path, loaded, &error)) {
+        vwave::ScopePath legacy;
+        if (!vwave::loadScopePath(path, legacy, &error)) {
+            m_status(error.empty() ? "Scope path load failed" : error);
+            return false;
+        }
+        m_path = std::move(legacy);
+        m_keyframes.clear();
+        m_selectedKeyframe = -1;
+        m_shape = 0;
+        m_pointEditing = false;
+        m_status("Loaded scope path " + baseName(path));
+        return true;
     }
-    m_path = std::move(loaded);
+    m_duration = loaded.duration;
+    m_keyframes = loaded.keyframes;
+    m_selectedKeyframe = m_keyframes.empty() ? -1 : 0;
+    for (auto& keyframe : m_keyframes) keyframe.drawing = "main";
+    vwave::ScopeDrawing merged;
+    merged.id = "main";
+    for (const auto& drawing : loaded.drawings) {
+        merged.strokes.insert(merged.strokes.end(), drawing.strokes.begin(),
+                              drawing.strokes.end());
+    }
+    m_path = merged.flatten();
     m_shape = 0;
     m_pointEditing = false;
-    m_status("Loaded scope path " + baseName(path));
+    m_status("Loaded scope composition " + baseName(path));
     return true;
 }
 
@@ -124,11 +146,19 @@ void ScopeController::save(const std::string& path) const {
     }
     const std::string target = withExtension(path, ".vscope");
     std::string error;
-    if (!vwave::saveScopePath(m_path, target, &error)) {
+    const bool success =
+        m_keyframes.size() >= 2
+            ? vwave::saveScopeComposition(composition(), target, &error)
+            : vwave::saveScopePath(m_path, target, &error);
+    if (!success) {
         m_status(error.empty() ? "Scope path save failed" : error);
         return;
     }
-    m_status("Saved scope path " + baseName(target));
+    m_status(m_keyframes.size() >= 2 ? "Saved scope composition "
+                                    : "Saved scope path " +
+                                          baseName(target));
+    if (m_keyframes.size() >= 2) m_status("Saved scope composition " +
+                                           baseName(target));
 }
 
 void ScopeController::render(int64_t playhead,
@@ -141,6 +171,7 @@ void ScopeController::render(int64_t playhead,
     options.sampleRate =
         m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;
     options.duration = params.duration;
+    setDuration(params.duration);
     options.scanHz = params.scanHz;
     options.gain = params.gain;
     options.smoothing = params.smoothing;
@@ -152,6 +183,8 @@ void ScopeController::render(int64_t playhead,
     options.peak = 0.9;
 
     const vwave::ScopePath path = m_path;
+    const vwave::ScopeComposition composition = this->composition();
+    const bool animate = m_keyframes.size() >= 2;
     const int64_t start = ui::clampFrame(playhead, m_timeline.lengthFrames());
     const std::string name =
         path.name.empty() ? std::string("Scope") : path.name;
@@ -159,20 +192,23 @@ void ScopeController::render(int64_t playhead,
     if (m_job.valid()) m_job.cancel();
 
     m_job = m_jobs.submit(
-        [this, request, path, options, start, name](
+        [this, request, path, composition, animate, options, start, name](
             vwave::JobControl& control) mutable {
             std::string error;
             vwave::Audio rendered;
             try {
-                rendered = vwave::renderScopePath(path, options, &error);
+                rendered = animate
+                               ? vwave::renderScopeComposition(
+                                     composition, options, &error)
+                               : vwave::renderScopePath(path, options, &error);
             } catch (const std::exception& exception) {
                 error = exception.what();
             }
             if (control.cancelled()) return;
             m_dispatcher.post(
                 [this, request, rendered = std::move(rendered),
-                 error = std::move(error), path, options, start,
-                 name]() mutable {
+                 error = std::move(error), path, composition, animate,
+                 options, start, name]() mutable {
                     if (request != m_request) return;
                     if (rendered.empty()) {
                         m_status(error.empty() ? "Scope render failed" : error);
@@ -187,7 +223,9 @@ void ScopeController::render(int64_t playhead,
                     }
                     const int trackIndex = m_timeline.trackCount() - 1;
                     m_timeline.track(trackIndex).recipe =
-                        vwave::makeScopeTrackRecipe(path, options);
+                        animate ? vwave::makeScopeCompositionRecipe(
+                                      composition, options)
+                                : vwave::makeScopeTrackRecipe(path, options);
                     m_timeline.setActiveTrack(trackIndex);
                     m_rendered(start);
                     m_status("Rendered scope path to track (" +
@@ -195,6 +233,175 @@ void ScopeController::render(int64_t playhead,
                 });
         });
     m_status("Rendering scope in background...");
+}
+
+vwave::ScopeComposition ScopeController::composition() const {
+    vwave::ScopeComposition result;
+    result.name = m_path.name.empty() ? "Scope path" : m_path.name;
+    result.duration = std::max(0.01, m_duration);
+    vwave::ScopeDrawing drawing;
+    drawing.id = "main";
+    drawing.name = result.name;
+    if (m_path.valid()) drawing.strokes.push_back(m_path);
+    result.drawings.push_back(std::move(drawing));
+    result.keyframes = m_keyframes;
+    return result;
+}
+
+vwave::ScopeTransform ScopeController::selectedTransform() const {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return {};
+    return m_keyframes[static_cast<size_t>(m_selectedKeyframe)].transform;
+}
+
+vwave::ScopeEasing ScopeController::selectedEasing() const {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return vwave::ScopeEasing::Linear;
+    return m_keyframes[static_cast<size_t>(m_selectedKeyframe)].easing;
+}
+
+vwave::ScopeTransition ScopeController::selectedTransition() const {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return vwave::ScopeTransition::Hold;
+    return m_keyframes[static_cast<size_t>(m_selectedKeyframe)].transition;
+}
+
+double ScopeController::selectedKeyframeTime() const {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return 0.0;
+    return m_keyframes[static_cast<size_t>(m_selectedKeyframe)].time;
+}
+
+void ScopeController::setDuration(double duration) {
+    if (std::isfinite(duration) && duration > 0.0) m_duration = duration;
+}
+
+void ScopeController::setSelectedKeyframe(int index) {
+    if (m_keyframes.empty()) {
+        m_selectedKeyframe = -1;
+        return;
+    }
+    if (index < 0) {
+        m_selectedKeyframe = -1;
+        return;
+    }
+    m_selectedKeyframe =
+        std::clamp(index, 0, static_cast<int>(m_keyframes.size()) - 1);
+}
+
+void ScopeController::addKeyframe(double time) {
+    if (!m_path.valid()) {
+        m_status("Create or import a scope path first");
+        return;
+    }
+    time = std::max(0.0, time);
+    for (size_t i = 0; i < m_keyframes.size(); ++i) {
+        if (std::abs(m_keyframes[i].time - time) < 1e-9) {
+            m_selectedKeyframe = static_cast<int>(i);
+            return;
+        }
+    }
+    vwave::ScopeKeyframe keyframe;
+    keyframe.time = time;
+    keyframe.drawing = "main";
+    if (m_keyframes.empty()) {
+        m_keyframes.push_back(keyframe);
+        m_selectedKeyframe = 0;
+        m_status("Keyframe 1 added");
+        return;
+    }
+    if (m_selectedKeyframe >= 0 &&
+               m_selectedKeyframe < static_cast<int>(m_keyframes.size())) {
+        keyframe.transform =
+            m_keyframes[static_cast<size_t>(m_selectedKeyframe)].transform;
+    }
+    m_keyframes.push_back(std::move(keyframe));
+    std::stable_sort(m_keyframes.begin(), m_keyframes.end(),
+                     [](const vwave::ScopeKeyframe& a,
+                        const vwave::ScopeKeyframe& b) {
+                         return a.time < b.time;
+                     });
+    m_selectedKeyframe = -1;
+    for (size_t i = 0; i < m_keyframes.size(); ++i) {
+        if (std::abs(m_keyframes[i].time - time) < 1e-9) {
+            m_selectedKeyframe = static_cast<int>(i);
+            break;
+        }
+    }
+    m_status("Keyframe " + std::to_string(m_selectedKeyframe + 1) + " added");
+}
+
+void ScopeController::deleteSelectedKeyframe() {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size())) {
+        m_status("Select a keyframe first");
+        return;
+    }
+    m_keyframes.erase(m_keyframes.begin() + m_selectedKeyframe);
+    if (m_keyframes.empty()) {
+        m_selectedKeyframe = -1;
+    } else {
+        m_selectedKeyframe =
+            std::clamp(m_selectedKeyframe, 0,
+                       static_cast<int>(m_keyframes.size()) - 1);
+    }
+    m_status("Keyframe deleted");
+}
+
+void ScopeController::moveSelectedKeyframe(double time) {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size())) {
+        m_status("Select a keyframe first");
+        return;
+    }
+    m_keyframes[static_cast<size_t>(m_selectedKeyframe)].time =
+        std::max(0.0, time);
+    std::stable_sort(m_keyframes.begin(), m_keyframes.end(),
+                     [](const vwave::ScopeKeyframe& a,
+                        const vwave::ScopeKeyframe& b) {
+                         return a.time < b.time;
+                     });
+    m_selectedKeyframe = -1;
+    for (size_t i = 0; i < m_keyframes.size(); ++i) {
+        if (std::abs(m_keyframes[i].time - std::max(0.0, time)) < 1e-9) {
+            m_selectedKeyframe = static_cast<int>(i);
+            break;
+        }
+    }
+    m_status("Keyframe moved");
+}
+
+void ScopeController::setSelectedTransform(
+    const vwave::ScopeTransform& transform) {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return;
+    m_keyframes[static_cast<size_t>(m_selectedKeyframe)].transform = transform;
+}
+
+void ScopeController::cycleSelectedEasing() {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return;
+    auto& easing =
+        m_keyframes[static_cast<size_t>(m_selectedKeyframe)].easing;
+    easing = static_cast<vwave::ScopeEasing>(
+        (static_cast<int>(easing) + 1) % 6);
+}
+
+void ScopeController::cycleSelectedTransition() {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return;
+    auto& transition =
+        m_keyframes[static_cast<size_t>(m_selectedKeyframe)].transition;
+    transition = transition == vwave::ScopeTransition::Hold
+                     ? vwave::ScopeTransition::Crossfade
+                     : vwave::ScopeTransition::Hold;
 }
 
 void ScopeController::cancel() {

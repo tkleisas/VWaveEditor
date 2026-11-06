@@ -15,6 +15,7 @@
 using namespace vwave::ui;
 
 void App::drawOscilloscope(const SDL_Rect& area) {
+    m_scopeTimelineArea = {};
     if (m_scopeXYMode) {
         drawText("XY audio verification", area.x + 20, area.y + 10, kAccent,
                  fontBold());
@@ -142,7 +143,7 @@ void App::drawOscilloscope(const SDL_Rect& area) {
     drawText(info.str(), area.x + 20, area.y + 28, kTextFaint, fontSmall());
 
     const int availableW = area.w - 40;
-    const int availableH = area.h - 78;
+    const int availableH = area.h - 140;
     const int side = std::clamp(std::min(availableW, availableH), 160,
                                 std::max(160, availableH));
     SDL_Rect rect{area.x + (area.w - side) / 2, area.y + 46, side, side};
@@ -195,6 +196,55 @@ void App::drawOscilloscope(const SDL_Rect& area) {
              fontSmall());
     drawText("y", rect.x + rect.w / 2 - 3, rect.y - 16, kTextFaint,
              fontSmall());
+
+    m_scopeTimelineArea = {area.x + 20, area.y + area.h - 108,
+                           area.w - 40, 58};
+    SDL_SetRenderDrawColor(m_renderer, kPanel.r, kPanel.g, kPanel.b, 255);
+    SDL_RenderFillRect(m_renderer, &m_scopeTimelineArea);
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 180);
+    SDL_RenderDrawRect(m_renderer, &m_scopeTimelineArea);
+    const int timelineLeft = m_scopeTimelineArea.x + 10;
+    const int timelineRight =
+        m_scopeTimelineArea.x + m_scopeTimelineArea.w - 10;
+    const int timelineY =
+        m_scopeTimelineArea.y + m_scopeTimelineArea.h / 2;
+    SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 180);
+    SDL_RenderDrawLine(m_renderer, timelineLeft, timelineY, timelineRight,
+                       timelineY);
+    const double duration = std::max(0.01, m_scopeDuration.value);
+    auto timeX = [&](double time) {
+        const double fraction = std::clamp(time / duration, 0.0, 1.0);
+        return timelineLeft + static_cast<int>(std::llround(
+                                  fraction * (timelineRight - timelineLeft)));
+    };
+    const auto& keyframes = m_scopeController.keyframes();
+    for (size_t i = 0; i < keyframes.size(); ++i) {
+        const int x = timeX(keyframes[i].time);
+        const bool selected =
+            static_cast<int>(i) == m_scopeController.selectedKeyframe();
+        SDL_SetRenderDrawColor(m_renderer,
+                               selected ? kAccent.r : kTextDim.r,
+                               selected ? kAccent.g : kTextDim.g,
+                               selected ? kAccent.b : kTextDim.b, 255);
+        SDL_Rect marker{x - 4, timelineY - 12, 9, 25};
+        SDL_RenderFillRect(m_renderer, &marker);
+    }
+    const int keyX = timeX(m_scopeKeyTime.value);
+    SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b, 220);
+    SDL_RenderDrawLine(m_renderer, keyX, m_scopeTimelineArea.y + 5, keyX,
+                       m_scopeTimelineArea.y + m_scopeTimelineArea.h - 5);
+    drawText("KEYFRAMES", m_scopeTimelineArea.x + 8,
+             m_scopeTimelineArea.y + 4, kTextFaint, fontSmall());
+    if (keyframes.empty()) {
+        drawText("Add a keyframe to animate this path.", timelineLeft,
+                 m_scopeTimelineArea.y + 30, kTextFaint, fontSmall());
+    } else {
+        drawText(std::to_string(keyframes.size()) + " keys  " +
+                     formatSeconds(m_scopeDuration.value),
+                 timelineLeft, m_scopeTimelineArea.y + 30, kTextFaint,
+                 fontSmall());
+    }
+
     if (m_scopeController.pointEditing()) {
         drawText("Click to add points; click near the first point to close.",
                  area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
