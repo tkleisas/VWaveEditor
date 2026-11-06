@@ -1,10 +1,14 @@
 #include "vwave/Oscilloscope.h"
 
+#include "vwave/ScopeComposition.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <map>
+#include <memory>
 #include <vector>
 
 namespace vwave {
@@ -290,13 +294,10 @@ ScopePoint sampleScopePath(const ScopePath& path, double position) {
     return sampler.at(position);
 }
 
-Audio renderScopePath(const ScopePath& path, const ScopeRenderOptions& options,
-                      std::string* error) {
+template <typename PointSampler>
+Audio renderScopeSignal(const ScopeRenderOptions& options,
+                        PointSampler&& sample, std::string* error) {
     if (error) error->clear();
-    if (!path.valid()) {
-        if (error) *error = "scope path needs at least two points";
-        return Audio{};
-    }
     if (options.sampleRate <= 0 || !(options.duration > 0.0) ||
         !std::isfinite(options.duration) || !(options.scanHz > 0.0) ||
         !std::isfinite(options.scanHz)) {
@@ -325,7 +326,6 @@ Audio renderScopePath(const ScopePath& path, const ScopeRenderOptions& options,
         leftFilter.setLowPass(internalRate, cutoff, 0.7071067811865476);
         rightFilter.setLowPass(internalRate, cutoff, 0.7071067811865476);
     }
-    PathSampler sampler(path);
     Audio output(2, frames, sampleRate);
     double smoothLeft = 0.0;
     double smoothRight = 0.0;
@@ -343,7 +343,7 @@ Audio renderScopePath(const ScopePath& path, const ScopeRenderOptions& options,
             const double cycle = std::fmod(time * scanHz * 2.0, 2.0);
             position = cycle <= 1.0 ? cycle : 2.0 - cycle;
         }
-        const ScopePoint point = sampler.at(position);
+        const ScopePoint point = sample(time, position);
         double left = std::clamp(point.x, -1.0, 1.0) * gain;
         double right = std::clamp(point.y, -1.0, 1.0) * gain;
         if (options.bandLimited) {
@@ -381,6 +381,93 @@ Audio renderScopePath(const ScopePath& path, const ScopeRenderOptions& options,
         }
     }
     return output;
+}
+
+Audio renderScopePath(const ScopePath& path, const ScopeRenderOptions& options,
+                      std::string* error) {
+    if (error) error->clear();
+    if (!path.valid()) {
+        if (error) *error = "scope path needs at least two points";
+        return Audio{};
+    }
+    PathSampler sampler(path);
+    return renderScopeSignal(
+        options,
+        [&sampler](double, double position) { return sampler.at(position); },
+        error);
+}
+
+Audio renderScopeComposition(const ScopeComposition& composition,
+                             const ScopeRenderOptions& options,
+                             std::string* error) {
+    if (error) error->clear();
+    if (!composition.validate(error)) return Audio{};
+    ScopeRenderOptions localOptions = options;
+    localOptions.duration = composition.duration;
+
+    std::map<std::string, ScopePath> flattened;
+    std::map<std::string, std::unique_ptr<PathSampler>> samplers;
+    for (const auto& drawing : composition.drawings)
+        flattened.emplace(drawing.id, drawing.flatten());
+    for (const auto& drawing : composition.drawings) {
+        const auto found = flattened.find(drawing.id);
+        if (found == flattened.end()) continue;
+        samplers.emplace(drawing.id,
+                         std::make_unique<PathSampler>(found->second));
+    }
+
+    const auto& keyframes = composition.keyframes;
+    return renderScopeSignal(
+        localOptions,
+        [&](double time, double position) {
+            auto upper = std::upper_bound(
+                keyframes.begin(), keyframes.end(), time,
+                [](double value, const ScopeKeyframe& keyframe) {
+                    return value < keyframe.time;
+                });
+            const ScopeKeyframe* first = nullptr;
+            const ScopeKeyframe* second = nullptr;
+            double progress = 0.0;
+            if (upper == keyframes.begin()) {
+                first = &keyframes.front();
+            } else if (upper == keyframes.end()) {
+                first = &keyframes.back();
+            } else {
+                first = &*(upper - 1);
+                second = &*upper;
+                const double span = second->time - first->time;
+                progress = span > 1e-12
+                               ? std::clamp((time - first->time) / span,
+                                            0.0, 1.0)
+                               : 1.0;
+            }
+            const double blend =
+                second ? scopeEasingValue(first->easing, progress) : 0.0;
+            auto sampleDrawing = [&](const std::string& id) {
+                const auto found = samplers.find(id);
+                return found == samplers.end() ? ScopePoint{}
+                                               : found->second->at(position);
+            };
+            ScopePoint point = sampleDrawing(first->drawing);
+            if (second && first->transition == ScopeTransition::Crossfade &&
+                second->drawing != first->drawing) {
+                const ScopePoint other = sampleDrawing(second->drawing);
+                point.x += (other.x - point.x) * blend;
+                point.y += (other.y - point.y) * blend;
+            }
+            const ScopeTransform transform =
+                second ? interpolateScopeTransform(first->transform,
+                                                   second->transform, blend)
+                       : first->transform;
+            const double gain =
+                second ? first->gain + (second->gain - first->gain) * blend
+                       : first->gain;
+            point = applyScopeTransform(transform, point);
+            point.x *= gain;
+            point.y *= gain;
+            return point;
+        },
+        error);
 }
 
 bool saveScopePath(const ScopePath& path, const std::string& file,

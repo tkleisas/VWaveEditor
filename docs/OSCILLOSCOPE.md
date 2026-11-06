@@ -15,6 +15,27 @@ the audio plays.
 - `.vscope` JSON paths (`format`, `version`, name, closed flag, points)
 - Save/load from the Scope tab or load a dropped `.vscope` file
 
+## Composition timeline
+
+The core now has a versioned composition model for animated scope drawings:
+
+- `ScopeDrawing`: one or more strokes; multi-stroke travel is rendered as a
+  direct connector line, so pen jumps are audible/visible as intentional
+  glitch or percussive artifacts.
+- `ScopeKeyframe`: time, drawing id, transform, gain, easing, and transition.
+- `ScopeTransform`: translation, X/Y scale, rotation, and pivot.
+- Easing: hold, linear, ease-in, ease-out, ease-in-out, smoothstep.
+- Path transitions: **hold/cut** for deliberate clicks, or **crossfade** for a
+  blended morph between drawings.
+- `renderScopeComposition` renders the animation with the existing scan,
+  direction, smoothing, oversampling, band-limit, and normalization pipeline.
+- `.vscope` version 2 stores compositions; version 1 single paths load as a
+  one-drawing, one-keyframe composition.
+
+Keyframe transition/easing belongs to the segment **starting at that keyframe**.
+The next UI stage adds the keyframe strip, transform gizmo, image/SVG import,
+and XY audio verification view.
+
 ## Rendering
 
 - Scan rate in Hz: how many path traversals per second
