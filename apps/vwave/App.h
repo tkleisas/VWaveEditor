@@ -256,6 +256,8 @@ private:
     void loadScopePathFile(const std::string& path);
     void saveScopePathFile(const std::string& path);
     void toggleScopeXYMode();
+    void importScopeImage(const std::string& path);
+    void importScopeSvg(const std::string& path);
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();

@@ -25,6 +25,8 @@ public:
         LoadImage,
         SaveScopePath,
         LoadScopePath,
+        ImportScopeImage,
+        ImportScopeSvg,
         SeekTime,
         ExportSlices
     };

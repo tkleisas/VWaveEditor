@@ -93,6 +93,11 @@ track. **View: Design / XY Audio** switches between the designed path and an
 accumulated XY image of the active stereo track's recorded output, which is the
 verification view for rendered scope tracks.
 
+**Import Image** traces a raster image into the current scope path. **Import
+SVG** loads SVG geometry. Imported multi-stroke drawings are flattened into the
+current editable path, with travel connectors retained as intentional glitch
+lines. Imported paths do not show per-point editing dots.
+
 ## XY verification
 
 `ScopeXY` converts stereo audio into an accumulation plot:
@@ -156,3 +161,5 @@ points.
 - Image/SVG tracing is a core operation but not yet wired into the Scope tab UI.
 - Keyframe timeline strip and transform gizmo are not yet wired; composition
   authoring currently requires core/recipe data.
+- Image/SVG import currently replaces the single editable scope path rather
+  than adding a drawing asset to the composition timeline.

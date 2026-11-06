@@ -4,6 +4,8 @@
 #include "ui/UiConstants.h"
 #include "ui/UiFormat.h"
 #include "vwave/Oscilloscope.h"
+#include "vwave/ScopeSvg.h"
+#include "vwave/ScopeTrace.h"
 #include "vwave/Recipe.h"
 
 #include <utility>
@@ -24,6 +26,7 @@ ScopeController::ScopeController(vwave::JobSystem& jobs,
 
 void ScopeController::generate(const ScopeShapeParams& params) {
     if (m_shape <= 0) return;
+    m_pointEditing = false;
     m_path = makeScopeShape(static_cast<vwave::ScopeShape>(m_shape),
                             params.pointCount, params.size, params.a,
                             params.b, params.phase, params.turns);
@@ -52,13 +55,52 @@ void ScopeController::cycleOversampling() {
 }
 
 void ScopeController::setPath(vwave::ScopePath path) {
+    m_shape = 0;
+    m_pointEditing = false;
     m_path = std::move(path);
 }
 
 void ScopeController::startPolyline() {
     m_shape = 0;
+    m_pointEditing = true;
     m_path = {};
     m_path.name = "Path";
+}
+
+void ScopeController::importImage(const std::string& path) {
+    vwave::ImageData image;
+    std::string error;
+    if (!vwave::loadImageFile(path, image, &error)) {
+        m_status(error.empty() ? "Image load failed" : error);
+        return;
+    }
+    const vwave::ScopeTraceResult traced =
+        vwave::traceImageToScope(image, {}, &error);
+    if (!traced.drawing.valid()) {
+        m_status(error.empty() ? "Image trace failed" : error);
+        return;
+    }
+    vwave::ScopePath flattened = traced.drawing.flatten();
+    flattened.name = traced.drawing.name;
+    const size_t strokes = traced.drawing.strokes.size();
+    setPath(std::move(flattened));
+    m_status("Imported image: " + std::to_string(strokes) + " strokes, " +
+             std::to_string(m_path.points.size()) + " points");
+}
+
+void ScopeController::importSvg(const std::string& path) {
+    vwave::ScopeDrawing drawing;
+    std::string error;
+    if (!vwave::loadScopeSvg(path, drawing, {}, &error)) {
+        m_status(error.empty() ? "SVG import failed" : error);
+        return;
+    }
+    const size_t strokes = drawing.strokes.size();
+    vwave::ScopePath flattened = drawing.flatten();
+    flattened.name = drawing.name;
+    setPath(std::move(flattened));
+    m_status("Imported SVG: " + std::to_string(strokes) + " strokes, " +
+             std::to_string(m_path.points.size()) + " points");
 }
 
 bool ScopeController::load(const std::string& path) {
@@ -70,6 +112,7 @@ bool ScopeController::load(const std::string& path) {
     }
     m_path = std::move(loaded);
     m_shape = 0;
+    m_pointEditing = false;
     m_status("Loaded scope path " + baseName(path));
     return true;
 }

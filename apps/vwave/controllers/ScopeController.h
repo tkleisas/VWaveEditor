@@ -44,6 +44,9 @@ public:
     int oversampling() const { return m_oversampling; }
     bool bandLimited() const { return m_bandLimited; }
     bool normalize() const { return m_normalize; }
+    bool pointEditing() const {
+        return m_shape == 0 && m_pointEditing;
+    }
 
     void generate(const ScopeShapeParams& params);
     void cycleShape(const ScopeShapeParams& params);
@@ -53,6 +56,8 @@ public:
     void toggleNormalize() { m_normalize = !m_normalize; }
     void setPath(vwave::ScopePath path);
     void startPolyline();
+    void importImage(const std::string& path);
+    void importSvg(const std::string& path);
     bool load(const std::string& path);
     void save(const std::string& path) const;
     void render(int64_t playhead, const ScopeRenderParams& params);
@@ -73,6 +78,7 @@ private:
     int m_oversampling = 2;
     bool m_bandLimited = true;
     bool m_normalize = true;
+    bool m_pointEditing = false;
 };
 
 } // namespace vwave::app

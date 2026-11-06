@@ -16,7 +16,7 @@ using namespace vwave::ui;
 
 void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
     if (event.button != SDL_BUTTON_LEFT ||
-        m_scopeController.shape() != 0)
+        !m_scopeController.pointEditing())
         return;
     SDL_Point point{event.x, event.y};
     if (!SDL_PointInRect(&point, &m_scopeArea) || m_scopeArea.w <= 0 ||

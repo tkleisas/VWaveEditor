@@ -1106,6 +1106,16 @@ void App::toggleScopeXYMode() {
     setStatus(m_scopeXYMode ? "XY audio verification" : "Scope path design");
 }
 
+void App::importScopeImage(const std::string& path) {
+    m_scopeController.importImage(path);
+    setTab(vwave::EditorTab::Oscilloscope);
+}
+
+void App::importScopeSvg(const std::string& path) {
+    m_scopeController.importSvg(path);
+    setTab(vwave::EditorTab::Oscilloscope);
+}
+
 void App::setTab(vwave::EditorTab tab) {
     if (m_tab != tab) m_sidebarScroll = 0.0;
     closeContextMenu();
@@ -1752,6 +1762,12 @@ void App::applyDialog(DialogMode mode, const std::string& path) {
         break;
     case DialogMode::LoadScopePath:
         loadScopePathFile(path);
+        break;
+    case DialogMode::ImportScopeImage:
+        importScopeImage(path);
+        break;
+    case DialogMode::ImportScopeSvg:
+        importScopeSvg(path);
         break;
     case DialogMode::SeekTime: {
         double seconds = 0.0;

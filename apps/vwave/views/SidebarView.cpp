@@ -629,6 +629,17 @@ void App::drawSidebar() {
                                  true);
                   }, false, false, hasScope);
         y += buttonHeight + 6;
+        addButton("Import Image", 18, y, buttonWidth, buttonHeight,
+                  [this] {
+                      openDialog(DialogMode::ImportScopeImage,
+                                 "Import raster image into scope", "", false);
+                  });
+        addButton("Import SVG", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      openDialog(DialogMode::ImportScopeSvg,
+                                 "Import SVG into scope", "", false);
+                  });
+        y += buttonHeight + 6;
         drawSection("RENDER", y);
         addSlider("Scan", formatHz(m_scopeScanHz.value), 18, y, 256,
                   m_scopeScanHz);

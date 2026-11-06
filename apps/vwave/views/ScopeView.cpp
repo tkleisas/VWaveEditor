@@ -182,7 +182,7 @@ void App::drawOscilloscope(const SDL_Rect& area) {
         const SDL_Point b = mapPoint(path.points.front());
         SDL_RenderDrawLine(m_renderer, a.x, a.y, b.x, b.y);
     }
-    if (m_scopeController.shape() == 0) {
+    if (m_scopeController.pointEditing()) {
         SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
                                230);
         for (const auto& point : path.points) {
@@ -195,7 +195,7 @@ void App::drawOscilloscope(const SDL_Rect& area) {
              fontSmall());
     drawText("y", rect.x + rect.w / 2 - 3, rect.y - 16, kTextFaint,
              fontSmall());
-    if (m_scopeController.shape() == 0) {
+    if (m_scopeController.pointEditing()) {
         drawText("Click to add points; click near the first point to close.",
                  area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
     } else {
