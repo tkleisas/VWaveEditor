@@ -1145,6 +1145,58 @@ void App::syncScopeKeyframeControls() {
 }
 
 
+void App::analyzeScopeFrameTone() {
+    const vwave::Audio* audio = nullptr;
+    int64_t centerFrame = 0;
+    if (m_scopePreviewAudio && !m_scopePreviewAudio->empty()) {
+        audio = m_scopePreviewAudio.get();
+        const double time = m_scopePreviewPlaying
+                                ? static_cast<double>(m_scopePreviewTime) /
+                                      std::max(1, audio->sampleRate())
+                                : m_scopeKeyTime.value;
+        centerFrame = std::clamp<int64_t>(
+            static_cast<int64_t>(std::llround(
+                time * static_cast<double>(audio->sampleRate()))),
+            0, audio->numFrames());
+    } else if (hasTracks() && !activeDocument().audio().empty()) {
+        audio = &activeDocument().audio();
+        const auto& track = m_timeline.track(m_timeline.activeTrack());
+        centerFrame = std::clamp<int64_t>(
+            m_playhead - track.startFrame, 0, audio->numFrames());
+    } else {
+        setStatus("Start a scope preview or select an audio track");
+        return;
+    }
+    const int64_t window = 8192;
+    vwave::Range range{
+        std::max<int64_t>(0, centerFrame - window / 2),
+        std::min<int64_t>(audio->numFrames(), centerFrame + window / 2)};
+    if (range.length() < 256) {
+        setStatus("Not enough audio around this frame");
+        return;
+    }
+    vwave::PitchOptions options;
+    options.minHz = 20.0;
+    options.maxHz = std::min(5000.0, audio->sampleRate() * 0.45);
+    m_scopeFrameTone = vwave::detectPitch(*audio, range, options);
+    m_scopeFrameToneValid = m_scopeFrameTone.frequency > 0.0;
+    m_scopeFrameToneTime =
+        static_cast<double>(centerFrame) /
+        static_cast<double>(std::max(1, audio->sampleRate()));
+    if (m_scopeFrameToneValid) {
+        m_scopeFrameNote = vwave::nearestNote(m_scopeFrameTone.frequency);
+        std::ostringstream out;
+        out << "Frame tone " << std::fixed << std::setprecision(2)
+            << m_scopeFrameTone.frequency << " Hz -> "
+            << m_scopeFrameNote.name << " "
+            << std::showpos << std::setprecision(1)
+            << m_scopeFrameNote.cents << " cents";
+        setStatus(out.str());
+    } else {
+        setStatus("No stable fundamental at this frame");
+    }
+}
+
 void App::toggleScopePreview() {
     if (m_scopePreviewPlaying) {
         m_player.stop();
@@ -1226,6 +1278,11 @@ void App::updatePlayback() {
                 m_scopeKeyTime.setValue(
                     static_cast<double>(m_scopePreviewTime) /
                     static_cast<double>(m_scopePreviewAudio->sampleRate()));
+            }
+            const Uint32 now = SDL_GetTicks();
+            if (now >= m_scopeNextToneAnalysisTicks) {
+                analyzeScopeFrameTone();
+                m_scopeNextToneAnalysisTicks = now + 150;
             }
         } else {
             m_scopePreviewPlaying = false;
@@ -1531,6 +1588,7 @@ bool App::loadAudio(const std::string& path) {
             m_scopeLoopActive = false;
             m_scopeLoopStartTime = 0.0;
             m_scopeLoopEndTime = 0.0;
+            m_scopeFrameToneValid = false;
             m_clips.reset();
             m_loop.clear();
             syncTrackControls();
@@ -1606,6 +1664,7 @@ void App::applyLoadedProject(vwave::Timeline timeline,
     m_scopeLoopActive = false;
     m_scopeLoopStartTime = 0.0;
     m_scopeLoopEndTime = 0.0;
+    m_scopeFrameToneValid = false;
     m_clips.reset();
     m_loop.clear();
     m_wavetableController.clear();

@@ -66,11 +66,13 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
             m_scopeKeyTime.setValue(time);
             m_scopeController.addKeyframe(time);
             syncScopeKeyframeControls();
+            if (m_scopePreviewAudio) analyzeScopeFrameTone();
             return;
         }
         m_scopeController.setSelectedKeyframe(nearest);
         m_scopeKeyTime.setValue(time);
         if (nearest >= 0) syncScopeKeyframeControls();
+        if (m_scopePreviewAudio) analyzeScopeFrameTone();
         return;
     }
     if (!m_scopeController.pointEditing()) return;

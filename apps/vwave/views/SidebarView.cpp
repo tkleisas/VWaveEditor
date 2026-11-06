@@ -715,6 +715,29 @@ void App::drawSidebar() {
             }
         }
 
+        drawSection("FRAME TONE", y);
+        addButton("Tone at Cursor", 18, y, buttonWidth * 2 + gap,
+                  buttonHeight, [this] { analyzeScopeFrameTone(); });
+        y += buttonHeight + 6;
+        if (m_scopeFrameToneValid) {
+            std::ostringstream tone;
+            tone << formatHz(m_scopeFrameTone.frequency) << "  "
+                 << m_scopeFrameNote.name;
+            drawText(tone.str(), 18, y, kText, fontSmall());
+            y += 16;
+            std::ostringstream detail;
+            detail << std::showpos << std::fixed << std::setprecision(1)
+                   << m_scopeFrameNote.cents << " cents  at "
+                   << formatSeconds(m_scopeFrameToneTime) << "  conf "
+                   << std::setprecision(2) << m_scopeFrameTone.confidence;
+            drawText(detail.str(), 18, y, kTextFaint, fontSmall());
+            y += 18;
+        } else {
+            drawText("Analyze the preview/playhead frame.", 18, y,
+                     kTextFaint, fontSmall());
+            y += 18;
+        }
+
         drawSection("RENDER", y);
         addSlider("Scan", formatHz(m_scopeScanHz.value), 18, y, 256,
                   m_scopeScanHz);

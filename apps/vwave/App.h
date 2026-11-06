@@ -43,6 +43,7 @@
 #include "vwave/ImageSpectrogram.h"
 #include "vwave/Oscilloscope.h"
 #include "vwave/Mastering.h"
+#include "vwave/Music.h"
 #include "vwave/Settings.h"
 #include "vwave/Spectral.h"
 #include "vwave/Timeline.h"
@@ -262,6 +263,7 @@ private:
     void importScopeSvg(const std::string& path);
     void syncScopeKeyframeControls();
     void toggleScopePreview();
+    void analyzeScopeFrameTone();
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -391,6 +393,11 @@ private:
     int64_t m_scopePreviewTime = 0;
     bool m_scopePreviewPlaying = false;
     uint64_t m_scopePreviewRevision = 0;
+    vwave::PitchEstimate m_scopeFrameTone;
+    vwave::NoteInfo m_scopeFrameNote;
+    bool m_scopeFrameToneValid = false;
+    double m_scopeFrameToneTime = 0.0;
+    Uint32 m_scopeNextToneAnalysisTicks = 0;
     vwave::Spectrogram m_spectrogram;
     vwave::PhaseSpectrogram m_phaseSpectrogram;
     bool m_phaseSpectrogramDirty = true;
