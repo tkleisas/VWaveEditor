@@ -28,6 +28,20 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
                 static_cast<double>(std::max(1, right - left)),
             0.0, 1.0);
         const double time = fraction * duration;
+        if ((SDL_GetModState() & KMOD_SHIFT) != 0 && hasTracks()) {
+            m_player.stop();
+            const auto& track = m_timeline.track(m_timeline.activeTrack());
+            const int sampleRate = std::max(1, m_timeline.sampleRate());
+            const int64_t frame =
+                track.startFrame + static_cast<int64_t>(std::llround(
+                                       time * sampleRate));
+            m_scopeLoopAnchorFrame = frame;
+            m_scopeLoopDragging = true;
+            m_loop.beginDrag(frame, m_scopeTimelineArea);
+            m_loop.updateDrag(frame);
+            setStatus("Drag to set the scope playback loop");
+            return;
+        }
         const auto& keyframes = m_scopeController.keyframes();
         int nearest = -1;
         double nearestDistance = 8.0;
@@ -85,4 +99,39 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
               std::to_string(path.points.size()) +
               " added");
 
+}
+
+
+void App::handleOscilloscopeMouseMotion(const SDL_MouseMotionEvent& event) {
+    if (!m_scopeLoopDragging || !hasTracks()) return;
+    const auto& track = m_timeline.track(m_timeline.activeTrack());
+    const double duration = std::max(0.01, m_scopeDuration.value);
+    const int left = m_scopeTimelineArea.x + 10;
+    const int right = m_scopeTimelineArea.x + m_scopeTimelineArea.w - 10;
+    const int sampleRate = std::max(1, m_timeline.sampleRate());
+    const double fraction = std::clamp(
+        static_cast<double>(event.x - left) /
+            static_cast<double>(std::max(1, right - left)),
+        0.0, 1.0);
+    const int64_t frame =
+        track.startFrame + static_cast<int64_t>(std::llround(
+                               fraction * duration * sampleRate));
+    m_loop.updateDrag(frame);
+}
+
+void App::handleOscilloscopeMouseUp(const SDL_MouseButtonEvent& event) {
+    (void)event;
+    if (!m_scopeLoopDragging) return;
+    m_scopeLoopDragging = false;
+    m_loop.finishDrag(m_timeline.lengthFrames());
+    if (!m_loop.active(m_timeline.lengthFrames())) {
+        clearLoop();
+    } else {
+        setStatus("Loop " +
+                  formatSeconds(static_cast<double>(m_loop.start()) /
+                                std::max(1, m_timeline.sampleRate())) +
+                  " - " +
+                  formatSeconds(static_cast<double>(m_loop.end()) /
+                                std::max(1, m_timeline.sampleRate())));
+    }
 }

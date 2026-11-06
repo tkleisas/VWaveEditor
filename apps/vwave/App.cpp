@@ -222,6 +222,7 @@ App::App()
     m_scopeTranslateY = {-2.0, 2.0, 0.0, false, 0.01};
     m_scopeRotation = {-180.0, 180.0, 0.0, false, 1.0};
     m_scopeScale = {0.05, 4.0, 1.0, false, 0.01};
+    m_scopeXYWindowMs = {1.0, 500.0, 25.0, false, 1.0};
     m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
     m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
     m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};

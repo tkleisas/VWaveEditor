@@ -161,6 +161,8 @@ private:
     void handleSpectrumMouseDown(const SDL_MouseButtonEvent& event);
     void handleWavetableMouseDown(const SDL_MouseButtonEvent& event);
     void handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event);
+    void handleOscilloscopeMouseMotion(const SDL_MouseMotionEvent& event);
+    void handleOscilloscopeMouseUp(const SDL_MouseButtonEvent& event);
     void handleWaveformMouseMotion(const SDL_MouseMotionEvent& event);
     void handleSpectrumHover(const SDL_MouseMotionEvent& event);
     void handleSpectrumMouseMotion(const SDL_MouseMotionEvent& event);
@@ -378,6 +380,8 @@ private:
     vwave::SpectralViewport m_spectralView;
     SDL_Rect m_scopeArea{};
     SDL_Rect m_scopeTimelineArea{};
+    bool m_scopeLoopDragging = false;
+    int64_t m_scopeLoopAnchorFrame = 0;
     vwave::Spectrogram m_spectrogram;
     vwave::PhaseSpectrogram m_phaseSpectrogram;
     bool m_phaseSpectrogramDirty = true;
@@ -414,6 +418,8 @@ private:
     int m_scopeXYTextureSize = 0;
     int m_scopeXYTrack = -1;
     uint64_t m_scopeXYRevision = 0;
+    int64_t m_scopeXYWindowStart = -1;
+    int64_t m_scopeXYWindowFrames = 0;
     std::vector<vwave::PeakBin> m_overviewPeaks;
     bool m_overviewDirty = true;
 
@@ -512,6 +518,7 @@ private:
     vwave::ParameterSlider m_scopeTranslateY;
     vwave::ParameterSlider m_scopeRotation;
     vwave::ParameterSlider m_scopeScale;
+    vwave::ParameterSlider m_scopeXYWindowMs;
     vwave::ParameterSlider m_masteringBands;
     vwave::ParameterSlider m_masteringMaxCut;
     vwave::ParameterSlider m_masteringMaxBoost;

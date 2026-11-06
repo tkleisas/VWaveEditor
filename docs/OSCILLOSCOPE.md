@@ -100,7 +100,8 @@ lines. Imported paths do not show per-point editing dots.
 
 The Scope tab now includes a keyframe strip and sidebar transform controls:
 
-- the strip shows a labeled time scale and an orange key-time cursor;
+- the strip shows a labeled time scale, an orange key-time cursor, and the
+  current playback loop range;
 - click a key marker to select it, or click empty strip space to move the key
   time cursor;
 - double-click empty strip space to insert a keyframe there, or use **Add Key**;
@@ -120,11 +121,18 @@ The Scope tab now includes a keyframe strip and sidebar transform controls:
 - left channel = X, right channel = Y;
 - configurable range, gain, stride, and line connection;
 - intensity accumulation at viewport resolution;
-- the Scope tab caches the plot as a texture keyed by track, document revision,
-  and viewport size.
+- the Scope tab shows a live window ending at the project playhead, with an
+  adjustable window length (default 25 ms);
+- the plot texture is keyed by track, document revision, viewport size, and
+  window range, so it updates as playback or seeking advances time;
+- an orange dot marks the current sample.
 
 This is how animation, transform interpolation, contour travel, and clicks can
 be inspected as they will appear on an XY oscilloscope.
+
+Shift-drag in the keyframe strip sets the project playback loop using the
+active track's timeline position. The loop range is drawn on the strip, and
+looped playback continuously advances the live XY window.
 
 ## CLI
 

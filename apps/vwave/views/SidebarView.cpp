@@ -747,6 +747,12 @@ void App::drawSidebar() {
                   18, y, buttonWidth * 2 + gap, buttonHeight,
                   [this] { toggleScopeXYMode(); }, false, m_scopeXYMode);
         y += buttonHeight + 6;
+        if (m_scopeXYMode) {
+            addSlider("XY window",
+                      formatMilliseconds(m_scopeXYWindowMs.value), 18, y,
+                      256, m_scopeXYWindowMs);
+            y += 30;
+        }
         addButton("Render to Track", 18, y, buttonWidth * 2 + gap, 26,
                   [this] { renderScopeToTrack(); }, true, false, hasScope);
         y += 32;

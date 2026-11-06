@@ -41,4 +41,7 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
     if (m_drawingWavetable && m_wavetableController.valid()) {
         handleWavetableMouseMotion(event);
     }
+    if (m_scopeLoopDragging) {
+        handleOscilloscopeMouseMotion(event);
+    }
 }
