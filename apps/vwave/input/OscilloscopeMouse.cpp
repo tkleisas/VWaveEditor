@@ -28,17 +28,24 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
                 static_cast<double>(std::max(1, right - left)),
             0.0, 1.0);
         const double time = fraction * duration;
-        if ((SDL_GetModState() & KMOD_SHIFT) != 0 && hasTracks()) {
+        if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
             m_player.stop();
-            const auto& track = m_timeline.track(m_timeline.activeTrack());
-            const int sampleRate = std::max(1, m_timeline.sampleRate());
-            const int64_t frame =
-                track.startFrame + static_cast<int64_t>(std::llround(
-                                       time * sampleRate));
-            m_scopeLoopAnchorFrame = frame;
+            m_scopePreviewPlaying = false;
             m_scopeLoopDragging = true;
-            m_loop.beginDrag(frame, m_scopeTimelineArea);
-            m_loop.updateDrag(frame);
+            m_scopeLoopAnchorTime = time;
+            m_scopeLoopStartTime = time;
+            m_scopeLoopEndTime = time;
+            m_scopeLoopActive = true;
+            if (hasTracks()) {
+                const auto& track = m_timeline.track(m_timeline.activeTrack());
+                const int sampleRate = std::max(1, m_timeline.sampleRate());
+                const int64_t frame =
+                    track.startFrame + static_cast<int64_t>(std::llround(
+                                           time * sampleRate));
+                m_scopeLoopAnchorFrame = frame;
+                m_loop.beginDrag(frame, m_scopeTimelineArea);
+                m_loop.updateDrag(frame);
+            }
             setStatus("Drag to set the scope playback loop");
             return;
         }
@@ -103,35 +110,45 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
 
 
 void App::handleOscilloscopeMouseMotion(const SDL_MouseMotionEvent& event) {
-    if (!m_scopeLoopDragging || !hasTracks()) return;
-    const auto& track = m_timeline.track(m_timeline.activeTrack());
+    if (!m_scopeLoopDragging) return;
     const double duration = std::max(0.01, m_scopeDuration.value);
     const int left = m_scopeTimelineArea.x + 10;
     const int right = m_scopeTimelineArea.x + m_scopeTimelineArea.w - 10;
-    const int sampleRate = std::max(1, m_timeline.sampleRate());
     const double fraction = std::clamp(
         static_cast<double>(event.x - left) /
             static_cast<double>(std::max(1, right - left)),
         0.0, 1.0);
-    const int64_t frame =
-        track.startFrame + static_cast<int64_t>(std::llround(
-                               fraction * duration * sampleRate));
-    m_loop.updateDrag(frame);
+    const double time = fraction * duration;
+    m_scopeLoopStartTime = std::min(m_scopeLoopAnchorTime, time);
+    m_scopeLoopEndTime = std::max(m_scopeLoopAnchorTime, time);
+    m_scopeLoopActive = true;
+    if (hasTracks()) {
+        const auto& track = m_timeline.track(m_timeline.activeTrack());
+        const int sampleRate = std::max(1, m_timeline.sampleRate());
+        const int64_t frame =
+            track.startFrame + static_cast<int64_t>(std::llround(
+                                   time * sampleRate));
+        m_loop.updateDrag(frame);
+    }
 }
 
 void App::handleOscilloscopeMouseUp(const SDL_MouseButtonEvent& event) {
     (void)event;
     if (!m_scopeLoopDragging) return;
     m_scopeLoopDragging = false;
-    m_loop.finishDrag(m_timeline.lengthFrames());
-    if (!m_loop.active(m_timeline.lengthFrames())) {
+    if (m_scopeLoopEndTime <= m_scopeLoopStartTime) {
+        m_scopeLoopActive = false;
+        m_scopeLoopStartTime = 0.0;
+        m_scopeLoopEndTime = 0.0;
         clearLoop();
-    } else {
-        setStatus("Loop " +
-                  formatSeconds(static_cast<double>(m_loop.start()) /
-                                std::max(1, m_timeline.sampleRate())) +
-                  " - " +
-                  formatSeconds(static_cast<double>(m_loop.end()) /
-                                std::max(1, m_timeline.sampleRate())));
+        setStatus("Scope loop cleared");
+        return;
     }
+    if (hasTracks()) {
+        m_loop.finishDrag(m_timeline.lengthFrames());
+        if (!m_loop.active(m_timeline.lengthFrames())) clearLoop();
+    }
+    setStatus("Scope loop " +
+              formatSeconds(m_scopeLoopStartTime) + " - " +
+              formatSeconds(m_scopeLoopEndTime));
 }

@@ -1135,6 +1135,61 @@ void App::syncScopeKeyframeControls() {
     m_scopeScale.setValue(transform.scaleX);
 }
 
+
+void App::toggleScopePreview() {
+    if (m_scopePreviewPlaying) {
+        m_player.stop();
+        m_scopePreviewPlaying = false;
+        m_scopePreviewAudio.reset();
+        m_scopeXYDirty = true;
+        setStatus("Scope preview stopped");
+        return;
+    }
+    m_scopeController.renderPreview(
+        scopeRenderParams(),
+        [this](vwave::Audio audio) {
+            if (audio.empty()) {
+                setStatus("Scope preview is empty");
+                return;
+            }
+            m_scopePreviewAudio =
+                std::make_shared<vwave::Audio>(std::move(audio));
+            ++m_scopePreviewRevision;
+            m_scopeXYMode = true;
+            m_scopeXYDirty = true;
+            const int sampleRate =
+                std::max(1, m_scopePreviewAudio->sampleRate());
+            const int64_t frames = m_scopePreviewAudio->numFrames();
+            int64_t start = 0;
+            int64_t end = frames;
+            const bool loop = m_scopeLoopActive &&
+                              m_scopeLoopEndTime > m_scopeLoopStartTime;
+            if (loop) {
+                start = std::clamp<int64_t>(
+                    static_cast<int64_t>(std::llround(
+                        m_scopeLoopStartTime * sampleRate)),
+                    0, frames);
+                end = std::clamp<int64_t>(
+                    static_cast<int64_t>(std::llround(
+                        m_scopeLoopEndTime * sampleRate)),
+                    start + 1, frames);
+            }
+            m_player.stop();
+            const bool playing =
+                m_player.playAudio(m_scopePreviewAudio, start, end, loop);
+            m_scopePreviewPlaying = playing;
+            m_scopePreviewTime = start;
+            m_scopeKeyTime.setValue(
+                static_cast<double>(start) / static_cast<double>(sampleRate));
+            if (!playing) {
+                setStatus("Scope preview ready; audio playback unavailable");
+            } else {
+                setStatus(loop ? "Playing scope preview loop"
+                               : "Playing scope preview");
+            }
+        });
+}
+
 void App::setTab(vwave::EditorTab tab) {
     if (m_tab != tab) m_sidebarScroll = 0.0;
     closeContextMenu();
@@ -1154,6 +1209,20 @@ void App::stopPlayback() { m_playback.stop(); }
 
 void App::updatePlayback() {
     updateWaveDragAutoscroll();
+    if (m_scopePreviewPlaying) {
+        if (m_player.isPlaying()) {
+            m_scopePreviewTime = m_player.sourcePosition();
+            if (m_scopePreviewAudio &&
+                m_scopePreviewAudio->sampleRate() > 0) {
+                m_scopeKeyTime.setValue(
+                    static_cast<double>(m_scopePreviewTime) /
+                    static_cast<double>(m_scopePreviewAudio->sampleRate()));
+            }
+        } else {
+            m_scopePreviewPlaying = false;
+        }
+        return;
+    }
     m_playback.update();
 }
 
@@ -1448,6 +1517,11 @@ bool App::loadAudio(const std::string& path) {
             ++m_prefetchGeneration;
             m_prefetch.cancel();
             m_scopeXYDirty = true;
+            m_scopePreviewAudio.reset();
+            m_scopePreviewPlaying = false;
+            m_scopeLoopActive = false;
+            m_scopeLoopStartTime = 0.0;
+            m_scopeLoopEndTime = 0.0;
             m_clips.reset();
             m_loop.clear();
             syncTrackControls();
@@ -1518,6 +1592,11 @@ void App::applyLoadedProject(vwave::Timeline timeline,
     ++m_prefetchGeneration;
     m_prefetch.cancel();
     m_scopeXYDirty = true;
+    m_scopePreviewAudio.reset();
+    m_scopePreviewPlaying = false;
+    m_scopeLoopActive = false;
+    m_scopeLoopStartTime = 0.0;
+    m_scopeLoopEndTime = 0.0;
     m_clips.reset();
     m_loop.clear();
     m_wavetableController.clear();

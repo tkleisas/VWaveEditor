@@ -261,6 +261,7 @@ private:
     void importScopeImage(const std::string& path);
     void importScopeSvg(const std::string& path);
     void syncScopeKeyframeControls();
+    void toggleScopePreview();
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -382,6 +383,14 @@ private:
     SDL_Rect m_scopeTimelineArea{};
     bool m_scopeLoopDragging = false;
     int64_t m_scopeLoopAnchorFrame = 0;
+    double m_scopeLoopAnchorTime = 0.0;
+    double m_scopeLoopStartTime = 0.0;
+    double m_scopeLoopEndTime = 0.0;
+    bool m_scopeLoopActive = false;
+    std::shared_ptr<vwave::Audio> m_scopePreviewAudio;
+    int64_t m_scopePreviewTime = 0;
+    bool m_scopePreviewPlaying = false;
+    uint64_t m_scopePreviewRevision = 0;
     vwave::Spectrogram m_spectrogram;
     vwave::PhaseSpectrogram m_phaseSpectrogram;
     bool m_phaseSpectrogramDirty = true;

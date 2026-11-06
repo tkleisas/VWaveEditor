@@ -742,6 +742,11 @@ void App::drawSidebar() {
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
                   [this] { m_scopeController.toggleNormalize(); });
         y += buttonHeight + 6;
+        addButton(m_scopePreviewPlaying ? "Stop Preview" : "Preview Audio",
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { toggleScopePreview(); }, m_scopePreviewPlaying,
+                  false, hasScope);
+        y += buttonHeight + 6;
         addButton(std::string("View: ") +
                       (m_scopeXYMode ? "XY Audio" : "Design"),
                   18, y, buttonWidth * 2 + gap, buttonHeight,

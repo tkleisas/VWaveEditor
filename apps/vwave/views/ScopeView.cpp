@@ -19,12 +19,15 @@ void App::drawOscilloscope(const SDL_Rect& area) {
     if (m_scopeXYMode) {
         drawText("XY audio verification", area.x + 20, area.y + 10, kAccent,
                  fontBold());
-        if (!hasTracks() || activeDocument().audio().empty()) {
-            drawText("Open a stereo track to verify its XY image.",
+        const bool preview = m_scopePreviewAudio &&
+                             !m_scopePreviewAudio->empty();
+        if (!preview && (!hasTracks() || activeDocument().audio().empty())) {
+            drawText("Open a stereo track or start a scope preview.",
                      area.x + 20, area.y + 40, kTextFaint, fontNormal());
             return;
         }
-        const auto& audio = activeDocument().audio();
+        const vwave::Audio& audio =
+            preview ? *m_scopePreviewAudio : activeDocument().audio();
         if (audio.numChannels() < 2) {
             drawText("Select a stereo track for XY verification.",
                      area.x + 20, area.y + 40, kTextFaint, fontNormal());
@@ -35,11 +38,17 @@ void App::drawOscilloscope(const SDL_Rect& area) {
         const int side = std::clamp(std::min(availableW, availableH), 160,
                                     std::max(160, availableH));
         SDL_Rect rect{area.x + (area.w - side) / 2, area.y + 46, side, side};
-        const int trackIndex = m_timeline.activeTrack();
-        const auto& track = m_timeline.track(trackIndex);
-        const uint64_t revision = activeDocument().revision();
-        const int64_t localPlayhead = std::clamp<int64_t>(
-            m_playhead - track.startFrame, 0, audio.numFrames());
+        const int trackIndex = preview ? -2 : m_timeline.activeTrack();
+        const auto& track =
+            preview ? m_timeline.track(0) : m_timeline.track(trackIndex);
+        const uint64_t revision =
+            preview ? m_scopePreviewRevision
+                    : activeDocument().revision();
+        const int64_t localPlayhead =
+            preview ? std::clamp<int64_t>(m_scopePreviewTime, 0,
+                                          audio.numFrames())
+                    : std::clamp<int64_t>(m_playhead - track.startFrame, 0,
+                                          audio.numFrames());
         const double windowSeconds =
             std::clamp(m_scopeXYWindowMs.value / 1000.0, 0.001, 0.5);
         const int64_t windowFrames = std::max<int64_t>(
@@ -144,14 +153,16 @@ void App::drawOscilloscope(const SDL_Rect& area) {
                                255);
         SDL_RenderDrawRect(m_renderer, &rect);
         std::ostringstream info;
-        info << track.name << "  t "
+        info << (preview ? "Scope preview" : track.name) << "  t "
              << formatSeconds(static_cast<double>(windowEnd) /
                               static_cast<double>(audio.sampleRate()))
              << "  window " << formatMilliseconds(windowSeconds * 1000.0)
              << "  L/R";
         drawText(info.str(), rect.x, rect.y + rect.h + 12, kTextFaint,
                  fontSmall());
-        drawText("Live XY window at the playhead; seek or play to advance.",
+        drawText(preview
+                     ? "Preview audio follows the playhead; loop to rehearse."
+                     : "Live XY window at the playhead; seek or play to advance.",
                  area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
         return;
     }
@@ -254,31 +265,21 @@ void App::drawOscilloscope(const SDL_Rect& area) {
         return timelineLeft + static_cast<int>(std::llround(
                                   fraction * (timelineRight - timelineLeft)));
     };
-    if (hasTracks()) {
-        const auto& track = m_timeline.track(m_timeline.activeTrack());
-        const double sampleRate = static_cast<double>(
-            std::max(1, m_timeline.sampleRate()));
-        if (m_loop.active(m_timeline.lengthFrames())) {
-            const double loopStart =
-                static_cast<double>(m_loop.start() - track.startFrame) /
-                sampleRate;
-            const double loopEnd =
-                static_cast<double>(m_loop.end() - track.startFrame) /
-                sampleRate;
-            const int x1 = timeX(loopStart);
-            const int x2 = timeX(loopEnd);
-            if (x2 > x1) {
-                SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
-                                       kAccent.b, 55);
-                SDL_Rect loop{x1, timelineY - 18, x2 - x1, 36};
-                SDL_RenderFillRect(m_renderer, &loop);
-                SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
-                                       kAccent.b, 180);
-                SDL_RenderDrawLine(m_renderer, x1, timelineY - 18, x1,
-                                   timelineY + 18);
-                SDL_RenderDrawLine(m_renderer, x2, timelineY - 18, x2,
-                                   timelineY + 18);
-            }
+    if (m_scopeLoopActive &&
+        m_scopeLoopEndTime > m_scopeLoopStartTime) {
+        const int x1 = timeX(m_scopeLoopStartTime);
+        const int x2 = timeX(m_scopeLoopEndTime);
+        if (x2 > x1) {
+            SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                   kAccent.b, 55);
+            SDL_Rect loop{x1, timelineY - 18, x2 - x1, 36};
+            SDL_RenderFillRect(m_renderer, &loop);
+            SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                   kAccent.b, 180);
+            SDL_RenderDrawLine(m_renderer, x1, timelineY - 18, x1,
+                               timelineY + 18);
+            SDL_RenderDrawLine(m_renderer, x2, timelineY - 18, x2,
+                               timelineY + 18);
         }
     }
     drawText("KEYFRAMES", m_scopeTimelineArea.x + 8,

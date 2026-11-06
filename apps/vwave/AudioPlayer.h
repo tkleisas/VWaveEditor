@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,9 @@ public:
 
     bool play(const vwave::Timeline& timeline, int64_t startFrame,
               int64_t endFrame, bool loop = false);
+    bool playAudio(std::shared_ptr<const vwave::Audio> audio,
+                   int64_t startFrame, int64_t endFrame,
+                   bool loop = false);
     void updateMix(const vwave::Timeline& timeline);
     void stop();
 
@@ -49,6 +53,7 @@ private:
     SDL_AudioSpec m_spec{};
     std::string m_outputDevice;
     std::vector<PlaybackTrack> m_tracks;
+    std::shared_ptr<const vwave::Audio> m_ownedAudio;
     std::atomic<bool> m_playing{false};
     std::atomic<int64_t> m_sourcePosition{0};
     int64_t m_sourceStart = 0;

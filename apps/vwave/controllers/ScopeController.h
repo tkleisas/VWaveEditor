@@ -32,6 +32,7 @@ class ScopeController {
 public:
     using StatusSink = std::function<void(const std::string&)>;
     using RenderSink = std::function<void(int64_t start)>;
+    using PreviewSink = std::function<void(vwave::Audio audio)>;
 
     ScopeController(vwave::JobSystem& jobs, UiDispatcher& dispatcher,
                     vwave::Timeline& timeline, AudioPlayer& player,
@@ -82,6 +83,7 @@ public:
     bool load(const std::string& path);
     void save(const std::string& path) const;
     void render(int64_t playhead, const ScopeRenderParams& params);
+    void renderPreview(const ScopeRenderParams& params, PreviewSink preview);
     void cancel();
 
 private:

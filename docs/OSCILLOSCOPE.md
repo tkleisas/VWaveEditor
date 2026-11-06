@@ -123,18 +123,25 @@ The Scope tab now includes a keyframe strip and sidebar transform controls:
 - left channel = X, right channel = Y;
 - configurable range, gain, stride, and line connection;
 - intensity accumulation at viewport resolution;
-- the Scope tab shows a live window ending at the project playhead, with an
-  adjustable window length (default 25 ms);
-- the plot texture is keyed by track, document revision, viewport size, and
-  window range, so it updates as playback or seeking advances time;
+- the Scope tab shows a live window ending at the project playhead (or the
+  preview playhead), with an adjustable window length (default 25 ms);
+- the plot texture is keyed by source, document/preview revision, viewport
+  size, and window range, so it updates as playback or seeking advances time;
 - an orange dot marks the current sample.
 
 This is how animation, transform interpolation, contour travel, and clicks can
 be inspected as they will appear on an XY oscilloscope.
 
-Shift-drag in the keyframe strip sets the project playback loop using the
-active track's timeline position. The loop range is drawn on the strip, and
-looped playback continuously advances the live XY window.
+Shift-drag in the keyframe strip sets a scope-local loop range. If tracks exist
+it also maps that loop to the active track's project position. The loop range is
+drawn on the strip.
+
+**Preview Audio** renders the current path/composition in the background and
+plays it directly through the audio output. The Scope tab switches to XY Audio,
+shows the live XY window from the preview buffer, and advances the key-time
+cursor with playback. This is the hear-and-see verification mode: adjust
+keyframes, press Preview Audio, and inspect the resulting stereo output on the
+XY display. Press Stop Preview to return to active-track XY verification.
 
 ## CLI
 
@@ -188,3 +195,5 @@ points.
   transform gizmo are not implemented yet.
 - Image/SVG import currently replaces the single editable scope path rather
   than adding multiple drawing assets to the composition timeline.
+- Preview Audio renders on demand; it does not live-resynthesize while
+  keyframe controls are being dragged during playback.

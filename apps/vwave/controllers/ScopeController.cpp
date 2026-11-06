@@ -431,6 +431,60 @@ void ScopeController::cycleSelectedTransition() {
                      : vwave::ScopeTransition::Hold;
 }
 
+void ScopeController::renderPreview(const ScopeRenderParams& params,
+                                     PreviewSink preview) {
+    if (!m_path.valid()) {
+        m_status("Create or load a scope path first");
+        return;
+    }
+    vwave::ScopeRenderOptions options;
+    options.sampleRate =
+        m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;
+    options.duration = params.duration;
+    setDuration(params.duration);
+    options.scanHz = params.scanHz;
+    options.gain = params.gain;
+    options.smoothing = params.smoothing;
+    options.bandLimited = m_bandLimited;
+    options.bandLimitHz = 16000.0;
+    options.oversampling = ui::kScopeOversampling[m_oversampling];
+    options.direction = static_cast<vwave::ScopeDirection>(m_direction);
+    options.normalize = m_normalize;
+    options.peak = 0.9;
+
+    const vwave::ScopePath path = m_path;
+    const vwave::ScopeComposition composition = this->composition();
+    const bool animate = !m_keyframes.empty();
+    const uint64_t request = ++m_request;
+    if (m_job.valid()) m_job.cancel();
+    m_job = m_jobs.submit(
+        [this, request, path, composition, animate, options,
+         preview = std::move(preview)](vwave::JobControl& control) mutable {
+            std::string error;
+            vwave::Audio rendered;
+            try {
+                rendered = animate
+                               ? vwave::renderScopeComposition(
+                                     composition, options, &error)
+                               : vwave::renderScopePath(path, options, &error);
+            } catch (const std::exception& exception) {
+                error = exception.what();
+            }
+            if (control.cancelled()) return;
+            m_dispatcher.post(
+                [this, request, rendered = std::move(rendered),
+                 error = std::move(error), preview = std::move(preview)]() mutable {
+                    if (request != m_request) return;
+                    if (rendered.empty()) {
+                        m_status(error.empty() ? "Scope preview failed" : error);
+                        return;
+                    }
+                    preview(std::move(rendered));
+                });
+        });
+    m_status("Rendering scope preview...");
+}
+
 void ScopeController::cancel() {
     ++m_request;
     if (m_job.valid()) m_job.cancel();

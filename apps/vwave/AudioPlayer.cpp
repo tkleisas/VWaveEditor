@@ -41,6 +41,7 @@ void AudioPlayer::close() {
         SDL_LockAudioDevice(m_device);
         m_playing.store(false);
         m_tracks.clear();
+        m_ownedAudio.reset();
         SDL_UnlockAudioDevice(m_device);
         SDL_CloseAudioDevice(m_device);
         m_device = 0;
@@ -54,6 +55,7 @@ void AudioPlayer::close() {
 
 void AudioPlayer::buildTracks(const vwave::Timeline& timeline) {
     m_tracks.clear();
+    m_ownedAudio.reset();
     const bool solo = timeline.anySolo();
     for (int index = 0; index < timeline.trackCount(); ++index) {
         const auto& track = timeline.track(index);
@@ -100,6 +102,37 @@ bool AudioPlayer::play(const vwave::Timeline& timeline, int64_t startFrame,
     m_readPosition = static_cast<double>(range.start);
     m_sourcePosition.store(range.start);
     buildTracks(timeline);
+    m_playing.store(true);
+    SDL_UnlockAudioDevice(m_device);
+    SDL_PauseAudioDevice(m_device, 0);
+    return true;
+}
+
+bool AudioPlayer::playAudio(std::shared_ptr<const vwave::Audio> audio,
+                            int64_t startFrame, int64_t endFrame, bool loop) {
+    if (m_device == 0 || !audio || audio->empty()) return false;
+    const vwave::Range range =
+        vwave::Range{startFrame, endFrame}.clamped(audio->numFrames());
+    if (range.empty()) return false;
+
+    SDL_LockAudioDevice(m_device);
+    m_ownedAudio = std::move(audio);
+    m_tracks.clear();
+    PlaybackTrack track;
+    track.audio = m_ownedAudio.get();
+    track.startFrame = 0;
+    track.sourceStep = 1.0;
+    track.leftGain = 1.0f;
+    track.rightGain = 1.0f;
+    m_tracks.push_back(track);
+    m_projectRate = m_ownedAudio->sampleRate();
+    m_timelineStep = static_cast<double>(m_projectRate) /
+                     static_cast<double>(m_spec.freq);
+    m_sourceStart = range.start;
+    m_sourceEnd = range.end;
+    m_loop = loop;
+    m_readPosition = static_cast<double>(range.start);
+    m_sourcePosition.store(range.start);
     m_playing.store(true);
     SDL_UnlockAudioDevice(m_device);
     SDL_PauseAudioDevice(m_device, 0);
