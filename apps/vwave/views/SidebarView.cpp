@@ -661,6 +661,11 @@ void App::drawSidebar() {
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
                   [this] { m_scopeController.toggleNormalize(); });
         y += buttonHeight + 6;
+        addButton(std::string("View: ") +
+                      (m_scopeXYMode ? "XY Audio" : "Design"),
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { toggleScopeXYMode(); }, false, m_scopeXYMode);
+        y += buttonHeight + 6;
         addButton("Render to Track", 18, y, buttonWidth * 2 + gap, 26,
                   [this] { renderScopeToTrack(); }, true, false, hasScope);
         y += 32;

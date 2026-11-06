@@ -89,7 +89,22 @@ roughly sine/cosine L/R channels.
 
 The **Scope** tab (`6`) shows the path on an XY grid, exposes the shape and
 render controls, supports hand-drawn polylines, and renders the result as a new
-track.
+track. **View: Design / XY Audio** switches between the designed path and an
+accumulated XY image of the active stereo track's recorded output, which is the
+verification view for rendered scope tracks.
+
+## XY verification
+
+`ScopeXY` converts stereo audio into an accumulation plot:
+
+- left channel = X, right channel = Y;
+- configurable range, gain, stride, and line connection;
+- intensity accumulation at viewport resolution;
+- the Scope tab caches the plot as a texture keyed by track, document revision,
+  and viewport size.
+
+This is how animation, transform interpolation, contour travel, and clicks can
+be inspected as they will appear on an XY oscilloscope.
 
 ## CLI
 
@@ -139,3 +154,5 @@ points.
 - Editing existing stereo audio in the XY domain is future work.
 - Render/analyze jobs are synchronous and do not yet expose progress/cancel.
 - Image/SVG tracing is a core operation but not yet wired into the Scope tab UI.
+- Keyframe timeline strip and transform gizmo are not yet wired; composition
+  authoring currently requires core/recipe data.

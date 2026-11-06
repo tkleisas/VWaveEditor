@@ -255,6 +255,7 @@ private:
     void renderScopeToTrack();
     void loadScopePathFile(const std::string& path);
     void saveScopePathFile(const std::string& path);
+    void toggleScopeXYMode();
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -403,6 +404,12 @@ private:
     int m_spectrogramTextureWidth = 0;
     int m_spectrogramTextureHeight = 0;
     bool m_spectrogramDirty = true;
+    bool m_scopeXYMode = false;
+    bool m_scopeXYDirty = true;
+    SDL_Texture* m_scopeXYTexture = nullptr;
+    int m_scopeXYTextureSize = 0;
+    int m_scopeXYTrack = -1;
+    uint64_t m_scopeXYRevision = 0;
     std::vector<vwave::PeakBin> m_overviewPeaks;
     bool m_overviewDirty = true;
 

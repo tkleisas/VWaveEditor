@@ -236,6 +236,7 @@ App::~App() {
     m_uiPainter.reset();
     m_cursorController.clear();
     if (m_spectrogramTexture) SDL_DestroyTexture(m_spectrogramTexture);
+    if (m_scopeXYTexture) SDL_DestroyTexture(m_scopeXYTexture);
     m_imageController.close();
     TTF_Font* fonts[] = {m_fontSmall, m_font, m_fontBold, m_fontTitle};
     for (int i = 0; i < 4; ++i) {
@@ -1099,6 +1100,12 @@ void App::saveScopePathFile(const std::string& path) {
     m_scopeController.save(path);
 }
 
+void App::toggleScopeXYMode() {
+    m_scopeXYMode = !m_scopeXYMode;
+    m_scopeXYDirty = true;
+    setStatus(m_scopeXYMode ? "XY audio verification" : "Scope path design");
+}
+
 void App::setTab(vwave::EditorTab tab) {
     if (m_tab != tab) m_sidebarScroll = 0.0;
     closeContextMenu();
@@ -1411,6 +1418,7 @@ bool App::loadAudio(const std::string& path) {
             ++m_editGeneration;
             ++m_prefetchGeneration;
             m_prefetch.cancel();
+            m_scopeXYDirty = true;
             m_clips.reset();
             m_loop.clear();
             syncTrackControls();
@@ -1480,6 +1488,7 @@ void App::applyLoadedProject(vwave::Timeline timeline,
     ++m_editGeneration;
     ++m_prefetchGeneration;
     m_prefetch.cancel();
+    m_scopeXYDirty = true;
     m_clips.reset();
     m_loop.clear();
     m_wavetableController.clear();

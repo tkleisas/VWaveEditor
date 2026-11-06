@@ -5,13 +5,125 @@
 #include "ui/UiFormat.h"
 #include "ui/UiTheme.h"
 
+#include "vwave/ScopeXY.h"
+
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <vector>
 
 using namespace vwave::ui;
 
 void App::drawOscilloscope(const SDL_Rect& area) {
+    if (m_scopeXYMode) {
+        drawText("XY audio verification", area.x + 20, area.y + 10, kAccent,
+                 fontBold());
+        if (!hasTracks() || activeDocument().audio().empty()) {
+            drawText("Open a stereo track to verify its XY image.",
+                     area.x + 20, area.y + 40, kTextFaint, fontNormal());
+            return;
+        }
+        const auto& audio = activeDocument().audio();
+        if (audio.numChannels() < 2) {
+            drawText("Select a stereo track for XY verification.",
+                     area.x + 20, area.y + 40, kTextFaint, fontNormal());
+            return;
+        }
+        const int availableW = area.w - 40;
+        const int availableH = area.h - 78;
+        const int side = std::clamp(std::min(availableW, availableH), 160,
+                                    std::max(160, availableH));
+        SDL_Rect rect{area.x + (area.w - side) / 2, area.y + 46, side, side};
+        const int trackIndex = m_timeline.activeTrack();
+        const uint64_t revision = activeDocument().revision();
+        if (m_scopeXYDirty || !m_scopeXYTexture ||
+            m_scopeXYTextureSize != side || m_scopeXYTrack != trackIndex ||
+            m_scopeXYRevision != revision) {
+            if (m_scopeXYTexture) {
+                SDL_DestroyTexture(m_scopeXYTexture);
+                m_scopeXYTexture = nullptr;
+            }
+            vwave::ScopeXYOptions options;
+            options.width = side;
+            options.height = side;
+            options.connect = true;
+            options.stride = std::max<int>(
+                1, static_cast<int>(audio.numFrames() /
+                                    (static_cast<int64_t>(side) * side * 8)));
+            std::string error;
+            const vwave::ScopeXYPlot plot =
+                vwave::renderScopeXY(audio, options, &error);
+            if (plot.valid()) {
+                std::vector<uint32_t> pixels(
+                    static_cast<size_t>(side) * static_cast<size_t>(side),
+                    0);
+                for (int y = 0; y < side; ++y) {
+                    for (int x = 0; x < side; ++x) {
+                        const float value = plot.at(x, y);
+                        if (value <= 0.0f) continue;
+                        double brightness = 1.0;
+                        if (plot.peak > 1e-6f) {
+                            brightness = std::sqrt(
+                                std::clamp(static_cast<double>(value) /
+                                               static_cast<double>(plot.peak),
+                                           0.0, 1.0));
+                        }
+                        const uint32_t alpha = static_cast<uint32_t>(
+                            std::clamp(brightness, 0.0, 1.0) * 255.0);
+                        pixels[static_cast<size_t>(y) * side + x] =
+                            (alpha << 24) |
+                            (static_cast<uint32_t>(kAccent.b) << 16) |
+                            (static_cast<uint32_t>(kAccent.g) << 8) |
+                            static_cast<uint32_t>(kAccent.r);
+                    }
+                }
+                m_scopeXYTexture = SDL_CreateTexture(
+                    m_renderer, SDL_PIXELFORMAT_ARGB8888,
+                    SDL_TEXTUREACCESS_STATIC, side, side);
+                if (m_scopeXYTexture) {
+                    SDL_SetTextureBlendMode(m_scopeXYTexture,
+                                           SDL_BLENDMODE_BLEND);
+                    SDL_UpdateTexture(m_scopeXYTexture, nullptr,
+                                      pixels.data(),
+                                      side * static_cast<int>(sizeof(uint32_t)));
+                    m_scopeXYTextureSize = side;
+                    m_scopeXYTrack = trackIndex;
+                    m_scopeXYRevision = revision;
+                }
+            }
+            m_scopeXYDirty = false;
+        }
+        SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b,
+                               255);
+        SDL_RenderFillRect(m_renderer, &rect);
+        if (m_scopeXYTexture) {
+            SDL_RenderCopy(m_renderer, m_scopeXYTexture, nullptr, &rect);
+        }
+        SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 90);
+        for (int i = 1; i < 8; ++i) {
+            const int x = rect.x + rect.w * i / 8;
+            const int y = rect.y + rect.h * i / 8;
+            SDL_RenderDrawLine(m_renderer, x, rect.y, x, rect.y + rect.h);
+            SDL_RenderDrawLine(m_renderer, rect.x, y, rect.x + rect.w, y);
+        }
+        SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b,
+                               210);
+        SDL_RenderDrawLine(m_renderer, rect.x, rect.y + rect.h / 2,
+                           rect.x + rect.w, rect.y + rect.h / 2);
+        SDL_RenderDrawLine(m_renderer, rect.x + rect.w / 2, rect.y,
+                           rect.x + rect.w / 2, rect.y + rect.h);
+        SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b,
+                               255);
+        SDL_RenderDrawRect(m_renderer, &rect);
+        std::ostringstream info;
+        info << m_timeline.track(trackIndex).name << "  "
+             << formatSeconds(audio.duration()) << "  L/R";
+        drawText(info.str(), rect.x, rect.y + rect.h + 12, kTextFaint,
+                 fontSmall());
+        drawText("Recorded stereo output, accumulated as an XY image.",
+                 area.x + 20, area.y + area.h - 18, kTextFaint, fontSmall());
+        return;
+    }
     const auto& path = m_scopeController.path();
     if (!path.valid()) {
         drawText("No scope path", area.x + 40, area.y + 54, kTextDim,
