@@ -264,6 +264,8 @@ private:
     void syncScopeKeyframeControls();
     void toggleScopePreview();
     void analyzeScopeFrameTone();
+    void analyzeScopeAudioTone(const vwave::Audio& audio, double timeSeconds,
+                               int windowSamples);
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -397,6 +399,7 @@ private:
     vwave::NoteInfo m_scopeFrameNote;
     bool m_scopeFrameToneValid = false;
     double m_scopeFrameToneTime = 0.0;
+    double m_scopeFrameToneWindowMs = 0.0;
     Uint32 m_scopeNextToneAnalysisTicks = 0;
     vwave::Spectrogram m_spectrogram;
     vwave::PhaseSpectrogram m_phaseSpectrogram;

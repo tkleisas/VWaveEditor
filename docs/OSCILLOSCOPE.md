@@ -139,12 +139,18 @@ The Scope tab now includes a keyframe strip and sidebar transform controls:
 This is how animation, transform interpolation, contour travel, and clicks can
 be inspected as they will appear on an XY oscilloscope.
 
-**Tone at Cursor** analyzes an 8192-sample window around the current preview
-time (or the playhead on the active track) and reports the detected fundamental
-frequency, nearest 12-TET note, cents offset, confidence, and analysis time.
-During Preview Audio playback the reading refreshes automatically so changing
-tones across a keyframe animation are visible. It is a measurement only; no
-pitch or scan-rate setting is changed.
+**Tone at Cursor** reports the fundamental frequency, nearest 12-TET note,
+cents offset, confidence, analysis time, source, and window length. It uses the
+preview buffer when available; otherwise it renders the current design in the
+background so the reading reflects the edited scope output rather than whichever
+track happens to be active.
+
+The analysis window is adaptive: approximately six scan cycles, clamped to
+2048-8192 samples, centered on the cursor/preview time. This reduces smearing
+across animated keyframes compared with a fixed long window. The detector is
+autocorrelation-based (not a single FFT bin); if no stable periodicity is found
+the reading reports no fundamental. It does not change pitch or scan rate.
+During Preview Audio playback the reading refreshes automatically.
 
 Shift-drag in the keyframe strip sets a scope-local loop range. If tracks exist
 it also maps that loop to the active track's project position. The loop range is

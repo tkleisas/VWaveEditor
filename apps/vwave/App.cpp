@@ -1145,44 +1145,33 @@ void App::syncScopeKeyframeControls() {
 }
 
 
-void App::analyzeScopeFrameTone() {
-    const vwave::Audio* audio = nullptr;
-    int64_t centerFrame = 0;
-    if (m_scopePreviewAudio && !m_scopePreviewAudio->empty()) {
-        audio = m_scopePreviewAudio.get();
-        const double time = m_scopePreviewPlaying
-                                ? static_cast<double>(m_scopePreviewTime) /
-                                      std::max(1, audio->sampleRate())
-                                : m_scopeKeyTime.value;
-        centerFrame = std::clamp<int64_t>(
-            static_cast<int64_t>(std::llround(
-                time * static_cast<double>(audio->sampleRate()))),
-            0, audio->numFrames());
-    } else if (hasTracks() && !activeDocument().audio().empty()) {
-        audio = &activeDocument().audio();
-        const auto& track = m_timeline.track(m_timeline.activeTrack());
-        centerFrame = std::clamp<int64_t>(
-            m_playhead - track.startFrame, 0, audio->numFrames());
-    } else {
-        setStatus("Start a scope preview or select an audio track");
-        return;
-    }
-    const int64_t window = 8192;
-    vwave::Range range{
+void App::analyzeScopeAudioTone(const vwave::Audio& audio,
+                                 double timeSeconds, int windowSamples) {
+    const int64_t centerFrame = std::clamp<int64_t>(
+        static_cast<int64_t>(std::llround(
+            timeSeconds * static_cast<double>(audio.sampleRate()))),
+        0, audio.numFrames());
+    const int64_t window = std::clamp<int64_t>(
+        windowSamples, 512, std::max<int64_t>(512, audio.numFrames()));
+    const vwave::Range range{
         std::max<int64_t>(0, centerFrame - window / 2),
-        std::min<int64_t>(audio->numFrames(), centerFrame + window / 2)};
+        std::min<int64_t>(audio.numFrames(), centerFrame + window / 2)};
     if (range.length() < 256) {
+        m_scopeFrameToneValid = false;
         setStatus("Not enough audio around this frame");
         return;
     }
     vwave::PitchOptions options;
     options.minHz = 20.0;
-    options.maxHz = std::min(5000.0, audio->sampleRate() * 0.45);
-    m_scopeFrameTone = vwave::detectPitch(*audio, range, options);
+    options.maxHz = std::min(5000.0, audio.sampleRate() * 0.45);
+    m_scopeFrameTone = vwave::detectPitch(audio, range, options);
     m_scopeFrameToneValid = m_scopeFrameTone.frequency > 0.0;
     m_scopeFrameToneTime =
         static_cast<double>(centerFrame) /
-        static_cast<double>(std::max(1, audio->sampleRate()));
+        static_cast<double>(std::max(1, audio.sampleRate()));
+    m_scopeFrameToneWindowMs =
+        static_cast<double>(range.length()) * 1000.0 /
+        static_cast<double>(std::max(1, audio.sampleRate()));
     if (m_scopeFrameToneValid) {
         m_scopeFrameNote = vwave::nearestNote(m_scopeFrameTone.frequency);
         std::ostringstream out;
@@ -1195,6 +1184,41 @@ void App::analyzeScopeFrameTone() {
     } else {
         setStatus("No stable fundamental at this frame");
     }
+}
+
+void App::analyzeScopeFrameTone() {
+    const double timeSeconds = m_scopeKeyTime.value;
+    const double scanHz = std::max(20.0, m_scopeScanHz.value);
+    const int sampleRate =
+        m_scopePreviewAudio ? std::max(1, m_scopePreviewAudio->sampleRate())
+                            : (m_timeline.sampleRate() > 0
+                                   ? m_timeline.sampleRate()
+                                   : 48000);
+    const int windowSamples = std::clamp(
+        static_cast<int>(std::llround(
+            6.0 * static_cast<double>(sampleRate) / scanHz)),
+        2048, 8192);
+    if (m_scopePreviewAudio && !m_scopePreviewAudio->empty()) {
+        analyzeScopeAudioTone(*m_scopePreviewAudio, timeSeconds,
+                              windowSamples);
+        return;
+    }
+    if (!m_scopeController.valid() &&
+        m_scopeController.keyframes().empty()) {
+        setStatus("Create or import a scope shape first");
+        return;
+    }
+    m_scopeFrameToneValid = false;
+    setStatus("Rendering design for tone analysis...");
+    m_scopeController.renderPreview(
+        scopeRenderParams(),
+        [this, timeSeconds, windowSamples](vwave::Audio audio) {
+            if (audio.empty()) {
+                setStatus("Tone analysis render failed");
+                return;
+            }
+            analyzeScopeAudioTone(audio, timeSeconds, windowSamples);
+        });
 }
 
 void App::toggleScopePreview() {

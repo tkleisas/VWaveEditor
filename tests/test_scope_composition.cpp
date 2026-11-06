@@ -3,6 +3,9 @@
 
 #include "vwave/ScopeComposition.h"
 
+#include "vwave/Analysis.h"
+#include "vwave/Music.h"
+
 #include <cmath>
 #include <fstream>
 
@@ -216,4 +219,32 @@ VWTEST("single scope keyframe applies its transform") {
     const Audio audio = renderScopeComposition(composition, options);
     REQUIRE(!audio.empty());
     CHECK_NEAR(audio.sample(0, 10), 1.0, 1e-6);
+}
+
+VWTEST("rendered scope circle has the requested fundamental") {
+    ScopeComposition composition;
+    composition.duration = 0.5;
+    ScopeDrawing drawing;
+    drawing.id = "circle";
+    drawing.name = "circle";
+    drawing.strokes.push_back(makeScopeCircle(0.7, 128));
+    composition.drawings.push_back(std::move(drawing));
+    ScopeKeyframe keyframe;
+    keyframe.time = 0.0;
+    keyframe.drawing = "circle";
+    composition.keyframes.push_back(keyframe);
+    ScopeRenderOptions options;
+    options.sampleRate = 48000;
+    options.duration = composition.duration;
+    options.scanHz = 220.0;
+    options.bandLimited = false;
+    options.normalize = false;
+    const Audio audio = renderScopeComposition(composition, options);
+    REQUIRE(!audio.empty());
+    const PitchEstimate pitch = detectPitch(
+        audio, {8000, 16000}, PitchOptions{20.0, 5000.0, 0.15});
+    CHECK_NEAR(pitch.frequency, 220.0, 2.0);
+    const NoteInfo note = nearestNote(pitch.frequency);
+    CHECK_EQ(note.midi, 57);
+    CHECK_EQ(note.name, std::string("A3"));
 }

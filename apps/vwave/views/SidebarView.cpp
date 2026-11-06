@@ -731,6 +731,12 @@ void App::drawSidebar() {
                    << formatSeconds(m_scopeFrameToneTime) << "  conf "
                    << std::setprecision(2) << m_scopeFrameTone.confidence;
             drawText(detail.str(), 18, y, kTextFaint, fontSmall());
+            y += 16;
+            std::ostringstream window;
+            window << "window " << formatMilliseconds(m_scopeFrameToneWindowMs)
+                   << "  source "
+                   << (m_scopePreviewAudio ? "preview" : "design render");
+            drawText(window.str(), 18, y, kTextFaint, fontSmall());
             y += 18;
         } else {
             drawText("Analyze the preview/playhead frame.", 18, y,
