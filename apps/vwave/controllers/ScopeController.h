@@ -59,6 +59,10 @@ public:
     int selectedKeyframe() const { return m_selectedKeyframe; }
     void setSelectedKeyframe(int index);
     vwave::ScopeTransform selectedTransform() const;
+    double selectedScanHz() const;
+    void setSelectedScanHz(double hz);
+    double defaultScanHz() const { return m_defaultScanHz; }
+    void setDefaultScanHz(double hz);
     vwave::ScopeTransform transformAt(double time) const;
     vwave::ScopeEasing selectedEasing() const;
     vwave::ScopeTransition selectedTransition() const;
@@ -118,6 +122,7 @@ private:
     uint64_t m_nextDrawingId = 1;
     int m_selectedKeyframe = -1;
     double m_duration = 2.0;
+    double m_defaultScanHz = 120.0;
 };
 
 } // namespace vwave::app

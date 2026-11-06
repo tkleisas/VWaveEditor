@@ -350,6 +350,29 @@ vwave::ScopeComposition ScopeController::composition() const {
     return result;
 }
 
+double ScopeController::selectedScanHz() const {
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
+        return m_defaultScanHz;
+    const double value =
+        m_keyframes[static_cast<size_t>(m_selectedKeyframe)].scanHz;
+    return value > 0.0 ? value : m_defaultScanHz;
+}
+
+void ScopeController::setSelectedScanHz(double hz) {
+    if (!std::isfinite(hz) || hz <= 0.0) return;
+    if (m_selectedKeyframe < 0 ||
+        m_selectedKeyframe >= static_cast<int>(m_keyframes.size())) {
+        m_defaultScanHz = hz;
+        return;
+    }
+    m_keyframes[static_cast<size_t>(m_selectedKeyframe)].scanHz = hz;
+}
+
+void ScopeController::setDefaultScanHz(double hz) {
+    if (std::isfinite(hz) && hz > 0.0) m_defaultScanHz = hz;
+}
+
 vwave::ScopeTransform ScopeController::selectedTransform() const {
     if (m_selectedKeyframe < 0 ||
         m_selectedKeyframe >= static_cast<int>(m_keyframes.size()))
@@ -436,6 +459,7 @@ void ScopeController::addKeyframe(double time) {
         if (m_activeDrawingId.empty() || !drawingById(m_activeDrawingId))
             bindPathToKeyframe();
         keyframe.drawing = m_activeDrawingId;
+        keyframe.scanHz = m_defaultScanHz;
         m_keyframes.push_back(keyframe);
         m_selectedKeyframe = 0;
         m_status("Keyframe 1 added");
@@ -452,8 +476,13 @@ void ScopeController::addKeyframe(double time) {
         keyframe.gain = previous->gain;
         keyframe.easing = previous->easing;
         keyframe.transition = previous->transition;
+        keyframe.scanHz = previous->scanHz > 0.0 ? previous->scanHz
+                                                 : m_defaultScanHz;
     } else {
         keyframe.drawing = m_keyframes.front().drawing;
+        keyframe.scanHz = m_keyframes.front().scanHz > 0.0
+                              ? m_keyframes.front().scanHz
+                              : m_defaultScanHz;
     }
     m_keyframes.push_back(std::move(keyframe));
     std::stable_sort(m_keyframes.begin(), m_keyframes.end(),

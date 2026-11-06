@@ -262,6 +262,10 @@ bool ScopeComposition::validate(std::string* error) const {
             setError(error, "scope keyframe references a missing drawing");
             return false;
         }
+        if (!finite(keyframe.scanHz) || keyframe.scanHz < 0.0) {
+            setError(error, "scope keyframe scan rate is invalid");
+            return false;
+        }
         if (!finite(keyframe.gain) || !finite(keyframe.transform.translateX) ||
             !finite(keyframe.transform.translateY) ||
             !finite(keyframe.transform.scaleX) ||
@@ -298,6 +302,7 @@ nlohmann::json scopeCompositionToJson(const ScopeComposition& composition) {
             {{"time", keyframe.time},
              {"drawing", keyframe.drawing},
              {"transform", transformToJson(keyframe.transform)},
+             {"scanHz", keyframe.scanHz},
              {"gain", keyframe.gain},
              {"easing", scopeEasingName(keyframe.easing)},
              {"transition", scopeTransitionName(keyframe.transition)}});
@@ -372,6 +377,7 @@ bool scopeCompositionFromJson(const nlohmann::json& json,
             keyframe.time = item.value("time", 0.0);
             keyframe.drawing = item.value("drawing", std::string{});
             keyframe.gain = item.value("gain", 1.0);
+            keyframe.scanHz = item.value("scanHz", 0.0);
             if (item.contains("transform") &&
                 !transformFromJson(item["transform"], keyframe.transform,
                                    error))

@@ -248,3 +248,70 @@ VWTEST("rendered scope circle has the requested fundamental") {
     CHECK_EQ(note.midi, 57);
     CHECK_EQ(note.name, std::string("A3"));
 }
+
+VWTEST("scope keyframe scan rate overrides the global scan") {
+    ScopeComposition composition;
+    composition.duration = 0.4;
+    ScopeDrawing drawing;
+    drawing.id = "circle";
+    drawing.name = "circle";
+    drawing.strokes.push_back(makeScopeCircle(0.7, 128));
+    composition.drawings.push_back(std::move(drawing));
+    ScopeKeyframe keyframe;
+    keyframe.time = 0.0;
+    keyframe.drawing = "circle";
+    keyframe.scanHz = 220.0;
+    composition.keyframes.push_back(keyframe);
+
+    ScopeRenderOptions options = renderOptions();
+    options.sampleRate = 48000;
+    options.duration = composition.duration;
+    options.scanHz = 120.0;
+    options.bandLimited = false;
+    const Audio audio = renderScopeComposition(composition, options);
+    REQUIRE(!audio.empty());
+    const PitchEstimate pitch = detectPitch(
+        audio, {4000, 16000}, PitchOptions{20.0, 5000.0, 0.15});
+    CHECK_NEAR(pitch.frequency, 220.0, 2.0);
+}
+
+VWTEST("scope keyframe scan rates serialize and interpolate") {
+    ScopeComposition composition;
+    composition.duration = 1.0;
+    ScopeDrawing drawing;
+    drawing.id = "circle";
+    drawing.name = "circle";
+    drawing.strokes.push_back(makeScopeCircle(0.7, 128));
+    composition.drawings.push_back(std::move(drawing));
+    ScopeKeyframe first;
+    first.time = 0.0;
+    first.drawing = "circle";
+    first.scanHz = 110.0;
+    first.easing = ScopeEasing::Linear;
+    ScopeKeyframe second;
+    second.time = 1.0;
+    second.drawing = "circle";
+    second.scanHz = 220.0;
+    composition.keyframes = {first, second};
+    const auto json = scopeCompositionToJson(composition);
+    ScopeComposition parsed;
+    std::string error;
+    REQUIRE(scopeCompositionFromJson(json, parsed, &error));
+    CHECK_NEAR(parsed.keyframes[0].scanHz, 110.0, 1e-9);
+    CHECK_NEAR(parsed.keyframes[1].scanHz, 220.0, 1e-9);
+
+    ScopeRenderOptions options = renderOptions();
+    options.sampleRate = 48000;
+    options.duration = 1.0;
+    options.scanHz = 120.0;
+    options.bandLimited = false;
+    const Audio audio = renderScopeComposition(composition, options);
+    REQUIRE(!audio.empty());
+    const PitchEstimate early = detectPitch(
+        audio, {2000, 10000}, PitchOptions{20.0, 5000.0, 0.15});
+    const PitchEstimate late = detectPitch(
+        audio, {38000, 46000}, PitchOptions{20.0, 5000.0, 0.15});
+    CHECK(early.frequency > 120.0);
+    CHECK(late.frequency > early.frequency);
+    CHECK(late.frequency < 250.0);
+}

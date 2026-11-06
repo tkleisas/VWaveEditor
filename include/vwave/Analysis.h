@@ -34,6 +34,11 @@ struct PitchEstimate {
     int64_t frame = 0;
 };
 
+struct DominantFrequency {
+    double frequency = 0.0;
+    double magnitude = 0.0;
+};
+
 struct SliceExportOptions {
     std::string prefix = "slice";
     AudioExportOptions audio;
@@ -48,6 +53,9 @@ BeatAnalysis analyzeBeats(const Audio& audio, double sensitivity = 0.5);
 std::vector<Onset> detectOnsets(const Audio& audio, double sensitivity = 0.5);
 PitchEstimate detectPitch(const Audio& audio, Range range = {},
                           const PitchOptions& options = {});
+DominantFrequency detectDominantFrequency(
+    const Audio& audio, Range range = {}, double minHz = 20.0,
+    double maxHz = 20000.0);
 
 std::vector<Slice> sliceByTransients(const Audio& audio,
                                      double sensitivity = 0.5,

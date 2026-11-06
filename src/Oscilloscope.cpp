@@ -294,9 +294,10 @@ ScopePoint sampleScopePath(const ScopePath& path, double position) {
     return sampler.at(position);
 }
 
-template <typename PointSampler>
+template <typename ScanRateSampler, typename PointSampler>
 Audio renderScopeSignal(const ScopeRenderOptions& options,
-                        PointSampler&& sample, std::string* error) {
+                        ScanRateSampler&& scanRate, PointSampler&& sample,
+                        std::string* error) {
     if (error) error->clear();
     if (options.sampleRate <= 0 || !(options.duration > 0.0) ||
         !std::isfinite(options.duration) || !(options.scanHz > 0.0) ||
@@ -306,8 +307,6 @@ Audio renderScopeSignal(const ScopeRenderOptions& options,
     }
     const int sampleRate = std::clamp(options.sampleRate, 1000, 192000);
     const double duration = std::clamp(options.duration, 0.01, 120.0);
-    const double scanHz = std::clamp(
-        options.scanHz, 0.1, static_cast<double>(sampleRate) * 0.49);
     const int64_t frames = static_cast<int64_t>(
         std::llround(duration * static_cast<double>(sampleRate)));
     if (frames <= 0) return Audio{};
@@ -329,18 +328,21 @@ Audio renderScopeSignal(const ScopeRenderOptions& options,
     Audio output(2, frames, sampleRate);
     double smoothLeft = 0.0;
     double smoothRight = 0.0;
+    double phaseCycles = 0.0;
     for (int64_t internalFrame = 0; internalFrame < internalFrames;
          ++internalFrame) {
         const double time =
             static_cast<double>(internalFrame) / internalRate;
-        double phase = std::fmod(time * scanHz, 1.0);
+        const double scanHz = std::clamp(
+            scanRate(time), 0.1, static_cast<double>(sampleRate) * 0.49);
+        double phase = std::fmod(phaseCycles, 1.0);
         if (phase < 0.0) phase += 1.0;
         double position = phase;
         if (options.direction == ScopeDirection::Reverse) {
             position = 1.0 - phase;
             if (position >= 1.0) position = 0.0;
         } else if (options.direction == ScopeDirection::PingPong) {
-            const double cycle = std::fmod(time * scanHz * 2.0, 2.0);
+            const double cycle = std::fmod(phaseCycles * 2.0, 2.0);
             position = cycle <= 1.0 ? cycle : 2.0 - cycle;
         }
         const ScopePoint point = sample(time, position);
@@ -360,6 +362,7 @@ Audio renderScopeSignal(const ScopeRenderOptions& options,
         }
         output.sample(0, frame) = static_cast<float>(left);
         output.sample(1, frame) = static_cast<float>(right);
+        phaseCycles += scanHz / internalRate;
     }
     if (options.normalize) {
         double peak = 0.0;
@@ -391,8 +394,12 @@ Audio renderScopePath(const ScopePath& path, const ScopeRenderOptions& options,
         return Audio{};
     }
     PathSampler sampler(path);
+    const double scanHz = std::clamp(
+        options.scanHz, 0.1,
+        static_cast<double>(std::clamp(options.sampleRate, 1000, 192000)) *
+            0.49);
     return renderScopeSignal(
-        options,
+        options, [scanHz](double) { return scanHz; },
         [&sampler](double, double position) { return sampler.at(position); },
         error);
 }
@@ -417,8 +424,37 @@ Audio renderScopeComposition(const ScopeComposition& composition,
     }
 
     const auto& keyframes = composition.keyframes;
+    auto scanRateAt = [&](double time) {
+        if (keyframes.empty()) return localOptions.scanHz;
+        if (time <= keyframes.front().time) {
+            return keyframes.front().scanHz > 0.0
+                       ? keyframes.front().scanHz
+                       : localOptions.scanHz;
+        }
+        if (time >= keyframes.back().time) {
+            return keyframes.back().scanHz > 0.0 ? keyframes.back().scanHz
+                                                 : localOptions.scanHz;
+        }
+        auto upper = std::upper_bound(
+            keyframes.begin(), keyframes.end(), time,
+            [](double value, const ScopeKeyframe& keyframe) {
+                return value < keyframe.time;
+            });
+        const ScopeKeyframe& first = *(upper - 1);
+        const ScopeKeyframe& second = *upper;
+        const double firstRate = first.scanHz > 0.0 ? first.scanHz
+                                                    : localOptions.scanHz;
+        const double secondRate = second.scanHz > 0.0 ? second.scanHz
+                                                      : localOptions.scanHz;
+        const double span = second.time - first.time;
+        const double progress =
+            span > 1e-12 ? std::clamp((time - first.time) / span, 0.0, 1.0)
+                         : 1.0;
+        const double blend = scopeEasingValue(first.easing, progress);
+        return firstRate + (secondRate - firstRate) * blend;
+    };
     return renderScopeSignal(
-        localOptions,
+        localOptions, scanRateAt,
         [&](double time, double position) {
             auto upper = std::upper_bound(
                 keyframes.begin(), keyframes.end(), time,

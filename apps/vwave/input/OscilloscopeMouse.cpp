@@ -64,6 +64,7 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
         }
         if (nearest < 0 && event.clicks >= 2) {
             m_scopeKeyTime.setValue(time);
+            m_scopeController.setDefaultScanHz(m_scopeScanHz.value);
             m_scopeController.addKeyframe(time);
             syncScopeKeyframeControls();
             queueScopeToneRefresh();

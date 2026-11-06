@@ -27,6 +27,7 @@ public:
         LoadScopePath,
         ImportScopeImage,
         ImportScopeSvg,
+        ScopeScan,
         SeekTime,
         ExportSlices
     };

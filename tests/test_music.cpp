@@ -33,3 +33,24 @@ VWTEST("music note conversion handles invalid frequencies") {
     CHECK_EQ(invalid.name, std::string("C4"));
     CHECK_NEAR(frequencyToMidi(-1.0), 0.0, 1e-9);
 }
+
+VWTEST("music parses note names and frequency input") {
+    int midi = 0;
+    REQUIRE(parseNoteName("A4", midi));
+    CHECK_EQ(midi, 69);
+    REQUIRE(parseNoteName("C#4", midi));
+    CHECK_EQ(midi, 61);
+    REQUIRE(parseNoteName("Bb3", midi));
+    CHECK_EQ(midi, 58);
+    CHECK(!parseNoteName("H4", midi));
+
+    double frequency = 0.0;
+    REQUIRE(parseFrequencyOrNote("A4", frequency));
+    CHECK_NEAR(frequency, 440.0, 1e-9);
+    REQUIRE(parseFrequencyOrNote("220", frequency));
+    CHECK_NEAR(frequency, 220.0, 1e-9);
+    REQUIRE(parseFrequencyOrNote("261.63 Hz", frequency));
+    CHECK_NEAR(frequency, 261.63, 1e-9);
+    CHECK(!parseFrequencyOrNote("nope", frequency));
+    CHECK(!parseFrequencyOrNote("-20", frequency));
+}

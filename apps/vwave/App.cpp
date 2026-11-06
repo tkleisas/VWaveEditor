@@ -218,6 +218,7 @@ App::App()
     m_scopeGain = {0.0, 1.0, 0.8, false, 0.01};
     m_scopeSmoothing = {0.0, 0.95, 0.0, false, 0.01};
     m_scopeKeyTime = {0.0, 30.0, 0.0, false, 0.01};
+    m_scopeKeyScanHz = {20.0, 2000.0, 120.0, true, 1.0};
     m_scopeTranslateX = {-2.0, 2.0, 0.0, false, 0.01};
     m_scopeTranslateY = {-2.0, 2.0, 0.0, false, 0.01};
     m_scopeRotation = {-180.0, 180.0, 0.0, false, 1.0};
@@ -1142,6 +1143,7 @@ void App::syncScopeKeyframeControls() {
     const vwave::ScopeTransform transform =
         m_scopeController.selectedTransform();
     m_scopeKeyTime.setValue(m_scopeController.selectedKeyframeTime());
+    m_scopeKeyScanHz.setValue(m_scopeController.selectedScanHz());
     m_scopeTranslateX.setValue(transform.translateX);
     m_scopeTranslateY.setValue(transform.translateY);
     m_scopeRotation.setValue(transform.rotation * 180.0 / 3.14159265358979323846);
@@ -1168,8 +1170,21 @@ void App::analyzeScopeAudioTone(const vwave::Audio& audio,
     vwave::PitchOptions options;
     options.minHz = 20.0;
     options.maxHz = std::min(5000.0, audio.sampleRate() * 0.45);
+    m_scopeFrameDominantValid = false;
+    m_scopeFrameDominantHz = 0.0;
     m_scopeFrameTone = vwave::detectPitch(audio, range, options);
     m_scopeFrameToneValid = m_scopeFrameTone.frequency > 0.0;
+    const int64_t dominantWindow = 8192;
+    const vwave::Range dominantRange{
+        std::max<int64_t>(0, centerFrame - dominantWindow / 2),
+        std::min<int64_t>(audio.numFrames(), centerFrame + dominantWindow / 2)};
+    const vwave::DominantFrequency dominant =
+        vwave::detectDominantFrequency(audio, dominantRange, 20.0, 5000.0);
+    m_scopeFrameDominantHz = dominant.frequency;
+    m_scopeFrameDominantValid = dominant.frequency > 0.0;
+    if (m_scopeFrameDominantValid)
+        m_scopeFrameDominantNote =
+            vwave::nearestNote(m_scopeFrameDominantHz);
     m_scopeFrameToneTime =
         static_cast<double>(centerFrame) /
         static_cast<double>(std::max(1, audio.sampleRate()));
@@ -1188,6 +1203,25 @@ void App::analyzeScopeAudioTone(const vwave::Audio& audio,
     } else {
         setStatus("No stable fundamental at this frame");
     }
+}
+
+void App::setScopeScanFromText(const std::string& text) {
+    double hz = 0.0;
+    if (!vwave::parseFrequencyOrNote(text, hz)) {
+        setStatus("Scan rate must be a frequency or note, e.g. 220 or A3");
+        return;
+    }
+    hz = std::clamp(hz, 20.0, 2000.0);
+    if (m_scopeController.selectedKeyframe() >= 0) {
+        m_scopeController.setSelectedScanHz(hz);
+    } else {
+        m_scopeScanHz.setValue(hz);
+        m_scopeController.setDefaultScanHz(m_scopeScanHz.value);
+    }
+    syncScopeKeyframeControls();
+    queueScopeToneRefresh();
+    const vwave::NoteInfo note = vwave::nearestNote(hz);
+    setStatus("Scan rate " + formatHz(hz) + "  " + note.name);
 }
 
 void App::analyzeScopeFrameTone(bool usePreview) {
@@ -1978,6 +2012,9 @@ void App::applyDialog(DialogMode mode, const std::string& path) {
         break;
     case DialogMode::ImportScopeSvg:
         importScopeSvg(path);
+        break;
+    case DialogMode::ScopeScan:
+        setScopeScanFromText(path);
         break;
     case DialogMode::SeekTime: {
         double seconds = 0.0;

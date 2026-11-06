@@ -264,6 +264,7 @@ private:
     void syncScopeKeyframeControls();
     void toggleScopePreview();
     void analyzeScopeFrameTone(bool usePreview = false);
+    void setScopeScanFromText(const std::string& text);
     void analyzeScopeAudioTone(const vwave::Audio& audio, double timeSeconds,
                                int windowSamples);
     void queueScopeToneRefresh();
@@ -399,7 +400,10 @@ private:
     uint64_t m_scopePreviewRevision = 0;
     vwave::PitchEstimate m_scopeFrameTone;
     vwave::NoteInfo m_scopeFrameNote;
+    vwave::NoteInfo m_scopeFrameDominantNote;
     bool m_scopeFrameToneValid = false;
+    bool m_scopeFrameDominantValid = false;
+    double m_scopeFrameDominantHz = 0.0;
     double m_scopeFrameToneTime = 0.0;
     double m_scopeFrameToneWindowMs = 0.0;
     bool m_scopeFrameToneFromPreview = false;
@@ -538,6 +542,7 @@ private:
     vwave::ParameterSlider m_scopeGain;
     vwave::ParameterSlider m_scopeSmoothing;
     vwave::ParameterSlider m_scopeKeyTime;
+    vwave::ParameterSlider m_scopeKeyScanHz;
     vwave::ParameterSlider m_scopeTranslateX;
     vwave::ParameterSlider m_scopeTranslateY;
     vwave::ParameterSlider m_scopeRotation;

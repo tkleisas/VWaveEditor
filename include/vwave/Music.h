@@ -15,5 +15,8 @@ double midiNoteFrequency(double note, double a4 = 440.0);
 double frequencyToMidi(double frequency, double a4 = 440.0);
 std::string midiNoteName(int midi);
 NoteInfo nearestNote(double frequency, double a4 = 440.0);
+bool parseNoteName(const std::string& text, int& midi);
+bool parseFrequencyOrNote(const std::string& text, double& frequency,
+                          double a4 = 440.0);
 
 } // namespace vwave

@@ -385,6 +385,81 @@ PitchEstimate detectPitch(const Audio& audio, Range range,
     return estimate;
 }
 
+DominantFrequency detectDominantFrequency(const Audio& audio, Range range,
+                                          double minHz, double maxHz) {
+    DominantFrequency result;
+    if (audio.empty() || audio.sampleRate() <= 0 || minHz <= 0.0 ||
+        maxHz <= minHz)
+        return result;
+    Range selected = range;
+    if (selected.length() <= 0) selected = {0, audio.numFrames()};
+    selected = selected.clamped(audio.numFrames());
+    if (selected.length() < 256) return result;
+
+    int fftSize = 256;
+    while (fftSize * 2 <= static_cast<int>(selected.length()) &&
+           fftSize < 16384)
+        fftSize *= 2;
+    fftSize = std::min(fftSize,
+                       static_cast<int>(nextPowerOfTwo(
+                           static_cast<int>(std::min<int64_t>(
+                               selected.length(), 16384)))));
+    if (fftSize < 256) return result;
+    const int64_t start =
+        selected.start + (selected.length() - fftSize) / 2;
+
+    std::vector<float> window(static_cast<size_t>(fftSize), 0.0f);
+    double mean = 0.0;
+    for (int i = 0; i < fftSize; ++i) {
+        double value = 0.0;
+        for (int ch = 0; ch < audio.numChannels(); ++ch)
+            value += audio.sample(ch, start + i);
+        value /= static_cast<double>(audio.numChannels());
+        window[static_cast<size_t>(i)] = static_cast<float>(value);
+        mean += value;
+    }
+    mean /= static_cast<double>(fftSize);
+    const std::vector<float> hann = hannWindow(fftSize);
+    for (int i = 0; i < fftSize; ++i) {
+        window[static_cast<size_t>(i)] =
+            static_cast<float>((window[static_cast<size_t>(i)] - mean) *
+                               hann[static_cast<size_t>(i)]);
+    }
+
+    FFT fft(fftSize);
+    std::vector<std::complex<float>> spectrum(static_cast<size_t>(fftSize));
+    fft.forwardReal(window, spectrum);
+    const double sampleRate = static_cast<double>(audio.sampleRate());
+    const int firstBin =
+        std::max(1, static_cast<int>(std::ceil(minHz * fftSize / sampleRate)));
+    const int lastBin = std::min(
+        fftSize / 2 - 1,
+        static_cast<int>(std::floor(maxHz * fftSize / sampleRate)));
+    if (lastBin <= firstBin) return result;
+    int peak = firstBin;
+    float peakMagnitude = 0.0f;
+    for (int bin = firstBin; bin <= lastBin; ++bin) {
+        const float magnitude = std::abs(spectrum[static_cast<size_t>(bin)]);
+        if (magnitude > peakMagnitude) {
+            peakMagnitude = magnitude;
+            peak = bin;
+        }
+    }
+    if (peakMagnitude <= 1e-9f) return result;
+    double refined = static_cast<double>(peak);
+    if (peak > firstBin && peak < lastBin) {
+        const double a = std::abs(spectrum[static_cast<size_t>(peak - 1)]);
+        const double b = std::abs(spectrum[static_cast<size_t>(peak)]);
+        const double c = std::abs(spectrum[static_cast<size_t>(peak + 1)]);
+        const double denominator = a - 2.0 * b + c;
+        if (std::abs(denominator) > 1e-12)
+            refined += 0.5 * (a - c) / denominator;
+    }
+    result.frequency = refined * sampleRate / static_cast<double>(fftSize);
+    result.magnitude = static_cast<double>(peakMagnitude);
+    return result;
+}
+
 std::vector<Slice> sliceByTransients(const Audio& audio, double sensitivity,
                                      double minSliceSeconds) {
     std::vector<Slice> slices;

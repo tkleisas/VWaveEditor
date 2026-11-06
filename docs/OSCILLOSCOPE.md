@@ -105,8 +105,13 @@ The Scope tab now includes a keyframe strip and sidebar transform controls:
 - click a key marker to select it, or click empty strip space to move the key
   time cursor;
 - double-click empty strip space to insert a keyframe there, or use **Add Key**;
-- every keyframe stores its own drawing/shape as well as transform, gain,
+- every keyframe stores its own drawing/shape, scan rate, transform, gain,
   easing, and transition;
+- the keyframe scan rate can be entered as a frequency or a 12-TET note name
+  (`220`, `220 Hz`, `A3`, `C#4`, `Bb3`); new keys inherit the previous key's
+  scan rate;
+- scan rates interpolate with the segment easing and are phase-integrated, so
+  glides do not jump phase;
 - a new key inherits all of those values from the previous keyframe in time; if
   there is no earlier key, the following key's shape is used and transform
   defaults apply;
@@ -151,8 +156,10 @@ across animated keyframes compared with a fixed long window. The detector is
 autocorrelation-based (not a single FFT bin); if no stable periodicity is found
 the reading reports no fundamental. It does not change pitch or scan rate.
 During Preview Audio playback the reading refreshes automatically, and
-transform/keyframe/shape adjustments schedule a debounced design re-render and
-tone refresh so tuning move/rotate/scale is immediate.
+transform/keyframe/shape/scan adjustments schedule a debounced design re-render
+and tone refresh so tuning is immediate. A secondary **dominant** line reports
+the strongest FFT partial and its nearest note, which is useful for hearing how
+shape changes affect timbre even when the fundamental stays fixed.
 
 Shift-drag in the keyframe strip sets a scope-local loop range. If tracks exist
 it also maps that loop to the active track's project position. The loop range is

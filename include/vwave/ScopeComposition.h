@@ -60,6 +60,7 @@ struct ScopeKeyframe {
     double time = 0.0;
     std::string drawing;
     ScopeTransform transform;
+    double scanHz = 0.0;
     double gain = 1.0;
     ScopeEasing easing = ScopeEasing::Linear;
     ScopeTransition transition = ScopeTransition::Hold;

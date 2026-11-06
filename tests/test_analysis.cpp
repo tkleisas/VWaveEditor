@@ -236,3 +236,16 @@ VWTEST("slice export rejects an empty slice list") {
     CHECK(!exportSlices(audio, {}, directory.string(), {}, nullptr, &error));
     CHECK(!error.empty());
 }
+
+VWTEST("dominant frequency finds the strongest partial") {
+    Audio audio(1, 48000, 48000);
+    for (int64_t i = 0; i < audio.numFrames(); ++i) {
+        const double time = static_cast<double>(i) / 48000.0;
+        audio.sample(0, i) = static_cast<float>(
+            0.2 * std::sin(2.0 * kPi * 220.0 * time) +
+            0.6 * std::sin(2.0 * kPi * 660.0 * time));
+    }
+    const DominantFrequency dominant = detectDominantFrequency(audio);
+    CHECK_NEAR(dominant.frequency, 660.0, 5.0);
+    CHECK(dominant.magnitude > 0.0);
+}

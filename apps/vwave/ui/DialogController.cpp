@@ -83,9 +83,13 @@ void DialogController::draw(SDL_Renderer* renderer, Painter& painter,
                      ColorRole::Text, FontRole::Bold);
 
     const bool seekTime = m_mode == Mode::SeekTime;
-    painter.drawText(seekTime ? "Time (seconds or MM:SS.mmm)" : "Path",
-                     {box.x + 20, box.y + 50, box.w - 40, 18},
-                     ColorRole::TextDim, FontRole::Small);
+    const bool scanRate = m_mode == Mode::ScopeScan;
+    painter.drawText(
+        seekTime ? "Time (seconds or MM:SS.mmm)"
+                 : scanRate ? "Frequency (Hz) or note name (e.g. 220, A3)"
+                            : "Path",
+        {box.x + 20, box.y + 50, box.w - 40, 18}, ColorRole::TextDim,
+        FontRole::Small);
     const Rect field{box.x + 20, box.y + 78, box.w - 40, 34};
     painter.fillRect(field, ColorRole::Content);
     painter.strokeRect(field, ColorRole::Border);
@@ -103,6 +107,7 @@ void DialogController::draw(SDL_Renderer* renderer, Painter& painter,
     if (m_mode == Mode::AddTrack) confirmLabel = "Add";
     if (m_mode == Mode::ExportSlices) confirmLabel = "Export";
     if (seekTime) confirmLabel = "Go";
+    if (scanRate) confirmLabel = "Set";
     m_controls.addButton(
         confirmLabel, {box.x + box.w - 218, box.y + 150, 94, 28},
         [this] { confirm(); }, true);

@@ -646,6 +646,7 @@ void App::drawSidebar() {
                   y, 256, m_scopeKeyTime);
         y += 30;
         addButton("Add Key", 18, y, buttonWidth, buttonHeight, [this] {
+            m_scopeController.setDefaultScanHz(m_scopeScanHz.value);
             m_scopeController.addKeyframe(m_scopeKeyTime.value);
             syncScopeKeyframeControls();
             queueScopeToneRefresh();
@@ -709,6 +710,17 @@ void App::drawSidebar() {
                   m_scopeScale,
                   [applyScopeKeyTransform](double) { applyScopeKeyTransform(); });
         y += 30;
+        if (m_scopeController.selectedKeyframe() >= 0) {
+            const vwave::NoteInfo scanNote =
+                vwave::nearestNote(m_scopeKeyScanHz.value);
+            addSlider("Key scan",
+                      formatHz(m_scopeKeyScanHz.value) + " " + scanNote.name,
+                      18, y, 256, m_scopeKeyScanHz, [this](double value) {
+                          m_scopeController.setSelectedScanHz(value);
+                          queueScopeToneRefresh();
+                      });
+            y += 30;
+        }
         if (m_scopeController.selectedKeyframe() < 0) {
             drawText("Add/select a keyframe to edit transforms.", 18, y,
                      kTextFaint, fontSmall());
@@ -747,6 +759,18 @@ void App::drawSidebar() {
                    << (m_scopeFrameToneFromPreview ? "preview"
                                                   : "design render");
             drawText(window.str(), 18, y, kTextFaint, fontSmall());
+            y += 16;
+            if (m_scopeFrameDominantValid) {
+                std::ostringstream dominant;
+                dominant << "dominant " << formatHz(m_scopeFrameDominantHz)
+                         << "  " << m_scopeFrameDominantNote.name << " "
+                         << std::showpos << std::fixed
+                         << std::setprecision(1)
+                         << m_scopeFrameDominantNote.cents << "c";
+                drawText(dominant.str(), 18, y, kTextFaint, fontSmall());
+            } else {
+                drawText("dominant: none", 18, y, kTextFaint, fontSmall());
+            }
             y += 18;
         } else {
             drawText("Analyze the preview/playhead frame.", 18, y,
@@ -755,9 +779,22 @@ void App::drawSidebar() {
         }
 
         drawSection("RENDER", y);
-        addSlider("Scan", formatHz(m_scopeScanHz.value), 18, y, 256,
-                  m_scopeScanHz, [this](double) { queueScopeToneRefresh(); });
+        const vwave::NoteInfo baseScanNote =
+            vwave::nearestNote(m_scopeScanHz.value);
+        addSlider("Base scan",
+                  formatHz(m_scopeScanHz.value) + " " + baseScanNote.name, 18,
+                  y, 256, m_scopeScanHz, [this](double value) {
+                      m_scopeController.setDefaultScanHz(value);
+                      queueScopeToneRefresh();
+                  });
         y += 30;
+        addButton("Enter Scan Rate...", 18, y, buttonWidth * 2 + gap,
+                  buttonHeight, [this] {
+                      openDialog(DialogMode::ScopeScan,
+                                 "Scan rate in Hz or note (e.g. 220 or A3)",
+                                 "A3", false);
+                  });
+        y += buttonHeight + 6;
         addSlider("Duration", formatSecondsControl(m_scopeDuration.value), 18,
                   y, 256, m_scopeDuration);
         y += 30;
