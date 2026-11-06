@@ -1092,6 +1092,7 @@ vwave::app::ScopeRenderParams App::scopeRenderParams() const {
 
 void App::generateScopePath() {
     m_scopeController.generate(scopeShapeParams());
+    queueScopeToneRefresh();
 }
 
 void App::cycleScopeShape() {
@@ -1110,6 +1111,7 @@ void App::loadScopePathFile(const std::string& path) {
     if (m_scopeController.load(path)) {
         syncScopeKeyframeControls();
         setTab(vwave::EditorTab::Oscilloscope);
+        queueScopeToneRefresh();
     }
 }
 
@@ -1127,11 +1129,13 @@ void App::toggleScopeXYMode() {
 void App::importScopeImage(const std::string& path) {
     m_scopeController.importImage(path);
     setTab(vwave::EditorTab::Oscilloscope);
+    queueScopeToneRefresh();
 }
 
 void App::importScopeSvg(const std::string& path) {
     m_scopeController.importSvg(path);
     setTab(vwave::EditorTab::Oscilloscope);
+    queueScopeToneRefresh();
 }
 
 void App::syncScopeKeyframeControls() {
@@ -1186,7 +1190,7 @@ void App::analyzeScopeAudioTone(const vwave::Audio& audio,
     }
 }
 
-void App::analyzeScopeFrameTone() {
+void App::analyzeScopeFrameTone(bool usePreview) {
     const double timeSeconds = m_scopeKeyTime.value;
     const double scanHz = std::max(20.0, m_scopeScanHz.value);
     const int sampleRate =
@@ -1198,11 +1202,13 @@ void App::analyzeScopeFrameTone() {
         static_cast<int>(std::llround(
             6.0 * static_cast<double>(sampleRate) / scanHz)),
         2048, 8192);
-    if (m_scopePreviewAudio && !m_scopePreviewAudio->empty()) {
+    if (usePreview && m_scopePreviewAudio && !m_scopePreviewAudio->empty()) {
+        m_scopeFrameToneFromPreview = true;
         analyzeScopeAudioTone(*m_scopePreviewAudio, timeSeconds,
                               windowSamples);
         return;
     }
+    m_scopeFrameToneFromPreview = false;
     if (!m_scopeController.valid() &&
         m_scopeController.keyframes().empty()) {
         setStatus("Create or import a scope shape first");
@@ -1219,6 +1225,18 @@ void App::analyzeScopeFrameTone() {
             }
             analyzeScopeAudioTone(audio, timeSeconds, windowSamples);
         });
+}
+
+void App::queueScopeToneRefresh() {
+    m_scopeToneRefreshPending = true;
+    m_scopeToneRefreshAfter = SDL_GetTicks() + 180;
+}
+
+void App::updateScopeToneRefresh() {
+    if (!m_scopeToneRefreshPending) return;
+    if (SDL_GetTicks() < m_scopeToneRefreshAfter) return;
+    m_scopeToneRefreshPending = false;
+    analyzeScopeFrameTone(false);
 }
 
 void App::toggleScopePreview() {
@@ -1305,15 +1323,17 @@ void App::updatePlayback() {
             }
             const Uint32 now = SDL_GetTicks();
             if (now >= m_scopeNextToneAnalysisTicks) {
-                analyzeScopeFrameTone();
+                analyzeScopeFrameTone(true);
                 m_scopeNextToneAnalysisTicks = now + 150;
             }
         } else {
             m_scopePreviewPlaying = false;
         }
+        updateScopeToneRefresh();
         return;
     }
     m_playback.update();
+    updateScopeToneRefresh();
 }
 
 void App::runEdit(const std::function<bool(std::string*)>& edit,

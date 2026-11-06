@@ -263,9 +263,11 @@ private:
     void importScopeSvg(const std::string& path);
     void syncScopeKeyframeControls();
     void toggleScopePreview();
-    void analyzeScopeFrameTone();
+    void analyzeScopeFrameTone(bool usePreview = false);
     void analyzeScopeAudioTone(const vwave::Audio& audio, double timeSeconds,
                                int windowSamples);
+    void queueScopeToneRefresh();
+    void updateScopeToneRefresh();
     void syncWavetableDesignControls();
     void addWavetableFrame(bool duplicate);
     void addHarmonicWavetableFrame();
@@ -400,7 +402,10 @@ private:
     bool m_scopeFrameToneValid = false;
     double m_scopeFrameToneTime = 0.0;
     double m_scopeFrameToneWindowMs = 0.0;
+    bool m_scopeFrameToneFromPreview = false;
     Uint32 m_scopeNextToneAnalysisTicks = 0;
+    bool m_scopeToneRefreshPending = false;
+    Uint32 m_scopeToneRefreshAfter = 0;
     vwave::Spectrogram m_spectrogram;
     vwave::PhaseSpectrogram m_phaseSpectrogram;
     bool m_phaseSpectrogramDirty = true;

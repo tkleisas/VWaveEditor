@@ -648,6 +648,7 @@ void App::drawSidebar() {
         addButton("Add Key", 18, y, buttonWidth, buttonHeight, [this] {
             m_scopeController.addKeyframe(m_scopeKeyTime.value);
             syncScopeKeyframeControls();
+            queueScopeToneRefresh();
         }, false, false, hasScope);
         addButton("Delete Key", 18 + buttonWidth + gap, y, buttonWidth,
                   buttonHeight, [this] {
@@ -658,19 +659,26 @@ void App::drawSidebar() {
         addButton("Move Key Here", 18, y, buttonWidth, buttonHeight, [this] {
             m_scopeController.moveSelectedKeyframe(m_scopeKeyTime.value);
             syncScopeKeyframeControls();
+            queueScopeToneRefresh();
         }, false, false, m_scopeController.selectedKeyframe() >= 0);
         addButton(std::string("Ease: ") +
                       vwave::scopeEasingName(
                           m_scopeController.selectedEasing()),
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
-                  [this] { m_scopeController.cycleSelectedEasing(); },
+                  [this] {
+                      m_scopeController.cycleSelectedEasing();
+                      queueScopeToneRefresh();
+                  },
                   false, false, m_scopeController.selectedKeyframe() >= 0);
         y += buttonHeight + 6;
         addButton(std::string("Transition: ") +
                       vwave::scopeTransitionName(
                           m_scopeController.selectedTransition()),
                   18, y, buttonWidth * 2 + gap, buttonHeight,
-                  [this] { m_scopeController.cycleSelectedTransition(); },
+                  [this] {
+                      m_scopeController.cycleSelectedTransition();
+                      queueScopeToneRefresh();
+                  },
                   false, false, m_scopeController.selectedKeyframe() >= 0);
         y += buttonHeight + 6;
         auto applyScopeKeyTransform = [this] {
@@ -683,6 +691,7 @@ void App::drawSidebar() {
             transform.scaleX = m_scopeScale.value;
             transform.scaleY = m_scopeScale.value;
             m_scopeController.setSelectedTransform(transform);
+            queueScopeToneRefresh();
         };
         addSlider("Move X", formatMorph(m_scopeTranslateX.value), 18, y, 256,
                   m_scopeTranslateX,
@@ -735,7 +744,8 @@ void App::drawSidebar() {
             std::ostringstream window;
             window << "window " << formatMilliseconds(m_scopeFrameToneWindowMs)
                    << "  source "
-                   << (m_scopePreviewAudio ? "preview" : "design render");
+                   << (m_scopeFrameToneFromPreview ? "preview"
+                                                  : "design render");
             drawText(window.str(), 18, y, kTextFaint, fontSmall());
             y += 18;
         } else {
@@ -746,7 +756,7 @@ void App::drawSidebar() {
 
         drawSection("RENDER", y);
         addSlider("Scan", formatHz(m_scopeScanHz.value), 18, y, 256,
-                  m_scopeScanHz);
+                  m_scopeScanHz, [this](double) { queueScopeToneRefresh(); });
         y += 30;
         addSlider("Duration", formatSecondsControl(m_scopeDuration.value), 18,
                   y, 256, m_scopeDuration);

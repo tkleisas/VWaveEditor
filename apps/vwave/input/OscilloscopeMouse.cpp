@@ -66,13 +66,13 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
             m_scopeKeyTime.setValue(time);
             m_scopeController.addKeyframe(time);
             syncScopeKeyframeControls();
-            if (m_scopePreviewAudio) analyzeScopeFrameTone();
+            queueScopeToneRefresh();
             return;
         }
         m_scopeController.setSelectedKeyframe(nearest);
         m_scopeKeyTime.setValue(time);
         if (nearest >= 0) syncScopeKeyframeControls();
-        if (m_scopePreviewAudio) analyzeScopeFrameTone();
+        queueScopeToneRefresh();
         return;
     }
     if (!m_scopeController.pointEditing()) return;
@@ -98,6 +98,7 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
             0.06) {
             path.closed = true;
             m_scopeController.commitPathToKeyframe();
+            queueScopeToneRefresh();
             setStatus("Scope path closed");
             return;
         }
@@ -106,6 +107,7 @@ void App::handleOscilloscopeMouseDown(const SDL_MouseButtonEvent& event) {
     path.points.push_back(candidate);
     path.closed = false;
     m_scopeController.commitPathToKeyframe();
+    queueScopeToneRefresh();
     setStatus("Scope point " +
               std::to_string(path.points.size()) +
               " added");

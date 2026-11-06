@@ -150,7 +150,9 @@ The analysis window is adaptive: approximately six scan cycles, clamped to
 across animated keyframes compared with a fixed long window. The detector is
 autocorrelation-based (not a single FFT bin); if no stable periodicity is found
 the reading reports no fundamental. It does not change pitch or scan rate.
-During Preview Audio playback the reading refreshes automatically.
+During Preview Audio playback the reading refreshes automatically, and
+transform/keyframe/shape adjustments schedule a debounced design re-render and
+tone refresh so tuning move/rotate/scale is immediate.
 
 Shift-drag in the keyframe strip sets a scope-local loop range. If tracks exist
 it also maps that loop to the active track's project position. The loop range is
