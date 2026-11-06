@@ -254,6 +254,15 @@ nlohmann::json makeScopeTrackRecipe(const ScopePath& path,
             {"options", scopeOptionsJson(options)}};
 }
 
+nlohmann::json makeScopeCompositionRecipe(
+    const ScopeComposition& composition,
+    const ScopeRenderOptions& options) {
+    return {{"type", "oscilloscope_composition"},
+            {"version", 1},
+            {"composition", scopeCompositionToJson(composition)},
+            {"options", scopeOptionsJson(options)}};
+}
+
 nlohmann::json makeSynthTrackRecipe(const std::string& wavetablePath,
                                    double midiNote, double durationSeconds,
                                    const SynthNoteOptions& options) {
@@ -307,6 +316,25 @@ bool renderTrackRecipe(const nlohmann::json& recipe, Audio& out,
             !parseScopeOptions(recipe["options"], options, error))
             return false;
         const Audio rendered = renderScopePath(path, options, error);
+        if (rendered.empty()) return false;
+        out = rendered;
+        return true;
+    }
+    if (type == "oscilloscope_composition") {
+        if (!recipe.contains("composition")) {
+            if (error) *error = "scope composition recipe has no composition";
+            return false;
+        }
+        ScopeComposition composition;
+        if (!scopeCompositionFromJson(recipe["composition"], composition,
+                                      error))
+            return false;
+        ScopeRenderOptions options;
+        if (recipe.contains("options") &&
+            !parseScopeOptions(recipe["options"], options, error))
+            return false;
+        const Audio rendered =
+            renderScopeComposition(composition, options, error);
         if (rendered.empty()) return false;
         out = rendered;
         return true;

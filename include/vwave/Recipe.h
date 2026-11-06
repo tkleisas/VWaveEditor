@@ -3,6 +3,7 @@
 #include "vwave/Audio.h"
 #include "vwave/ImageSpectrogram.h"
 #include "vwave/Oscilloscope.h"
+#include "vwave/ScopeComposition.h"
 #include "vwave/Synth.h"
 #include "vwave/Timeline.h"
 
@@ -16,6 +17,9 @@ nlohmann::json makeImageTrackRecipe(
     const std::string& imagePath, const ImageSpectrogramOptions& options);
 nlohmann::json makeScopeTrackRecipe(const ScopePath& path,
                                     const ScopeRenderOptions& options);
+nlohmann::json makeScopeCompositionRecipe(
+    const ScopeComposition& composition,
+    const ScopeRenderOptions& options);
 nlohmann::json makeSynthTrackRecipe(const std::string& wavetablePath,
                                    double midiNote, double durationSeconds,
                                    const SynthNoteOptions& options);

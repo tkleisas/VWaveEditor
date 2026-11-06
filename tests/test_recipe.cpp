@@ -106,3 +106,37 @@ VWTEST("track recipe regeneration reports unsupported recipes") {
     CHECK(!regenerateTrack(timeline, 0, audio, &error));
     CHECK(!regenerateTrack(timeline, 5, audio, &error));
 }
+
+VWTEST("scope composition recipes regenerate audio") {
+    ScopeComposition composition;
+    composition.duration = 0.1;
+    ScopeDrawing drawing;
+    drawing.id = "circle";
+    drawing.name = "circle";
+    drawing.strokes.push_back(makeScopeCircle(0.5, 32));
+    composition.drawings.push_back(std::move(drawing));
+    ScopeKeyframe first;
+    first.time = 0.0;
+    first.drawing = "circle";
+    ScopeKeyframe second;
+    second.time = 0.1;
+    second.drawing = "circle";
+    second.transform.translateX = 0.2;
+    composition.keyframes = {first, second};
+    ScopeRenderOptions options;
+    options.sampleRate = 8000;
+    options.duration = 0.1;
+    options.scanHz = 100.0;
+    options.bandLimited = false;
+    const nlohmann::json recipe =
+        makeScopeCompositionRecipe(composition, options);
+    Audio audio;
+    std::string error;
+    REQUIRE(renderTrackRecipe(recipe, audio, &error));
+    CHECK(error.empty());
+    CHECK_EQ(audio.numChannels(), 2);
+    CHECK_EQ(audio.numFrames(), int64_t{800});
+    Audio again;
+    REQUIRE(renderTrackRecipe(recipe, again, &error));
+    CHECK(again.equals(audio));
+}

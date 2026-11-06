@@ -31,10 +31,28 @@ The core now has a versioned composition model for animated scope drawings:
   direction, smoothing, oversampling, band-limit, and normalization pipeline.
 - `.vscope` version 2 stores compositions; version 1 single paths load as a
   one-drawing, one-keyframe composition.
+- Composition recipes (`oscilloscope_composition`) render the animated result
+  through the normal track-recipe pipeline.
 
 Keyframe transition/easing belongs to the segment **starting at that keyframe**.
 The next UI stage adds the keyframe strip, transform gizmo, image/SVG import,
 and XY audio verification view.
+
+## Raster image tracing
+
+`ScopeTrace` converts a raster image into a monochrome contour drawing:
+
+- alpha compositing over white, luminance conversion;
+- threshold, invert, gamma, and contrast controls;
+- optional working-resolution cap;
+- pixel-edge contour tracing for filled shapes, including separate contours for
+  multiple components and holes;
+- collinear simplification, optional distance simplification, point caps, and
+  nearest-neighbour stroke ordering;
+- output is a `ScopeDrawing` with multiple closed strokes.
+
+Multi-stroke travel is rendered as a direct connector, which is intentional:
+on a stereo XY display there is no separate beam-blanking channel.
 
 ## Rendering
 
@@ -95,10 +113,12 @@ points.
 
 ## Limitations
 
-- No text, SVG import, or multi-pass thickness tools yet.
+- Raster tracing is contour-only for now; no skeleton/centerline mode yet.
+- No SVG import or multi-pass thickness tools yet.
 - Polyline editing is click-only; no drag handles or undo for individual
   points.
 - Path recipes are stored as `.vscope` files; generated tracks do not yet carry
   an embedded recipe.
 - Editing existing stereo audio in the XY domain is future work.
 - Render/analyze jobs are synchronous and do not yet expose progress/cancel.
+- Image tracing is a core operation but not yet wired into the Scope tab UI.
