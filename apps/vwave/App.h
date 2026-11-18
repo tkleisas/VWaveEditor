@@ -272,6 +272,7 @@ private:
     vwave::XenakisRenderOptions xenakisRenderOptions() const;
     void generateXenakisPage();
     void renderXenakisToTrack();
+    void toggleXenakisPreview();
     void syncXenakisPageControls();
     void handleXenakisMouseDown(const SDL_MouseButtonEvent& event);
     void handleXenakisMouseMotion(const SDL_MouseMotionEvent& event);
@@ -474,6 +475,8 @@ private:
     bool m_xenakisSnapPitch = true;
     bool m_xenakisSnapTime = true;
     bool m_xenakisDrawing = false;
+    bool m_xenakisFreehand = false;
+    std::vector<xen::ArcPoint> m_xenakisFreehandPoints;
     float m_xenakisDrawStartTime = 0.0f;
     float m_xenakisDrawCurrentTime = 0.0f;
     float m_xenakisDrawStartPitch = 0.5f;
@@ -482,6 +485,7 @@ private:
     bool m_xenakisArcMute = false;
     bool m_xenakisGroupMute = false;
     bool m_xenakisGroupSolo = false;
+    bool m_xenakisTableDiscrete = false;
     bool m_scopeXYDirty = true;
     SDL_Texture* m_scopeXYTexture = nullptr;
     int m_scopeXYTextureSize = 0;
@@ -618,6 +622,9 @@ private:
     vwave::ParameterSlider m_xenakisGroupTranspose;
     vwave::ParameterSlider m_xenakisAttack;
     vwave::ParameterSlider m_xenakisRelease;
+    vwave::ParameterSlider m_xenakisTableLow;
+    vwave::ParameterSlider m_xenakisTableHigh;
+    vwave::ParameterSlider m_xenakisTableDivisions;
     vwave::ParameterSlider m_masteringBands;
     vwave::ParameterSlider m_masteringMaxCut;
     vwave::ParameterSlider m_masteringMaxBoost;

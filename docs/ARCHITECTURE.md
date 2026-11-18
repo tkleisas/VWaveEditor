@@ -307,7 +307,11 @@ that path. The Xenakis tab calls `generateXenakisPage` from the sidebar and
 draws the page on an editable time/pitch canvas. Mouse edits go through
 `XenakisController::editPage`, which serializes the page and maintains a bounded
 page undo/redo history; `Ctrl+Z`/`Ctrl+Y` use that history while the tab is
-active. Load/Save Page read and write `.xenpage` files without rendering.
+active. The canvas additionally supports freehand multi-point arcs, per-arc
+waveform/group edits, and tuning-table edits; Preview Page renders through the
+same path and loops the result through `AudioPlayer`, with the canvas drawing
+the current source position. Load/Save Page read and write `.xenpage` files
+without rendering.
 
 ### Mastering analysis
 

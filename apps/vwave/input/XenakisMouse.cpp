@@ -117,6 +117,9 @@ void App::handleXenakisMouseDown(const SDL_MouseButtonEvent& event) {
     m_xenakisDrawStartPitch =
         xenakisPitchAt(event.y, m_xenakisSnapPitch);
     m_xenakisDrawCurrentPitch = m_xenakisDrawStartPitch;
+    m_xenakisFreehandPoints.clear();
+    m_xenakisFreehandPoints.push_back(
+        {m_xenakisDrawStartTime, m_xenakisDrawStartPitch});
 }
 
 void App::handleXenakisMouseMotion(const SDL_MouseMotionEvent& event) {
@@ -125,6 +128,21 @@ void App::handleXenakisMouseMotion(const SDL_MouseMotionEvent& event) {
         static_cast<float>(xenakisTimeAt(event.x, m_xenakisSnapTime));
     m_xenakisDrawCurrentPitch =
         xenakisPitchAt(event.y, m_xenakisSnapPitch);
+    if (m_xenakisFreehand && m_xenakisArea.w > 0 &&
+        m_xenakisArea.h > 0) {
+        const double duration =
+            std::max(0.001, m_xenakisController.page().duration);
+        const xen::ArcPoint& last = m_xenakisFreehandPoints.back();
+        const double dx =
+            (static_cast<double>(m_xenakisDrawCurrentTime) - last.time) /
+            duration * m_xenakisArea.w;
+        const double dy =
+            (static_cast<double>(m_xenakisDrawCurrentPitch) - last.pitch) *
+            m_xenakisArea.h;
+        if (dx * dx + dy * dy >= 4.0)
+            m_xenakisFreehandPoints.push_back(
+                {m_xenakisDrawCurrentTime, m_xenakisDrawCurrentPitch});
+    }
 }
 
 void App::handleXenakisMouseUp(const SDL_MouseButtonEvent& event) {
@@ -136,17 +154,45 @@ void App::handleXenakisMouseUp(const SDL_MouseButtonEvent& event) {
     const float endTime = m_xenakisDrawCurrentTime;
     const float from = std::min(startTime, endTime);
     const float to = std::max(startTime, endTime);
-    if (to - from < 1e-3f) return;
+
+    std::vector<xen::ArcPoint> points;
+    if (m_xenakisFreehand && m_xenakisFreehandPoints.size() >= 2) {
+        points = m_xenakisFreehandPoints;
+        points.push_back(
+            {m_xenakisDrawCurrentTime, m_xenakisDrawCurrentPitch});
+        std::sort(points.begin(), points.end(),
+                  [](const xen::ArcPoint& a, const xen::ArcPoint& b) {
+                      return a.time < b.time;
+                  });
+        points.erase(std::unique(points.begin(), points.end(),
+                                 [](const xen::ArcPoint& a,
+                                    const xen::ArcPoint& b) {
+                                     return std::abs(a.time - b.time) <
+                                            1e-6f;
+                                 }),
+                     points.end());
+    } else {
+        if (to - from < 1e-3f) {
+            m_xenakisFreehandPoints.clear();
+            return;
+        }
+        points = {{from, startTime <= endTime ? m_xenakisDrawStartPitch
+                                              : m_xenakisDrawCurrentPitch},
+                  {to, startTime <= endTime ? m_xenakisDrawCurrentPitch
+                                            : m_xenakisDrawStartPitch}};
+    }
+    m_xenakisFreehandPoints.clear();
+
+    if (points.size() < 2 ||
+        points.back().time - points.front().time < 1e-3f)
+        return;
 
     xen::Arc arc;
     arc.waveform = static_cast<xen::WaveformType>(
         std::clamp(m_xenakisWaveform, 0, 4));
     arc.weight = static_cast<float>(m_xenakisArcWeight.value);
     arc.group = std::clamp(m_xenakisGroup, 0, 3);
-    arc.points = {{from, startTime <= endTime ? m_xenakisDrawStartPitch
-                                              : m_xenakisDrawCurrentPitch},
-                  {to, startTime <= endTime ? m_xenakisDrawCurrentPitch
-                                            : m_xenakisDrawStartPitch}};
+    arc.points = std::move(points);
 
     m_xenakisController.editPage(
         [&arc](xen::Page& page) { page.arcs.push_back(arc); });

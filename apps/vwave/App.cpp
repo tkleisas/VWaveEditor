@@ -264,6 +264,9 @@ App::App()
     m_xenakisGroupTranspose = {-24.0, 24.0, 0.0, false, 1.0};
     m_xenakisAttack = {0.0, 0.5, 0.005, false, 0.001};
     m_xenakisRelease = {0.0, 1.0, 0.05, false, 0.001};
+    m_xenakisTableLow = {0.0, 126.0, 0.0, false, 1.0};
+    m_xenakisTableHigh = {1.0, 127.0, 120.0, false, 1.0};
+    m_xenakisTableDivisions = {5.0, 24.0, 12.0, false, 1.0};
     m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
     m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
     m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};
@@ -1239,6 +1242,14 @@ void App::syncXenakisPageControls() {
         m_xenakisRelease.value =
             1.0 - page.envelopes[0].points[2].time;
     }
+    if (!page.frequencyTables.empty()) {
+        const xen::FrequencyTable& table = page.frequencyTables.front();
+        m_xenakisTableLow.value = table.lowIndex;
+        m_xenakisTableHigh.value = table.highIndex;
+        m_xenakisTableDivisions.value =
+            table.tuning.divisionsPerOctave;
+        m_xenakisTableDiscrete = table.tuning.discrete;
+    }
     if (!page.groups.empty()) {
         m_xenakisGroup = std::clamp(
             m_xenakisGroup, 0, static_cast<int>(page.groups.size()) - 1);
@@ -1264,6 +1275,19 @@ void App::syncXenakisPageControls() {
 
 void App::renderXenakisToTrack() {
     m_xenakisController.render(m_playhead, xenakisRenderOptions());
+}
+
+void App::toggleXenakisPreview() {
+    if (m_xenakisController.previewing()) {
+        m_xenakisController.stopPreview();
+        setStatus("Preview stopped");
+        return;
+    }
+    stopPlayback();
+    vwave::XenakisRenderOptions options = xenakisRenderOptions();
+    options.duration = 0.0;
+    options.loop = true;
+    m_xenakisController.preview(options);
 }
 
 void App::generateScopePath() {
@@ -1503,6 +1527,9 @@ void App::toggleScopePreview() {
 }
 
 void App::setTab(vwave::EditorTab tab) {
+    if (m_tab == vwave::EditorTab::Xenakis &&
+        tab != vwave::EditorTab::Xenakis)
+        m_xenakisController.stopPreview();
     if (m_tab != tab) m_sidebarScroll = 0.0;
     closeContextMenu();
     m_tab = tab;
@@ -1512,6 +1539,8 @@ void App::setTab(vwave::EditorTab tab) {
 }
 
 void App::togglePlay() {
+    if (m_xenakisController.previewing())
+        m_xenakisController.stopPreview();
     if (m_recordingController.recording()) stopRecording();
     requestPrefetch();
     m_playback.togglePlay();
@@ -1521,6 +1550,12 @@ void App::stopPlayback() { m_playback.stop(); }
 
 void App::updatePlayback() {
     updateWaveDragAutoscroll();
+    if (m_xenakisController.previewing()) {
+        if (m_xenakisController.previewPlaying() &&
+            !m_player.isPlaying())
+            m_xenakisController.stopPreview();
+        return;
+    }
     if (m_scopePreviewPlaying) {
         if (m_player.isPlaying()) {
             m_scopePreviewTime = m_player.sourcePosition();

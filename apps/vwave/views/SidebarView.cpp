@@ -864,6 +864,11 @@ void App::drawSidebar() {
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
                   [this] { m_xenakisSnapPitch = !m_xenakisSnapPitch; });
         y += buttonHeight + 6;
+        addButton(std::string("Freehand: ") +
+                      (m_xenakisFreehand ? "On" : "Off"),
+                  18, y, buttonWidth * 2 + gap, buttonHeight,
+                  [this] { m_xenakisFreehand = !m_xenakisFreehand; });
+        y += buttonHeight + 6;
         addButton(std::string("Snap time: ") +
                       (m_xenakisSnapTime ? "On" : "Off"),
                   18, y, buttonWidth, buttonHeight,
@@ -955,6 +960,42 @@ void App::drawSidebar() {
                  << formatMorph(selected.weight);
             drawText(info.str(), 18, y, kTextDim, fontSmall());
             y += 18;
+            const int arcIndex = m_xenakisSelectedArc;
+            const auto arcWaveform = selected.waveform;
+            const int arcGroup = selected.group;
+            const int groupCount = std::max(
+                1, static_cast<int>(
+                       m_xenakisController.page().groups.size()));
+            addButton(std::string("Arc wave: ") +
+                          xen::waveformName(arcWaveform),
+                      18, y, buttonWidth, buttonHeight,
+                      [this, arcIndex, arcWaveform] {
+                          const int next =
+                              (static_cast<int>(arcWaveform) + 1) % 5;
+                          m_xenakisController.editPage(
+                              [arcIndex, next](xen::Page& page) {
+                                  if (arcIndex <
+                                      static_cast<int>(page.arcs.size()))
+                                      page.arcs[arcIndex].waveform =
+                                          static_cast<xen::WaveformType>(
+                                              next);
+                              });
+                          syncXenakisPageControls();
+                      });
+            addButton(std::string("Arc group: ") +
+                          std::to_string(arcGroup + 1),
+                      18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                      [this, arcIndex, arcGroup, groupCount] {
+                          const int next = (arcGroup + 1) % groupCount;
+                          m_xenakisController.editPage(
+                              [arcIndex, next](xen::Page& page) {
+                                  if (arcIndex <
+                                      static_cast<int>(page.arcs.size()))
+                                      page.arcs[arcIndex].group = next;
+                              });
+                          syncXenakisPageControls();
+                      });
+            y += buttonHeight + 6;
         } else {
             drawText("No arc selected.", 18, y, kTextFaint, fontSmall());
             y += 18;
@@ -1172,6 +1213,80 @@ void App::drawSidebar() {
                   });
         y += 30;
 
+        drawSection("TUNING", y);
+        addSlider("Table low", formatInt(m_xenakisTableLow.value), 18, y,
+                  256, m_xenakisTableLow, [this](double) {
+                      m_xenakisController.editPage([this](xen::Page& page) {
+                          if (page.frequencyTables.empty())
+                              page.frequencyTables.push_back(
+                                  xen::FrequencyTable{});
+                          auto& table = page.frequencyTables.front();
+                          const int low = std::clamp(
+                              static_cast<int>(
+                                  std::lround(m_xenakisTableLow.value)),
+                              0, 126);
+                          const int high = std::clamp(
+                              static_cast<int>(
+                                  std::lround(m_xenakisTableHigh.value)),
+                              0, 127);
+                          table.lowIndex = low;
+                          table.highIndex = std::max(low + 1, high);
+                      }, "table_low");
+                      syncXenakisPageControls();
+                  });
+        y += 30;
+        addSlider("Table high", formatInt(m_xenakisTableHigh.value), 18, y,
+                  256, m_xenakisTableHigh, [this](double) {
+                      m_xenakisController.editPage([this](xen::Page& page) {
+                          if (page.frequencyTables.empty())
+                              page.frequencyTables.push_back(
+                                  xen::FrequencyTable{});
+                          auto& table = page.frequencyTables.front();
+                          const int low = std::clamp(
+                              static_cast<int>(
+                                  std::lround(m_xenakisTableLow.value)),
+                              0, 126);
+                          const int high = std::clamp(
+                              static_cast<int>(
+                                  std::lround(m_xenakisTableHigh.value)),
+                              0, 127);
+                          table.lowIndex = low;
+                          table.highIndex = std::max(low + 1, high);
+                      }, "table_high");
+                      syncXenakisPageControls();
+                  });
+        y += 30;
+        addSlider("Divisions",
+                  formatInt(m_xenakisTableDivisions.value), 18, y, 256,
+                  m_xenakisTableDivisions, [this](double) {
+                      m_xenakisController.editPage([this](xen::Page& page) {
+                          if (page.frequencyTables.empty())
+                              page.frequencyTables.push_back(
+                                  xen::FrequencyTable{});
+                          page.frequencyTables.front()
+                              .tuning.divisionsPerOctave =
+                              std::clamp(m_xenakisTableDivisions.value, 1.0,
+                                         48.0);
+                      }, "table_divisions");
+                      syncXenakisPageControls();
+                  });
+        y += 30;
+        addButton(std::string("Discrete: ") +
+                      (m_xenakisTableDiscrete ? "On" : "Off"),
+                  18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
+                      m_xenakisTableDiscrete = !m_xenakisTableDiscrete;
+                      const bool discrete = m_xenakisTableDiscrete;
+                      m_xenakisController.editPage(
+                          [discrete](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              page.frequencyTables.front()
+                                  .tuning.discrete = discrete;
+                          });
+                  });
+        y += buttonHeight + 6;
+
         drawSection("GENDYN", y);
         addSlider("Segments", formatInt(m_xenakisGendynSegments.value), 18, y,
                   256, m_xenakisGendynSegments);
@@ -1225,6 +1340,13 @@ void App::drawSidebar() {
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
                   [this] { m_xenakisLoop = !m_xenakisLoop; });
         y += buttonHeight + 6;
+        addButton(m_xenakisController.previewing() ? "Stop Preview"
+                                                   : "Preview Page",
+                  18, y, buttonWidth * 2 + gap, 26,
+                  [this] { toggleXenakisPreview(); }, false,
+                  m_xenakisController.previewing(),
+                  m_xenakisController.hasPage());
+        y += 32;
         addButton("Render to Track", 18, y, buttonWidth * 2 + gap, 26,
                   [this] { renderXenakisToTrack(); }, true, false,
                   m_xenakisController.valid());

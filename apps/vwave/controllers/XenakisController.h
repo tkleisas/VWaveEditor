@@ -34,6 +34,12 @@ public:
     void render(int64_t playhead, const vwave::XenakisRenderOptions& options);
     void renderFile(const std::string& path, int64_t playhead);
     bool openPageFile(const std::string& path);
+    void preview(const vwave::XenakisRenderOptions& options);
+    void stopPreview();
+    bool previewing() const { return m_previewing || m_previewPending; }
+    bool previewPlaying() const { return m_previewing; }
+    int64_t previewPosition() const;
+    int previewSampleRate() const { return m_previewSampleRate; }
     void cancel();
 
     void editPage(const std::function<void(xen::Page&)>& edit,
@@ -50,6 +56,7 @@ private:
     void renderPage(const std::string& text,
                     const vwave::XenakisRenderOptions& options,
                     int64_t playhead, const std::string& name);
+    void cancelJob();
 
     vwave::JobSystem& m_jobs;
     UiDispatcher& m_dispatcher;
@@ -65,6 +72,11 @@ private:
     std::vector<std::string> m_undo;
     std::vector<std::string> m_redo;
     std::string m_lastEditKey;
+    std::shared_ptr<vwave::Audio> m_previewAudio;
+    bool m_previewing = false;
+    bool m_previewPending = false;
+    int m_previewSampleRate = 0;
+    int64_t m_previewFrames = 0;
     uint64_t m_revision = 1;
 };
 

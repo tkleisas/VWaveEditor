@@ -115,7 +115,28 @@ void App::drawXenakis(const SDL_Rect& area) {
         }
     }
 
-    if (m_xenakisDrawing) {
+    if (m_xenakisDrawing && m_xenakisFreehand &&
+        m_xenakisFreehandPoints.size() >= 2) {
+        std::vector<xen::ArcPoint> preview = m_xenakisFreehandPoints;
+        preview.push_back(
+            {m_xenakisDrawCurrentTime, m_xenakisDrawCurrentPitch});
+        SDL_SetRenderDrawColor(m_renderer, kAccentText.r, kAccentText.g,
+                               kAccentText.b, 255);
+        for (size_t i = 1; i < preview.size(); ++i) {
+            const int x0 = rect.x + static_cast<int>(std::llround(
+                                       (double)preview[i - 1].time /
+                                       duration * rect.w));
+            const int y0 = rect.y + static_cast<int>(std::llround(
+                                       (1.0 - preview[i - 1].pitch) *
+                                       rect.h));
+            const int x1 = rect.x + static_cast<int>(std::llround(
+                                       (double)preview[i].time / duration *
+                                       rect.w));
+            const int y1 = rect.y + static_cast<int>(std::llround(
+                                       (1.0 - preview[i].pitch) * rect.h));
+            SDL_RenderDrawLine(m_renderer, x0, y0, x1, y1);
+        }
+    } else if (m_xenakisDrawing) {
         const int x0 = rect.x + static_cast<int>(std::llround(
                                    (double)m_xenakisDrawStartTime / duration *
                                    rect.w));
@@ -134,6 +155,21 @@ void App::drawXenakis(const SDL_Rect& area) {
         SDL_RenderFillRect(m_renderer, &start);
         SDL_RenderFillRect(m_renderer, &end);
     }
+    if (m_xenakisController.previewing() &&
+        m_xenakisController.previewSampleRate() > 0) {
+        const double seconds =
+            static_cast<double>(m_xenakisController.previewPosition()) /
+            static_cast<double>(m_xenakisController.previewSampleRate());
+        const int x = rect.x + static_cast<int>(std::llround(
+                                   std::clamp(seconds / duration, 0.0, 1.0) *
+                                   rect.w));
+        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
+                               255);
+        SDL_RenderDrawLine(m_renderer, x, rect.y, x, rect.y + rect.h);
+        SDL_Rect marker{x - 3, rect.y, 7, 5};
+        SDL_RenderFillRect(m_renderer, &marker);
+    }
+
     SDL_RenderSetClipRect(m_renderer, nullptr);
 
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);

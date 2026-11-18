@@ -29,6 +29,7 @@ XenakisController::XenakisController(vwave::JobSystem& jobs,
 bool XenakisController::setPageText(const std::string& text,
                                     const std::string& name,
                                     bool resetHistory) {
+    stopPreview();
     xen::Page page;
     if (!xen::deserializePage(text, page)) {
         m_status("Invalid Xenakis page");
@@ -57,6 +58,7 @@ void XenakisController::editPage(
         m_status("Generate or open a Xenakis page first");
         return;
     }
+    stopPreview();
     xen::Page edited = m_page;
     edit(edited);
     edited.updateDuration();
@@ -162,9 +164,82 @@ void XenakisController::renderFile(const std::string& path,
     renderPage(m_pageText, options, playhead, m_pageName);
 }
 
+void XenakisController::cancelJob() {
+    ++m_request;
+    if (m_job.valid()) m_job.cancel();
+}
+
+void XenakisController::stopPreview() {
+    cancelJob();
+    if (m_previewing) m_player.stop();
+    m_previewing = false;
+    m_previewPending = false;
+    m_previewAudio.reset();
+    m_previewSampleRate = 0;
+    m_previewFrames = 0;
+}
+
+int64_t XenakisController::previewPosition() const {
+    return m_previewing && m_player.isPlaying()
+               ? m_player.sourcePosition()
+               : 0;
+}
+
+void XenakisController::preview(
+    const vwave::XenakisRenderOptions& renderOptions) {
+    if (m_pageText.empty()) {
+        m_status("Generate or open a Xenakis page first");
+        return;
+    }
+    stopPreview();
+    const std::string text = m_pageText;
+    vwave::XenakisRenderOptions options = renderOptions;
+    options.duration = 0.0;
+    options.loop = true;
+    const uint64_t request = ++m_request;
+    m_previewPending = true;
+    m_job = m_jobs.submit(
+        [this, request, text, options](vwave::JobControl& control) {
+            std::string error;
+            vwave::Audio rendered;
+            try {
+                rendered = vwave::renderXenakisPage(text, options, &error);
+            } catch (const std::exception& exception) {
+                error = exception.what();
+            }
+            if (control.cancelled()) return;
+            m_dispatcher.post(
+                [this, request, rendered = std::move(rendered),
+                 error = std::move(error)]() mutable {
+                    if (request != m_request) return;
+                    m_previewPending = false;
+                    if (rendered.empty()) {
+                        m_status(error.empty() ? "Xenakis preview failed"
+                                               : error);
+                        return;
+                    }
+                    m_previewAudio =
+                        std::make_shared<vwave::Audio>(std::move(rendered));
+                    m_previewSampleRate = m_previewAudio->sampleRate();
+                    m_previewFrames = m_previewAudio->numFrames();
+                    m_player.stop();
+                    const bool playing =
+                        m_previewFrames > 0 &&
+                        m_player.playAudio(m_previewAudio, 0,
+                                           m_previewFrames, true);
+                    m_previewing = playing;
+                    m_status(playing
+                                 ? "Previewing page"
+                                 : "Preview ready; audio playback unavailable");
+                });
+        });
+    m_status("Rendering preview...");
+}
+
 void XenakisController::renderPage(
     const std::string& text, const vwave::XenakisRenderOptions& options,
     int64_t playhead, const std::string& name) {
+    stopPreview();
     const int64_t start =
         m_timeline.empty()
             ? 0
@@ -216,8 +291,8 @@ void XenakisController::renderPage(
 }
 
 void XenakisController::cancel() {
-    ++m_request;
-    if (m_job.valid()) m_job.cancel();
+    stopPreview();
+    cancelJob();
 }
 
 } // namespace vwave::app
