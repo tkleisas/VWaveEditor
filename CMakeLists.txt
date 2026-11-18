@@ -249,7 +249,8 @@ if(VWAVE_BUILD_TESTS)
         if(WIN32)
             # SDL2main provides WinMain and expects SDL_main. The test entry
             # point does not include SDL.h, so rename its main explicitly.
-            target_compile_definitions(vwave_tests PRIVATE main=SDL_main)
+            target_compile_definitions(vwave_tests PRIVATE main=SDL_main
+                                                              VWAVE_TEST_SDL_MAIN=1)
         endif()
     endif()
     foreach(test_source ${VWAVE_TEST_SOURCES})

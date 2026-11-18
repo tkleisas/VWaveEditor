@@ -2,6 +2,9 @@
 
 #include <string>
 
+#if defined(VWAVE_TEST_SDL_MAIN)
+extern "C"
+#endif
 int main(int argc, char** argv) {
     std::string fileFilter;
     for (int i = 1; i < argc; ++i) {
