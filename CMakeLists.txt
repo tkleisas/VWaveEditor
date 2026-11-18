@@ -246,6 +246,11 @@ if(VWAVE_BUILD_TESTS)
     target_link_libraries(vwave_tests PRIVATE vwave::core vwave::ui_core)
     if(TARGET vwave_ui_sdl)
         target_link_libraries(vwave_tests PRIVATE vwave_ui_sdl)
+        if(WIN32)
+            # SDL2main provides WinMain and expects SDL_main. The test entry
+            # point does not include SDL.h, so rename its main explicitly.
+            target_compile_definitions(vwave_tests PRIVATE main=SDL_main)
+        endif()
     endif()
     foreach(test_source ${VWAVE_TEST_SOURCES})
         get_filename_component(test_file "${test_source}" NAME)
