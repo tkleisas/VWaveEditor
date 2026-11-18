@@ -30,6 +30,7 @@ void printUsage() {
         "  vwave scope <out.wav> [--shape NAME] [--scan-hz HZ] [--duration SEC]\n"
         "  vwave xenakis render <page.xenpage> <out.wav> [--sample-rate N]\n"
         "      [--duration SEC] [--gain G] [--no-normalize] [--peak P] [--loop]\n"
+        "      [--format wav|aiff|flac|ogg] [--bit-depth int16|int24|float32]\n"
         "  vwave slices <audio> <directory> [--mode transients|beats|markers]\n"
         "  vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]\n"
         "      [--morph linear|equal_power|phase_aligned|spectral|harmonic]\n"
@@ -509,6 +510,10 @@ int commandXenakis(const std::vector<std::string>& args) {
             parameters["peak"] = std::stod(valueAt(args, i, "--peak"));
         } else if (args[i] == "--loop") {
             parameters["loop"] = true;
+        } else if (args[i] == "--format") {
+            parameters["format"] = valueAt(args, i, "--format");
+        } else if (args[i] == "--bit-depth") {
+            parameters["bit_depth"] = valueAt(args, i, "--bit-depth");
         } else {
             return fail("unknown xenakis option: " + args[i]);
         }

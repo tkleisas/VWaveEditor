@@ -122,6 +122,8 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         setTab(vwave::EditorTab::Image);
     } else if (key == SDLK_6) {
         setTab(vwave::EditorTab::Oscilloscope);
+    } else if (key == SDLK_7) {
+        setTab(vwave::EditorTab::Xenakis);
     } else if (key == SDLK_b) {
         analyzeBeats();
     } else if (key == SDLK_p) {

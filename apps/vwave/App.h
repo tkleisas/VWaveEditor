@@ -124,6 +124,7 @@ private:
     void drawMastering(const SDL_Rect& area);
     void drawImage(const SDL_Rect& area);
     void drawOscilloscope(const SDL_Rect& area);
+    void drawXenakis(const SDL_Rect& area);
     void drawFooter();
     void drawSection(const std::string& title, int& y);
     void addButton(const std::string& label, int x, int y, int w, int h,
@@ -265,6 +266,10 @@ private:
     void importScopeImage(const std::string& path);
     void importScopeSvg(const std::string& path);
     void syncScopeKeyframeControls();
+    vwave::XenakisGenerateOptions xenakisGenerateOptions() const;
+    vwave::XenakisRenderOptions xenakisRenderOptions() const;
+    void generateXenakisPage();
+    void renderXenakisToTrack();
     void toggleScopePreview();
     void analyzeScopeFrameTone(bool usePreview = false);
     void setScopeScanFromText(const std::string& text);
@@ -311,6 +316,7 @@ private:
         Mastering,
         Image,
         Scope,
+        Xenakis,
         Open,
         AddTrack,
         SaveWav,
@@ -391,6 +397,7 @@ private:
     vwave::SpectralViewport m_spectralView;
     SDL_Rect m_scopeArea{};
     SDL_Rect m_scopeTimelineArea{};
+    SDL_Rect m_xenakisArea{};
     bool m_scopeLoopDragging = false;
     int64_t m_scopeLoopAnchorFrame = 0;
     double m_scopeLoopAnchorTime = 0.0;
@@ -444,6 +451,16 @@ private:
     int m_spectrogramTextureHeight = 0;
     bool m_spectrogramDirty = true;
     bool m_scopeXYMode = false;
+    int m_xenakisGenerator = 0;
+    int m_xenakisWaveform = 4;
+    int m_xenakisSievePreset = 0;
+    int m_xenakisSieveMode = 1;
+    int m_xenakisGroup = 0;
+    int m_xenakisDistribution = 2;
+    bool m_xenakisMirror = false;
+    bool m_xenakisReplicator = false;
+    bool m_xenakisNormalize = true;
+    bool m_xenakisLoop = false;
     bool m_scopeXYDirty = true;
     SDL_Texture* m_scopeXYTexture = nullptr;
     int m_scopeXYTextureSize = 0;
@@ -552,6 +569,30 @@ private:
     vwave::ParameterSlider m_scopeRotation;
     vwave::ParameterSlider m_scopeScale;
     vwave::ParameterSlider m_scopeXYWindowMs;
+    vwave::ParameterSlider m_xenakisPageDuration;
+    vwave::ParameterSlider m_xenakisLowIndex;
+    vwave::ParameterSlider m_xenakisHighIndex;
+    vwave::ParameterSlider m_xenakisSeed;
+    vwave::ParameterSlider m_xenakisNoteDuration;
+    vwave::ParameterSlider m_xenakisTimeUnit;
+    vwave::ParameterSlider m_xenakisMarkovStates;
+    vwave::ParameterSlider m_xenakisMarkovBias;
+    vwave::ParameterSlider m_xenakisCloudDensity;
+    vwave::ParameterSlider m_xenakisCloudPitch;
+    vwave::ParameterSlider m_xenakisCloudSpread;
+    vwave::ParameterSlider m_xenakisCloudGrain;
+    vwave::ParameterSlider m_xenakisCloudAmp;
+    vwave::ParameterSlider m_xenakisStrategyRows;
+    vwave::ParameterSlider m_xenakisStrategyCols;
+    vwave::ParameterSlider m_xenakisStrategySegment;
+    vwave::ParameterSlider m_xenakisGendynSegments;
+    vwave::ParameterSlider m_xenakisGendynDurationStep;
+    vwave::ParameterSlider m_xenakisGendynDurationBarrier;
+    vwave::ParameterSlider m_xenakisGendynAmpStep;
+    vwave::ParameterSlider m_xenakisGendynAmpBarrier;
+    vwave::ParameterSlider m_xenakisRenderDuration;
+    vwave::ParameterSlider m_xenakisGain;
+    vwave::ParameterSlider m_xenakisPeak;
     vwave::ParameterSlider m_masteringBands;
     vwave::ParameterSlider m_masteringMaxCut;
     vwave::ParameterSlider m_masteringMaxBoost;

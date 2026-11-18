@@ -88,6 +88,68 @@ VWTEST("xenakis page files and recipes regenerate audio") {
     CHECK(regenerated.equals(audio));
 }
 
+
+VWTEST("xenakis generators produce renderable pages") {
+    for (int generator = 0; generator < 4; ++generator) {
+        XenakisGenerateOptions options;
+        options.generator =
+            static_cast<XenakisGenerator>(generator);
+        options.duration = 1.0;
+        options.lowIndex = 48;
+        options.highIndex = 72;
+        options.noteDuration = 0.1;
+        options.sievePreset = 0;
+        options.sieveMode = XenakisSieveMode::Arpeggio;
+        options.markovStates = 4;
+        options.cloudDensity = 12.0;
+        options.strategyRows = 3;
+        options.strategyCols = 3;
+        options.strategySegment = 0.2;
+        options.seed = 7;
+
+        std::string error;
+        const std::string page = generateXenakisPage(options, &error);
+        CHECK(error.empty());
+        CHECK(!page.empty());
+
+        XenakisRenderOptions render;
+        render.sampleRate = 8000;
+        render.duration = 0.2;
+        render.normalize = false;
+        const Audio audio = renderXenakisPage(page, render, &error);
+        CHECK(error.empty());
+        CHECK(!audio.empty());
+        CHECK_EQ(audio.numFrames(), int64_t{1600});
+        CHECK(energy(audio) > 0.0);
+    }
+}
+
+VWTEST("xenakis recipes preserve GENDYN options") {
+    XenakisRenderOptions options;
+    options.sampleRate = 8000;
+    options.duration = 0.2;
+    options.normalize = false;
+    options.gendyn.segments = 7;
+    options.gendyn.distribution = XenakisDistribution::Logistic;
+    options.gendyn.durationStep = 0.3;
+    options.gendyn.durationBarrier = 0.25;
+    options.gendyn.ampStep = 0.1;
+    options.gendyn.ampBarrier = 0.15;
+    options.gendyn.mirror = true;
+
+    const nlohmann::json recipe = makeXenakisTrackRecipe(testPage(), options);
+    Audio audio;
+    std::string error;
+    REQUIRE(renderTrackRecipe(recipe, audio, &error));
+    CHECK(error.empty());
+    CHECK(!audio.empty());
+    CHECK_EQ(audio.numFrames(), int64_t{1600});
+
+    const Audio direct = renderXenakisPage(testPage(), options, &error);
+    CHECK(error.empty());
+    CHECK(audio.equals(direct));
+}
+
 VWTEST("xenakis page rejects malformed input") {
     XenakisRenderOptions options;
     options.sampleRate = 8000;

@@ -222,6 +222,7 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/WaveformSidebar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/WaveformView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/WavetableView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/views/XenakisView.cpp
     )
     vwave_set_warnings(vwave_editor)
     target_include_directories(vwave_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave)

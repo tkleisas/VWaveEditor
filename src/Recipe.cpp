@@ -236,6 +236,56 @@ bool parseSynthOptions(const nlohmann::json& json, SynthNoteOptions& options,
     return true;
 }
 
+nlohmann::json xenakisGendynJson(const XenakisGendynOptions& gendyn) {
+    return {{"segments", gendyn.segments},
+            {"distribution", static_cast<int>(gendyn.distribution)},
+            {"duration_step", gendyn.durationStep},
+            {"duration_barrier", gendyn.durationBarrier},
+            {"amp_step", gendyn.ampStep},
+            {"amp_barrier", gendyn.ampBarrier},
+            {"mirror", gendyn.mirror}};
+}
+
+nlohmann::json xenakisOptionsJson(const XenakisRenderOptions& options) {
+    return {{"sample_rate", options.sampleRate},
+            {"duration", options.duration},
+            {"gain", options.gain},
+            {"normalize", options.normalize},
+            {"peak", options.peak},
+            {"loop", options.loop},
+            {"gendyn", xenakisGendynJson(options.gendyn)}};
+}
+
+void parseXenakisOptions(const nlohmann::json& json,
+                         XenakisRenderOptions& options) {
+    options.sampleRate = json.value("sample_rate", options.sampleRate);
+    options.duration = json.value("duration", options.duration);
+    options.gain = json.value("gain", options.gain);
+    options.normalize = json.value("normalize", options.normalize);
+    options.peak = json.value("peak", options.peak);
+    options.loop = json.value("loop", options.loop);
+    if (!json.contains("gendyn") || !json["gendyn"].is_object()) return;
+    const auto& gendyn = json["gendyn"];
+    options.gendyn.segments =
+        std::clamp(gendyn.value("segments", options.gendyn.segments), 2, 64);
+    const int distribution = std::clamp(
+        gendyn.value("distribution",
+                     static_cast<int>(options.gendyn.distribution)),
+        0, 4);
+    options.gendyn.distribution =
+        static_cast<XenakisDistribution>(distribution);
+    options.gendyn.durationStep =
+        gendyn.value("duration_step", options.gendyn.durationStep);
+    options.gendyn.durationBarrier =
+        gendyn.value("duration_barrier", options.gendyn.durationBarrier);
+    options.gendyn.ampStep =
+        gendyn.value("amp_step", options.gendyn.ampStep);
+    options.gendyn.ampBarrier =
+        gendyn.value("amp_barrier", options.gendyn.ampBarrier);
+    options.gendyn.mirror =
+        gendyn.value("mirror", options.gendyn.mirror);
+}
+
 } // namespace
 
 nlohmann::json makeImageTrackRecipe(
@@ -279,13 +329,7 @@ nlohmann::json makeXenakisTrackRecipe(const std::string& pageText,
     return {{"type", "xenakis_page"},
             {"version", 1},
             {"page", pageText},
-            {"options",
-             {{"sample_rate", options.sampleRate},
-              {"duration", options.duration},
-              {"gain", options.gain},
-              {"normalize", options.normalize},
-              {"peak", options.peak},
-              {"loop", options.loop}}}};
+            {"options", xenakisOptionsJson(options)}};
 }
 
 bool renderTrackRecipe(const nlohmann::json& recipe, Audio& out,
@@ -360,17 +404,8 @@ bool renderTrackRecipe(const nlohmann::json& recipe, Audio& out,
             return false;
         }
         XenakisRenderOptions options;
-        if (recipe.contains("options") && recipe["options"].is_object()) {
-            const auto& json = recipe["options"];
-            options.sampleRate =
-                json.value("sample_rate", options.sampleRate);
-            options.duration = json.value("duration", options.duration);
-            options.gain = json.value("gain", options.gain);
-            options.normalize =
-                json.value("normalize", options.normalize);
-            options.peak = json.value("peak", options.peak);
-            options.loop = json.value("loop", options.loop);
-        }
+        if (recipe.contains("options") && recipe["options"].is_object())
+            parseXenakisOptions(recipe["options"], options);
         out = renderXenakisPage(page, options, error);
         return !out.empty();
     }

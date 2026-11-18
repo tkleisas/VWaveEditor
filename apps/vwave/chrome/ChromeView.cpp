@@ -339,7 +339,7 @@ void App::drawFooter() {
     const std::string left = statusActive
                                  ? m_status
                                  : "Space play | Wheel zoom | Drag select | "
-                                   "Alt+drag shift | 1-6 views | Ctrl+Z undo";
+                                   "Alt+drag shift | 1-7 views | Ctrl+Z undo";
     drawText(truncateText(left, fontSmall(), m_footerRect.w - 380),
              m_footerRect.x + 14, m_footerRect.y + 7,
              statusActive ? kAccent : kTextFaint, fontSmall());
@@ -354,7 +354,7 @@ void App::drawFooter() {
                  m_footerRect.y + 7, kRed, fontSmall());
     } else {
         const std::string right =
-            "F9 record | B beats | T slice | L loop | Wheel zoom | 1/2/3 views";
+            "F9 record | B beats | T slice | L loop | 7 Xenakis";
         drawText(right, m_footerRect.w - textWidth(right, fontSmall()) - 14,
                  m_footerRect.y + 7, kTextFaint, fontSmall());
     }

@@ -303,7 +303,8 @@ render in the job system and inserts the result with
 `Timeline::addAudioTrack`; the track stores a `xenakis_page` recipe that embeds
 the page text, so **Process → Regenerate Active Track** is self-contained.
 `isXenakisPageFile` lets File → Open and drag/drop route `.xenpage` files to
-that path.
+that path. The Xenakis tab calls `generateXenakisPage` from the sidebar and draws
+the resulting page on a read-only time/pitch canvas.
 
 ### Mastering analysis
 

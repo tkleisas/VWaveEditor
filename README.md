@@ -57,10 +57,11 @@ desktop editor and as an embeddable editing core for
   hold/crossfade transitions, live preview with XY verification, and
   fundamental/dominant tone readouts. See
   [Oscilloscope music](docs/OSCILLOSCOPE.md).
-- **Xenakis pages**: open or drop a `.xenpage` to render it to a track, or run
-  `vwave xenakis render page.xenpage out.wav`. Rendered tracks store a
-  `xenakis_page` recipe and regenerate through **Process → Regenerate Active
-  Track**.
+- **Xenakis pages**: the Xenakis tab generates sieve, Markov, cloud, and game
+  pages with a read-only time/pitch preview; open or drop a `.xenpage` to render
+  it to a track, or run `vwave xenakis render page.xenpage out.wav`. Rendered
+  tracks store a `xenakis_page` recipe and regenerate through **Process →
+  Regenerate Active Track**.
 - **Wavetables**: cycle extraction with pitch detection, harmonic construction,
   per-frame drawing and keyframe positions, ordered and free-blend morphing,
   linear/equal-power/phase-aligned/spectral/harmonic modes, optional phase
@@ -173,7 +174,7 @@ Important controls:
 | Shift+drag timeline/2D spectrum | Set a loop region |
 | `L` / `Shift+L` | Toggle loop / loop the current selection |
 | Click the time display | Open the exact-time entry dialog |
-| `1` / `2` / `3` / `4` / `5` / `6` | Waveform / spectrum / wavetable / mastering / image / scope view |
+| `1`-`7` | Waveform / spectrum / wavetable / mastering / image / scope / Xenakis view |
 | Spectrum `View: 2D/3D` | Toggle the phase-aware waterfall; hover for phase readout |
 | Wheel | Zoom time (waveform/spectrum) |
 | `Ctrl`+wheel (spectrum) | Zoom displayed frequency range |
@@ -211,6 +212,17 @@ The **Target: Track / New Track** selector applies to stretch and pitch:
 
 **Edit → Selection to New Track** copies the raw selection to a new track for
 further processing.
+
+### Xenakis tab
+
+![Xenakis tab](docs/images/xenakis.png)
+
+Press `7` or choose **Xenakis**. The sidebar generates sieve, Markov, cloud, or
+game pages; source-specific sliders update the read-only time/pitch preview.
+**GENDYN** controls the stochastic waveform engine, and **Render** controls
+duration, gain, peak, normalization, and looping. **Render to Track** inserts the
+page as a new track with an embedded `xenakis_page` recipe. `.xenpage` files can
+also be opened or dropped directly.
 
 ### Recording
 

@@ -13,7 +13,8 @@ enum class EditorTab {
     Wavetable,
     Mastering,
     Image,
-    Oscilloscope
+    Oscilloscope,
+    Xenakis
 };
 
 struct WaveformViewport {

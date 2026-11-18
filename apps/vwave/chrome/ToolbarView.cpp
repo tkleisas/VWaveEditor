@@ -32,52 +32,55 @@ void App::createToolbarWidgets() {
         m_toolbarButtons.push_back(pointer);
     };
 
-    add(ToolbarButton::Waveform, "Waveform", 154, 96,
+    add(ToolbarButton::Waveform, "Waveform", 154, 84,
         [this] { setTab(vwave::EditorTab::Waveform); });
-    add(ToolbarButton::Spectrum, "Spectrum", 254, 96,
+    add(ToolbarButton::Spectrum, "Spectrum", 242, 84,
         [this] { setTab(vwave::EditorTab::Spectrum); });
-    add(ToolbarButton::Wavetable, "Wavetable", 354, 96,
+    add(ToolbarButton::Wavetable, "Wavetable", 330, 84,
         [this] { setTab(vwave::EditorTab::Wavetable); });
-    add(ToolbarButton::Mastering, "Mastering", 454, 96,
+    add(ToolbarButton::Mastering, "Mastering", 418, 84,
         [this] { setTab(vwave::EditorTab::Mastering); });
-    add(ToolbarButton::Image, "Image", 554, 76,
+    add(ToolbarButton::Image, "Image", 506, 68,
         [this] { setTab(vwave::EditorTab::Image); });
-    add(ToolbarButton::Scope, "Scope", 634, 76,
+    add(ToolbarButton::Scope, "Scope", 578, 68,
         [this] { setTab(vwave::EditorTab::Oscilloscope); });
-    add(ToolbarButton::Open, "Open", 720, 60,
+    add(ToolbarButton::Xenakis, "Xenakis", 650, 76,
+        [this] { setTab(vwave::EditorTab::Xenakis); });
+    add(ToolbarButton::Open, "Open", 734, 58,
         [this] {
-            openDialog(DialogMode::Open, "Open audio, project, or image", "",
+            openDialog(DialogMode::Open,
+                       "Open audio, project, image, or Xenakis page", "",
                        false);
         });
-    add(ToolbarButton::AddTrack, "Add Track", 786, 76,
+    add(ToolbarButton::AddTrack, "Add Track", 796, 76,
         [this] {
             openDialog(DialogMode::AddTrack, "Add audio track", "", false);
         });
-    add(ToolbarButton::SaveWav, "Save WAV", 868, 78,
+    add(ToolbarButton::SaveWav, "Save WAV", 876, 78,
         [this] {
             openDialog(DialogMode::SaveAudio, "Export mixdown",
                        suggestedMixdownPath(m_projectPath, m_audioPath), true);
         });
-    add(ToolbarButton::Project, "Project", 952, 66,
+    add(ToolbarButton::Project, "Project", 958, 64,
         [this] {
             openDialog(DialogMode::SaveProject, "Save project", m_projectPath,
                        true);
         });
-    add(ToolbarButton::Play, "Play", 1024, 64,
+    add(ToolbarButton::Play, "Play", 1026, 64,
         [this] { togglePlay(); }, true);
-    add(ToolbarButton::Stop, "Stop", 1094, 54,
+    add(ToolbarButton::Stop, "Stop", 1094, 52,
         [this] { stopPlayback(); });
-    add(ToolbarButton::ZoomOut, "-", 1158, 26,
+    add(ToolbarButton::ZoomOut, "-", 1150, 26,
         [this] { zoomTime(0.8); });
-    add(ToolbarButton::ZoomIn, "+", 1188, 26,
+    add(ToolbarButton::ZoomIn, "+", 1180, 26,
         [this] { zoomTime(1.25); });
-    add(ToolbarButton::Fit, "Fit", 1218, 40,
+    add(ToolbarButton::Fit, "Fit", 1210, 40,
         [this] { fitTime(); });
-    add(ToolbarButton::Start, "|<", 1264, 30,
+    add(ToolbarButton::Start, "|<", 1254, 30,
         [this] { goToStart(); });
-    add(ToolbarButton::End, ">|", 1298, 30,
+    add(ToolbarButton::End, ">|", 1288, 30,
         [this] { goToEnd(); });
-    add(ToolbarButton::Time, "0:00", 1332, 100,
+    add(ToolbarButton::Time, "0:00", 1322, 100,
         [this] {
             openDialog(
                 DialogMode::SeekTime, "Go to time",
@@ -106,6 +109,8 @@ void App::syncToolbarWidgets() {
     setActive(ToolbarButton::Image, m_tab == vwave::EditorTab::Image);
     setActive(ToolbarButton::Scope,
               m_tab == vwave::EditorTab::Oscilloscope);
+    setActive(ToolbarButton::Xenakis,
+              m_tab == vwave::EditorTab::Xenakis);
 
     const bool playing = m_player.isPlaying();
     const bool hasAudio = !m_timeline.empty();

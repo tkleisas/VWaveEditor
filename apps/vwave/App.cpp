@@ -235,6 +235,30 @@ App::App()
     m_scopeRotation = {-180.0, 180.0, 0.0, false, 1.0};
     m_scopeScale = {0.05, 4.0, 1.0, false, 0.01};
     m_scopeXYWindowMs = {1.0, 500.0, 25.0, false, 1.0};
+    m_xenakisPageDuration = {1.0, 60.0, 16.0, false, 0.5};
+    m_xenakisLowIndex = {0.0, 126.0, 36.0, false, 1.0};
+    m_xenakisHighIndex = {1.0, 127.0, 96.0, false, 1.0};
+    m_xenakisSeed = {1.0, 99999.0, 1964.0, false, 1.0};
+    m_xenakisNoteDuration = {0.02, 2.0, 0.25, true, 0.0};
+    m_xenakisTimeUnit = {0.005, 0.5, 0.1, true, 0.0};
+    m_xenakisMarkovStates = {2.0, 16.0, 6.0, false, 1.0};
+    m_xenakisMarkovBias = {0.0, 8.0, 1.0, false, 0.1};
+    m_xenakisCloudDensity = {0.2, 120.0, 24.0, true, 0.1};
+    m_xenakisCloudPitch = {20.0, 12000.0, 440.0, true, 1.0};
+    m_xenakisCloudSpread = {0.0, 48.0, 12.0, false, 0.5};
+    m_xenakisCloudGrain = {0.005, 1.5, 0.06, true, 0.0};
+    m_xenakisCloudAmp = {0.0, 1.0, 0.25, false, 0.01};
+    m_xenakisStrategyRows = {2.0, 8.0, 3.0, false, 1.0};
+    m_xenakisStrategyCols = {2.0, 8.0, 3.0, false, 1.0};
+    m_xenakisStrategySegment = {0.02, 2.0, 0.3, false, 0.01};
+    m_xenakisGendynSegments = {2.0, 32.0, 12.0, false, 1.0};
+    m_xenakisGendynDurationStep = {0.0, 1.5, 0.45, false, 0.01};
+    m_xenakisGendynDurationBarrier = {0.0, 0.95, 0.45, false, 0.01};
+    m_xenakisGendynAmpStep = {0.0, 1.0, 0.18, false, 0.01};
+    m_xenakisGendynAmpBarrier = {0.0, 1.0, 0.2, false, 0.01};
+    m_xenakisRenderDuration = {0.0, 120.0, 0.0, false, 0.1};
+    m_xenakisGain = {0.0, 2.0, 1.0, false, 0.01};
+    m_xenakisPeak = {0.1, 1.0, 0.9, false, 0.01};
     m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
     m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
     m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};
@@ -247,6 +271,7 @@ App::App()
     m_harmonicLimit = {1.0, 512.0, 64.0, true, 1.0};
     m_quantizeBits = {1.0, 24.0, 8.0, false, 1.0};
     generateScopePath();
+    generateXenakisPage();
 }
 
 App::~App() {
@@ -631,7 +656,8 @@ int App::run() {
     static const vwave::EditorTab kSmokeTabs[] = {
         vwave::EditorTab::Waveform, vwave::EditorTab::Spectrum,
         vwave::EditorTab::Wavetable, vwave::EditorTab::Mastering,
-        vwave::EditorTab::Image, vwave::EditorTab::Oscilloscope};
+        vwave::EditorTab::Image, vwave::EditorTab::Oscilloscope,
+        vwave::EditorTab::Xenakis};
     int frames = 0;
     while (m_running) {
         SDL_Event event;
@@ -643,17 +669,17 @@ int App::run() {
         if (smokeTest) {
             constexpr int kTabCount =
                 static_cast<int>(sizeof(kSmokeTabs) / sizeof(kSmokeTabs[0]));
-            if (frames < 18) {
+            if (frames < 21) {
                 setTab(kSmokeTabs[frames / 3 % kTabCount]);
-            } else if (frames == 18) {
+            } else if (frames == 21) {
                 m_settingsController.open();
-            } else if (frames == 22) {
+            } else if (frames == 24) {
                 m_settingsController.close();
             }
         }
         draw();
         ++frames;
-        if (smokeTest && frames >= 26) break;
+        if (smokeTest && frames >= 28) break;
         SDL_Delay(4);
     }
     return 0;
@@ -702,7 +728,8 @@ void App::draw() {
 
     if (m_timeline.empty() && m_tab != vwave::EditorTab::Image &&
         m_tab != vwave::EditorTab::Mastering &&
-        m_tab != vwave::EditorTab::Oscilloscope) {
+        m_tab != vwave::EditorTab::Oscilloscope &&
+        m_tab != vwave::EditorTab::Xenakis) {
         drawText("Open audio/image or create your first track", content.x + 40,
                  content.y + 60, kTextDim, fontTitle());
         drawText("Ctrl+O or drag and drop WAV, AIFF, FLAC, OGG",
@@ -719,6 +746,8 @@ void App::draw() {
         drawMastering(content);
     } else if (m_tab == vwave::EditorTab::Image) {
         drawImage(content);
+    } else if (m_tab == vwave::EditorTab::Xenakis) {
+        drawXenakis(content);
     } else {
         drawOscilloscope(content);
     }
@@ -1105,6 +1134,72 @@ vwave::app::ScopeRenderParams App::scopeRenderParams() const {
     params.gain = m_scopeGain.value;
     params.smoothing = m_scopeSmoothing.value;
     return params;
+}
+
+vwave::XenakisGenerateOptions App::xenakisGenerateOptions() const {
+    vwave::XenakisGenerateOptions options;
+    options.generator =
+        static_cast<vwave::XenakisGenerator>(m_xenakisGenerator % 4);
+    options.waveform =
+        static_cast<vwave::XenakisWaveform>(m_xenakisWaveform % 5);
+    options.duration = m_xenakisPageDuration.value;
+    options.lowIndex =
+        static_cast<int>(std::lround(m_xenakisLowIndex.value));
+    options.highIndex =
+        static_cast<int>(std::lround(m_xenakisHighIndex.value));
+    options.group = m_xenakisGroup % 4;
+    options.sievePreset = m_xenakisSievePreset % 6;
+    options.sieveMode =
+        static_cast<vwave::XenakisSieveMode>(m_xenakisSieveMode % 3);
+    options.noteDuration = m_xenakisNoteDuration.value;
+    options.timeUnit = m_xenakisTimeUnit.value;
+    options.markovStates =
+        static_cast<int>(std::lround(m_xenakisMarkovStates.value));
+    options.markovBias = m_xenakisMarkovBias.value;
+    options.cloudDensity = m_xenakisCloudDensity.value;
+    options.cloudPitch = m_xenakisCloudPitch.value;
+    options.cloudSpread = m_xenakisCloudSpread.value;
+    options.cloudDuration = m_xenakisCloudGrain.value;
+    options.cloudAmp = m_xenakisCloudAmp.value;
+    options.strategyRows =
+        static_cast<int>(std::lround(m_xenakisStrategyRows.value));
+    options.strategyCols =
+        static_cast<int>(std::lround(m_xenakisStrategyCols.value));
+    options.strategySegment = m_xenakisStrategySegment.value;
+    options.strategyReplicator = m_xenakisReplicator;
+    options.seed = static_cast<uint64_t>(
+        std::llround(m_xenakisSeed.value));
+    return options;
+}
+
+vwave::XenakisRenderOptions App::xenakisRenderOptions() const {
+    vwave::XenakisRenderOptions options;
+    options.sampleRate =
+        m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;
+    options.duration = m_xenakisRenderDuration.value;
+    options.gain = m_xenakisGain.value;
+    options.normalize = m_xenakisNormalize;
+    options.peak = m_xenakisPeak.value;
+    options.loop = m_xenakisLoop;
+    options.gendyn.segments =
+        static_cast<int>(std::lround(m_xenakisGendynSegments.value));
+    options.gendyn.distribution = static_cast<vwave::XenakisDistribution>(
+        m_xenakisDistribution % 5);
+    options.gendyn.durationStep = m_xenakisGendynDurationStep.value;
+    options.gendyn.durationBarrier =
+        m_xenakisGendynDurationBarrier.value;
+    options.gendyn.ampStep = m_xenakisGendynAmpStep.value;
+    options.gendyn.ampBarrier = m_xenakisGendynAmpBarrier.value;
+    options.gendyn.mirror = m_xenakisMirror;
+    return options;
+}
+
+void App::generateXenakisPage() {
+    m_xenakisController.generate(xenakisGenerateOptions());
+}
+
+void App::renderXenakisToTrack() {
+    m_xenakisController.render(m_playhead, xenakisRenderOptions());
 }
 
 void App::generateScopePath() {
