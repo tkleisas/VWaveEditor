@@ -715,6 +715,7 @@ VWTEST("timeline save removes stale track work directories") {
     std::ifstream first(path);
     nlohmann::json firstRoot;
     first >> firstRoot;
+    first.close();
     const auto second = directory.path() / "project.vwdoc.blocks" /
                         firstRoot["tracks"][1]["blockDirectory"]
                             .get<std::string>();
