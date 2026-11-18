@@ -31,6 +31,10 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
     if (m_tab == vwave::EditorTab::Spectrum && m_spectrum3D) {
         handleSpectrumHover(event);
     }
+    if (m_tab == vwave::EditorTab::Xenakis && m_xenakisDrawing) {
+        handleXenakisMouseMotion(event);
+        return;
+    }
     if (m_waveDrag != WaveDragMode::None || m_panning || m_panningOverview) {
         handleWaveformMouseMotion(event);
         return;

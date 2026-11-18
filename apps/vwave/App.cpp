@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -259,6 +260,10 @@ App::App()
     m_xenakisRenderDuration = {0.0, 120.0, 0.0, false, 0.1};
     m_xenakisGain = {0.0, 2.0, 1.0, false, 0.01};
     m_xenakisPeak = {0.1, 1.0, 0.9, false, 0.01};
+    m_xenakisArcWeight = {0.0, 1.0, 0.6, false, 0.01};
+    m_xenakisGroupTranspose = {-24.0, 24.0, 0.0, false, 1.0};
+    m_xenakisAttack = {0.0, 0.5, 0.005, false, 0.001};
+    m_xenakisRelease = {0.0, 1.0, 0.05, false, 0.001};
     m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
     m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
     m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};
@@ -1096,7 +1101,33 @@ void App::cycleImageFrequencyScale() {
 void App::cycleImageTimeMapping() { m_imageController.cycleTimeMapping(); }
 
 void App::loadXenakisPage(const std::string& path) {
+    m_xenakisSelectedArc = -1;
     m_xenakisController.renderFile(path, m_playhead);
+    syncXenakisPageControls();
+}
+
+void App::loadXenakisPageForEditing(const std::string& path) {
+    m_xenakisSelectedArc = -1;
+    if (m_xenakisController.openPageFile(path)) {
+        syncXenakisPageControls();
+        setStatus("Loaded Xenakis page");
+    }
+}
+
+void App::saveXenakisPage(const std::string& path) {
+    if (!m_xenakisController.hasPage()) {
+        setStatus("No Xenakis page to save");
+        return;
+    }
+    std::filesystem::path target(path);
+    if (target.extension() != ".xenpage") target += ".xenpage";
+    std::ofstream out(target, std::ios::binary);
+    if (!out) {
+        setStatus("Cannot save Xenakis page");
+        return;
+    }
+    out << m_xenakisController.pageText();
+    setStatus("Saved " + target.filename().string());
 }
 
 void App::loadImage(const std::string& path) { m_imageController.load(path); }
@@ -1195,7 +1226,40 @@ vwave::XenakisRenderOptions App::xenakisRenderOptions() const {
 }
 
 void App::generateXenakisPage() {
+    m_xenakisSelectedArc = -1;
     m_xenakisController.generate(xenakisGenerateOptions());
+    syncXenakisPageControls();
+}
+
+void App::syncXenakisPageControls() {
+    if (!m_xenakisController.hasPage()) return;
+    const xen::Page& page = m_xenakisController.page();
+    if (!page.envelopes.empty() && page.envelopes[0].points.size() >= 4) {
+        m_xenakisAttack.value = page.envelopes[0].points[1].time;
+        m_xenakisRelease.value =
+            1.0 - page.envelopes[0].points[2].time;
+    }
+    if (!page.groups.empty()) {
+        m_xenakisGroup = std::clamp(
+            m_xenakisGroup, 0, static_cast<int>(page.groups.size()) - 1);
+        const int group = m_xenakisGroup;
+        m_xenakisGroupTranspose.value =
+            page.groups[static_cast<size_t>(group)].transposeSemitones;
+        m_xenakisGroupMute =
+            page.groups[static_cast<size_t>(group)].muted;
+        m_xenakisGroupSolo =
+            page.groups[static_cast<size_t>(group)].solo;
+    }
+    if (m_xenakisSelectedArc >= 0 &&
+        m_xenakisSelectedArc < static_cast<int>(page.arcs.size())) {
+        m_xenakisArcWeight.value =
+            page.arcs[static_cast<size_t>(m_xenakisSelectedArc)].weight;
+        m_xenakisArcMute =
+            page.arcs[static_cast<size_t>(m_xenakisSelectedArc)].muted;
+    } else {
+        m_xenakisSelectedArc = -1;
+        m_xenakisArcMute = false;
+    }
 }
 
 void App::renderXenakisToTrack() {
@@ -2145,6 +2209,12 @@ void App::applyDialog(DialogMode mode, const std::string& path) {
     }
     case DialogMode::ExportSlices:
         exportSlices(path);
+        break;
+    case DialogMode::LoadXenakisPage:
+        loadXenakisPageForEditing(path);
+        break;
+    case DialogMode::SaveXenakisPage:
+        saveXenakisPage(path);
         break;
     case DialogMode::None:
         break;

@@ -27,9 +27,10 @@ XenakisController::XenakisController(vwave::JobSystem& jobs,
       m_rendered(std::move(rendered)) {}
 
 bool XenakisController::setPageText(const std::string& text,
-                                    const std::string& name) {
+                                    const std::string& name,
+                                    bool resetHistory) {
     xen::Page page;
-    if (!xen::deserializePage(text, page) || page.arcs.empty()) {
+    if (!xen::deserializePage(text, page)) {
         m_status("Invalid Xenakis page");
         return false;
     }
@@ -40,6 +41,70 @@ bool XenakisController::setPageText(const std::string& text,
                      ? name
                      : (internalName.empty() ? std::string("Xenakis")
                                              : internalName);
+    ++m_revision;
+    if (resetHistory) {
+        m_undo.clear();
+        m_redo.clear();
+    }
+    m_lastEditKey.clear();
+    return true;
+}
+
+void XenakisController::editPage(
+    const std::function<void(xen::Page&)>& edit,
+    const std::string& coalesceKey) {
+    if (m_pageText.empty()) {
+        m_status("Generate or open a Xenakis page first");
+        return;
+    }
+    xen::Page edited = m_page;
+    edit(edited);
+    edited.updateDuration();
+    edited.loopEnd = edited.duration;
+    const std::string text = xen::serializePage(edited);
+    if (text == m_pageText) return;
+    if (coalesceKey.empty() || coalesceKey != m_lastEditKey) {
+        m_undo.push_back(m_pageText);
+        if (m_undo.size() > 64) m_undo.erase(m_undo.begin());
+        m_redo.clear();
+    }
+    m_lastEditKey = coalesceKey;
+    m_pageText = text;
+    m_page = std::move(edited);
+    ++m_revision;
+}
+
+bool XenakisController::undoPage() {
+    if (m_undo.empty()) return false;
+    m_redo.push_back(m_pageText);
+    std::string text = std::move(m_undo.back());
+    m_undo.pop_back();
+    xen::Page page;
+    if (!xen::deserializePage(text, page)) {
+        m_status("Invalid Xenakis page history");
+        return false;
+    }
+    m_pageText = std::move(text);
+    m_page = std::move(page);
+    m_lastEditKey.clear();
+    ++m_revision;
+    return true;
+}
+
+bool XenakisController::redoPage() {
+    if (m_redo.empty()) return false;
+    m_undo.push_back(m_pageText);
+    std::string text = std::move(m_redo.back());
+    m_redo.pop_back();
+    xen::Page page;
+    if (!xen::deserializePage(text, page)) {
+        m_status("Invalid Xenakis page history");
+        return false;
+    }
+    m_pageText = std::move(text);
+    m_page = std::move(page);
+    m_lastEditKey.clear();
+    ++m_revision;
     return true;
 }
 
@@ -51,7 +116,12 @@ void XenakisController::generate(
         m_status(error.empty() ? "Xenakis generation failed" : error);
         return;
     }
-    if (!setPageText(text, {})) return;
+    if (hasPage()) {
+        m_undo.push_back(m_pageText);
+        if (m_undo.size() > 64) m_undo.erase(m_undo.begin());
+        m_redo.clear();
+    }
+    if (!setPageText(text, {}, false)) return;
     std::ostringstream status;
     status << "Generated " << m_pageName << ": " << m_page.arcs.size()
            << " arcs, " << ui::formatSeconds(m_page.duration);
@@ -67,19 +137,22 @@ void XenakisController::render(
     renderPage(m_pageText, options, playhead, m_pageName);
 }
 
-void XenakisController::renderFile(const std::string& path,
-                                   int64_t playhead) {
+bool XenakisController::openPageFile(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         m_status("Cannot open Xenakis page");
-        return;
+        return false;
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
     const std::string name =
         std::filesystem::path(path).stem().string();
-    if (!setPageText(buffer.str(), name)) return;
+    return setPageText(buffer.str(), name, true);
+}
 
+void XenakisController::renderFile(const std::string& path,
+                                   int64_t playhead) {
+    if (!openPageFile(path)) return;
     vwave::XenakisRenderOptions options;
     options.sampleRate =
         m_timeline.sampleRate() > 0 ? m_timeline.sampleRate() : 48000;

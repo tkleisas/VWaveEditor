@@ -29,7 +29,9 @@ public:
         ImportScopeSvg,
         ScopeScan,
         SeekTime,
-        ExportSlices
+        ExportSlices,
+        LoadXenakisPage,
+        SaveXenakisPage
     };
 
     using ConfirmHandler =

@@ -36,5 +36,8 @@ void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
     if (m_scopeLoopDragging) {
         handleOscilloscopeMouseUp(event);
     }
+    if (m_tab == vwave::EditorTab::Xenakis) {
+        handleXenakisMouseUp(event);
+    }
     updateUiCursor(event.x, event.y);
 }

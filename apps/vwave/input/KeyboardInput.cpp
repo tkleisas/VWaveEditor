@@ -47,6 +47,15 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
     } else if (ctrl && key == SDLK_q) {
         m_running = false;
     } else if (ctrl && key == SDLK_z) {
+        if (m_tab == vwave::EditorTab::Xenakis &&
+            m_xenakisController.canUndoPage()) {
+            if (m_xenakisController.undoPage()) {
+                m_xenakisSelectedArc = -1;
+                syncXenakisPageControls();
+                setStatus("Xenakis page undone");
+            }
+            return;
+        }
         m_player.stop();
         if (m_timeline.undo()) {
             syncTrackControls();
@@ -58,6 +67,15 @@ void App::handleKey(const SDL_KeyboardEvent& event) {
         }
     } else if (ctrl && (key == SDLK_y ||
                         (shift && key == SDLK_z))) {
+        if (m_tab == vwave::EditorTab::Xenakis &&
+            m_xenakisController.canRedoPage()) {
+            if (m_xenakisController.redoPage()) {
+                m_xenakisSelectedArc = -1;
+                syncXenakisPageControls();
+                setStatus("Xenakis page redone");
+            }
+            return;
+        }
         m_player.stop();
         if (m_timeline.redo()) {
             syncTrackControls();

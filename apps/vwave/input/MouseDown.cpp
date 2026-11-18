@@ -32,5 +32,7 @@ void App::handleMouseDown(const SDL_MouseButtonEvent& event) {
         handleWavetableMouseDown(event);
     } else if (m_tab == vwave::EditorTab::Oscilloscope) {
         handleOscilloscopeMouseDown(event);
+    } else if (m_tab == vwave::EditorTab::Xenakis) {
+        handleXenakisMouseDown(event);
     }
 }

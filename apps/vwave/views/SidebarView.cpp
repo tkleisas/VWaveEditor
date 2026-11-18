@@ -853,12 +853,119 @@ void App::drawSidebar() {
     } else if (m_tab == vwave::EditorTab::Xenakis) {
         const auto source = static_cast<vwave::XenakisGenerator>(
             m_xenakisGenerator % 4);
+        drawSection("CANVAS", y);
+        static const char* kToolNames[] = {"Draw", "Select", "Erase"};
+        addButton(std::string("Tool: ") +
+                      kToolNames[std::clamp(m_xenakisTool, 0, 2)],
+                  18, y, buttonWidth, buttonHeight,
+                  [this] { m_xenakisTool = (m_xenakisTool + 1) % 3; });
+        addButton(std::string("Snap pitch: ") +
+                      (m_xenakisSnapPitch ? "On" : "Off"),
+                  18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                  [this] { m_xenakisSnapPitch = !m_xenakisSnapPitch; });
+        y += buttonHeight + 6;
+        addButton(std::string("Snap time: ") +
+                      (m_xenakisSnapTime ? "On" : "Off"),
+                  18, y, buttonWidth, buttonHeight,
+                  [this] { m_xenakisSnapTime = !m_xenakisSnapTime; });
+        addButton("Undo Page", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      if (m_xenakisController.undoPage()) {
+                          m_xenakisSelectedArc = -1;
+                          syncXenakisPageControls();
+                      }
+                  }, false, false, m_xenakisController.canUndoPage());
+        y += buttonHeight + 6;
+        addButton("Redo Page", 18, y, buttonWidth, buttonHeight, [this] {
+            if (m_xenakisController.redoPage()) {
+                m_xenakisSelectedArc = -1;
+                syncXenakisPageControls();
+            }
+        }, false, false, m_xenakisController.canRedoPage());
+        addButton("Delete Arc", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      const int selected = m_xenakisSelectedArc;
+                      if (selected < 0) {
+                          setStatus("Select an arc first");
+                          return;
+                      }
+                      m_xenakisController.editPage(
+                          [selected](xen::Page& page) {
+                              if (selected <
+                                  static_cast<int>(page.arcs.size()))
+                                  page.arcs.erase(page.arcs.begin() +
+                                                  selected);
+                          });
+                      m_xenakisSelectedArc = -1;
+                      syncXenakisPageControls();
+                  }, false, false, m_xenakisSelectedArc >= 0);
+        addButton("Load Page", 18, y, buttonWidth, buttonHeight, [this] {
+            openDialog(DialogMode::LoadXenakisPage, "Load Xenakis page", "",
+                       false);
+        });
+        addButton("Save Page", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      openDialog(DialogMode::SaveXenakisPage,
+                                 "Save Xenakis page", "page.xenpage", true);
+                  }, false, false, m_xenakisController.hasPage());
+        y += buttonHeight + 6;
+        addSlider("Arc weight", formatMorph(m_xenakisArcWeight.value), 18, y,
+                  256, m_xenakisArcWeight, [this](double) {
+                      const int selected = m_xenakisSelectedArc;
+                      if (selected < 0) return;
+                      m_xenakisController.editPage(
+                          [this, selected](xen::Page& page) {
+                              if (selected <
+                                  static_cast<int>(page.arcs.size()))
+                                  page.arcs[selected].weight =
+                                      static_cast<float>(
+                                          m_xenakisArcWeight.value);
+                          },
+                          "arc_weight_" + std::to_string(selected));
+                  });
+        y += 30;
+        addButton(std::string("Mute Arc: ") +
+                      (m_xenakisArcMute ? "On" : "Off"),
+                  18, y, buttonWidth, buttonHeight, [this] {
+                      const int selected = m_xenakisSelectedArc;
+                      if (selected < 0) {
+                          setStatus("Select an arc first");
+                          return;
+                      }
+                      m_xenakisArcMute = !m_xenakisArcMute;
+                      const bool muted = m_xenakisArcMute;
+                      m_xenakisController.editPage(
+                          [selected, muted](xen::Page& page) {
+                              if (selected <
+                                  static_cast<int>(page.arcs.size()))
+                                  page.arcs[selected].muted = muted;
+                          });
+                  }, false, m_xenakisArcMute, m_xenakisSelectedArc >= 0);
+        y += buttonHeight + 6;
+        if (m_xenakisSelectedArc >= 0 &&
+            m_xenakisSelectedArc <
+                static_cast<int>(m_xenakisController.page().arcs.size())) {
+            const auto& selected =
+                m_xenakisController.page()
+                    .arcs[static_cast<size_t>(m_xenakisSelectedArc)];
+            std::ostringstream info;
+            info << "Arc " << (m_xenakisSelectedArc + 1) << "  "
+                 << formatSeconds(selected.start()) << " - "
+                 << formatSeconds(selected.end()) << "  w "
+                 << formatMorph(selected.weight);
+            drawText(info.str(), 18, y, kTextDim, fontSmall());
+            y += 18;
+        } else {
+            drawText("No arc selected.", 18, y, kTextFaint, fontSmall());
+            y += 18;
+        }
+
         drawSection("XENAKIS GENERATOR", y);
         addButton(std::string("Source: ") +
                       vwave::xenakisGeneratorName(source),
                   18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                       m_xenakisGenerator = (m_xenakisGenerator + 1) % 4;
-                      generateXenakisPage();
+                      
                   });
         y += buttonHeight + 6;
         addButton(std::string("Wave: ") +
@@ -867,30 +974,30 @@ void App::drawSidebar() {
                               m_xenakisWaveform % 5)),
                   18, y, buttonWidth, buttonHeight, [this] {
                       m_xenakisWaveform = (m_xenakisWaveform + 1) % 5;
-                      generateXenakisPage();
+                      
                   });
         addButton(std::string("Group: ") +
                       std::to_string(m_xenakisGroup + 1),
                   18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
                   [this] {
                       m_xenakisGroup = (m_xenakisGroup + 1) % 4;
-                      generateXenakisPage();
+                      syncXenakisPageControls();
                   });
         y += buttonHeight + 6;
         addSlider("Page length",
                   formatSecondsControl(m_xenakisPageDuration.value), 18, y, 256,
                   m_xenakisPageDuration,
-                  [this](double) { generateXenakisPage(); });
+                  [this](double) {  });
         y += 30;
         addSlider("Low index", formatInt(m_xenakisLowIndex.value), 18, y, 256,
-                  m_xenakisLowIndex, [this](double) { generateXenakisPage(); });
+                  m_xenakisLowIndex, [this](double) {  });
         y += 30;
         addSlider("High index", formatInt(m_xenakisHighIndex.value), 18, y,
                   256, m_xenakisHighIndex,
-                  [this](double) { generateXenakisPage(); });
+                  [this](double) {  });
         y += 30;
         addSlider("Seed", formatInt(m_xenakisSeed.value), 18, y, 256,
-                  m_xenakisSeed, [this](double) { generateXenakisPage(); });
+                  m_xenakisSeed, [this](double) {  });
         y += 30;
         addButton("Generate Page", 18, y, buttonWidth * 2 + gap, 26,
                   [this] { generateXenakisPage(); }, true);
@@ -906,7 +1013,7 @@ void App::drawSidebar() {
                       18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                           m_xenakisSievePreset =
                               (m_xenakisSievePreset + 1) % 6;
-                          generateXenakisPage();
+                          
                       });
             y += buttonHeight + 6;
             addButton(std::string("Mode: ") +
@@ -915,83 +1022,155 @@ void App::drawSidebar() {
                                   m_xenakisSieveMode % 3)),
                       18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                           m_xenakisSieveMode = (m_xenakisSieveMode + 1) % 3;
-                          generateXenakisPage();
+                          
                       });
             y += buttonHeight + 6;
             addSlider("Note duration",
                       formatSecondsControl(m_xenakisNoteDuration.value), 18, y,
                       256, m_xenakisNoteDuration,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Rhythm unit",
                       formatSecondsControl(m_xenakisTimeUnit.value), 18, y, 256,
                       m_xenakisTimeUnit,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
         } else if (source == vwave::XenakisGenerator::Markov) {
             drawSection("MARKOV", y);
             addSlider("States", formatInt(m_xenakisMarkovStates.value), 18, y,
                       256, m_xenakisMarkovStates,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Self bias",
                       formatMorph(m_xenakisMarkovBias.value / 8.0), 18, y, 256,
                       m_xenakisMarkovBias,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Note duration",
                       formatSecondsControl(m_xenakisNoteDuration.value), 18, y,
                       256, m_xenakisNoteDuration,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
         } else if (source == vwave::XenakisGenerator::Cloud) {
             drawSection("CLOUD", y);
             addSlider("Density",
                       formatInt(m_xenakisCloudDensity.value) + "/s", 18, y, 256,
                       m_xenakisCloudDensity,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Pitch", formatHz(m_xenakisCloudPitch.value), 18, y, 256,
                       m_xenakisCloudPitch,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Spread", formatInt(m_xenakisCloudSpread.value) + " st",
                       18, y, 256, m_xenakisCloudSpread,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Grain",
                       formatSecondsControl(m_xenakisCloudGrain.value), 18, y,
                       256, m_xenakisCloudGrain,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Level", formatMorph(m_xenakisCloudAmp.value), 18, y, 256,
                       m_xenakisCloudAmp,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
         } else {
             drawSection("GAME", y);
             addSlider("Rows", formatInt(m_xenakisStrategyRows.value), 18, y,
                       256, m_xenakisStrategyRows,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Columns", formatInt(m_xenakisStrategyCols.value), 18, y,
                       256, m_xenakisStrategyCols,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addSlider("Segment",
                       formatSecondsControl(m_xenakisStrategySegment.value), 18,
                       y, 256, m_xenakisStrategySegment,
-                      [this](double) { generateXenakisPage(); });
+                      [this](double) {  });
             y += 30;
             addButton(std::string("Dynamics: ") +
                           (m_xenakisReplicator ? "Replicator"
                                                : "Fictitious play"),
                       18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                           m_xenakisReplicator = !m_xenakisReplicator;
-                          generateXenakisPage();
+                          
                       });
             y += buttonHeight + 6;
         }
+
+        drawSection("GROUP", y);
+        addButton(std::string("Mute: ") +
+                      (m_xenakisGroupMute ? "On" : "Off"),
+                  18, y, buttonWidth, buttonHeight, [this] {
+                      m_xenakisGroupMute = !m_xenakisGroupMute;
+                      const bool muted = m_xenakisGroupMute;
+                      const int group = m_xenakisGroup;
+                      m_xenakisController.editPage(
+                          [group, muted](xen::Page& page) {
+                              if (group <
+                                  static_cast<int>(page.groups.size()))
+                                  page.groups[group].muted = muted;
+                          });
+                  });
+        addButton(std::string("Solo: ") +
+                      (m_xenakisGroupSolo ? "On" : "Off"),
+                  18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                  [this] {
+                      m_xenakisGroupSolo = !m_xenakisGroupSolo;
+                      const bool solo = m_xenakisGroupSolo;
+                      const int group = m_xenakisGroup;
+                      m_xenakisController.editPage(
+                          [group, solo](xen::Page& page) {
+                              if (group <
+                                  static_cast<int>(page.groups.size()))
+                                  page.groups[group].solo = solo;
+                          });
+                  });
+        y += buttonHeight + 6;
+        addSlider("Group transpose",
+                  formatSemitones(m_xenakisGroupTranspose.value), 18, y, 256,
+                  m_xenakisGroupTranspose, [this](double) {
+                      const int group = m_xenakisGroup;
+                      m_xenakisController.editPage(
+                          [this, group](xen::Page& page) {
+                              if (group <
+                                  static_cast<int>(page.groups.size()))
+                                  page.groups[group].transposeSemitones =
+                                      static_cast<float>(
+                                          m_xenakisGroupTranspose.value);
+                          },
+                          "group_transpose");
+                  });
+        y += 30;
+        drawSection("ENVELOPE", y);
+        addSlider("Attack", formatMorph(m_xenakisAttack.value), 18, y, 256,
+                  m_xenakisAttack, [this](double) {
+                      m_xenakisController.editPage([this](xen::Page& page) {
+                          xen::Envelope envelope = xen::Envelope::ad(
+                              static_cast<float>(m_xenakisAttack.value),
+                              static_cast<float>(m_xenakisRelease.value));
+                          if (page.envelopes.empty())
+                              page.envelopes.push_back(envelope);
+                          else
+                              page.envelopes[0] = envelope;
+                      }, "envelope_attack");
+                  });
+        y += 30;
+        addSlider("Release", formatMorph(m_xenakisRelease.value), 18, y, 256,
+                  m_xenakisRelease, [this](double) {
+                      m_xenakisController.editPage([this](xen::Page& page) {
+                          xen::Envelope envelope = xen::Envelope::ad(
+                              static_cast<float>(m_xenakisAttack.value),
+                              static_cast<float>(m_xenakisRelease.value));
+                          if (page.envelopes.empty())
+                              page.envelopes.push_back(envelope);
+                          else
+                              page.envelopes[0] = envelope;
+                      }, "envelope_release");
+                  });
+        y += 30;
 
         drawSection("GENDYN", y);
         addSlider("Segments", formatInt(m_xenakisGendynSegments.value), 18, y,

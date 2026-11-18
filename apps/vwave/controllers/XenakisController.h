@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace vwave::app {
 
@@ -24,6 +25,7 @@ public:
                       StatusSink status, RenderSink rendered);
 
     bool valid() const { return !m_page.arcs.empty(); }
+    bool hasPage() const { return !m_pageText.empty(); }
     const xen::Page& page() const { return m_page; }
     const std::string& pageText() const { return m_pageText; }
     const std::string& pageName() const { return m_pageName; }
@@ -31,10 +33,20 @@ public:
     void generate(const vwave::XenakisGenerateOptions& options);
     void render(int64_t playhead, const vwave::XenakisRenderOptions& options);
     void renderFile(const std::string& path, int64_t playhead);
+    bool openPageFile(const std::string& path);
     void cancel();
 
+    void editPage(const std::function<void(xen::Page&)>& edit,
+                  const std::string& coalesceKey = {});
+    bool undoPage();
+    bool redoPage();
+    bool canUndoPage() const { return !m_undo.empty(); }
+    bool canRedoPage() const { return !m_redo.empty(); }
+    uint64_t pageRevision() const { return m_revision; }
+
 private:
-    bool setPageText(const std::string& text, const std::string& name);
+    bool setPageText(const std::string& text, const std::string& name,
+                     bool resetHistory);
     void renderPage(const std::string& text,
                     const vwave::XenakisRenderOptions& options,
                     int64_t playhead, const std::string& name);
@@ -50,6 +62,10 @@ private:
     xen::Page m_page;
     std::string m_pageText;
     std::string m_pageName = "Xenakis";
+    std::vector<std::string> m_undo;
+    std::vector<std::string> m_redo;
+    std::string m_lastEditKey;
+    uint64_t m_revision = 1;
 };
 
 } // namespace vwave::app

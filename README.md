@@ -58,10 +58,11 @@ desktop editor and as an embeddable editing core for
   fundamental/dominant tone readouts. See
   [Oscilloscope music](docs/OSCILLOSCOPE.md).
 - **Xenakis pages**: the Xenakis tab generates sieve, Markov, cloud, and game
-  pages with a read-only time/pitch preview; open or drop a `.xenpage` to render
-  it to a track, or run `vwave xenakis render page.xenpage out.wav`. Rendered
-  tracks store a `xenakis_page` recipe and regenerate through **Process →
-  Regenerate Active Track**.
+  pages on an editable time/pitch canvas (draw, select, erase, groups,
+  envelopes, page undo/redo); open or drop a `.xenpage` to render it to a track,
+  or run `vwave xenakis render page.xenpage out.wav`. Rendered tracks store a
+  `xenakis_page` recipe and regenerate through **Process → Regenerate Active
+  Track**.
 - **Wavetables**: cycle extraction with pitch detection, harmonic construction,
   per-frame drawing and keyframe positions, ordered and free-blend morphing,
   linear/equal-power/phase-aligned/spectral/harmonic modes, optional phase
@@ -217,12 +218,18 @@ further processing.
 
 ![Xenakis tab](docs/images/xenakis.png)
 
-Press `7` or choose **Xenakis**. The sidebar generates sieve, Markov, cloud, or
-game pages; source-specific sliders update the read-only time/pitch preview.
-**GENDYN** controls the stochastic waveform engine, and **Render** controls
-duration, gain, peak, normalization, and looping. **Render to Track** inserts the
-page as a new track with an embedded `xenakis_page` recipe. `.xenpage` files can
-also be opened or dropped directly.
+Press `7` or choose **Xenakis**. The canvas is editable: choose **Draw**,
+**Select**, or **Erase**, drag across the canvas to add an arc, click an arc to
+select it, and use the arc weight/mute/delete controls. Pitch and time snapping
+are toggled in the sidebar. Page edits are undoable with `Ctrl+Z` / `Ctrl+Y`
+while the tab is active, or with the **Undo Page** / **Redo Page** buttons.
+**GENDYN** controls the stochastic waveform engine; **Group** sets mute, solo,
+and transpose; **Envelope** sets the page attack/release; **Render** controls
+duration, gain, peak, normalization, and looping. Generator sliders take effect
+when **Generate Page** is pressed, so hand edits are preserved. **Render to
+Track** inserts the page as a new track with an embedded `xenakis_page` recipe.
+**Load Page** / **Save Page** handle `.xenpage` files for editing; File → Open
+and drag/drop render a page directly to a track.
 
 ### Recording
 

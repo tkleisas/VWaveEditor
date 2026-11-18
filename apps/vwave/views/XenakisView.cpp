@@ -11,8 +11,7 @@
 using namespace vwave::ui;
 
 void App::drawXenakis(const SDL_Rect& area) {
-    const xen::Page& page = m_xenakisController.page();
-    if (page.arcs.empty()) {
+    if (!m_xenakisController.hasPage()) {
         drawText("No Xenakis page", area.x + 40, area.y + 54, kTextDim,
                  fontTitle());
         drawText("Generate a page in the sidebar or open a .xenpage file.",
@@ -21,6 +20,7 @@ void App::drawXenakis(const SDL_Rect& area) {
         return;
     }
 
+    const xen::Page& page = m_xenakisController.page();
     const double duration = std::max(0.001, page.duration);
     std::ostringstream header;
     header << m_xenakisController.pageName() << "  "
@@ -76,21 +76,25 @@ void App::drawXenakis(const SDL_Rect& area) {
         SDL_Color{190, 142, 232, 255}};
 
     SDL_RenderSetClipRect(m_renderer, &rect);
-    for (const auto& arc : page.arcs) {
+    for (size_t i = 0; i < page.arcs.size(); ++i) {
+        const xen::Arc& arc = page.arcs[i];
         if (arc.points.size() < 2) continue;
+        const bool selected =
+            static_cast<int>(i) == m_xenakisSelectedArc;
         SDL_Color color = groupColors[static_cast<size_t>(
             std::clamp(arc.group, 0, 3))];
         if (arc.muted) color.a = 70;
-        SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
-        for (size_t i = 1; i < arc.points.size(); ++i) {
+        if (selected) color = kText;
+
+        for (size_t point = 1; point < arc.points.size(); ++point) {
             const double t0 = std::clamp<double>(
-                arc.points[i - 1].time, 0.0, duration);
+                arc.points[point - 1].time, 0.0, duration);
             const double t1 = std::clamp<double>(
-                arc.points[i].time, 0.0, duration);
+                arc.points[point].time, 0.0, duration);
             const double p0 = std::clamp<double>(
-                arc.points[i - 1].pitch, 0.0, 1.0);
+                arc.points[point - 1].pitch, 0.0, 1.0);
             const double p1 = std::clamp<double>(
-                arc.points[i].pitch, 0.0, 1.0);
+                arc.points[point].pitch, 0.0, 1.0);
             const int x0 = rect.x + static_cast<int>(
                                        std::llround(t0 / duration * rect.w));
             const int x1 = rect.x + static_cast<int>(
@@ -99,18 +103,55 @@ void App::drawXenakis(const SDL_Rect& area) {
                                        std::llround((1.0 - p0) * rect.h));
             const int y1 = rect.y + static_cast<int>(
                                        std::llround((1.0 - p1) * rect.h));
+            if (selected) {
+                SDL_SetRenderDrawColor(m_renderer, kText.r, kText.g,
+                                       kText.b, 90);
+                SDL_RenderDrawLine(m_renderer, x0, y0 - 1, x1, y1 - 1);
+                SDL_RenderDrawLine(m_renderer, x0, y0 + 1, x1, y1 + 1);
+            }
+            SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b,
+                                   color.a);
             SDL_RenderDrawLine(m_renderer, x0, y0, x1, y1);
         }
+    }
+
+    if (m_xenakisDrawing) {
+        const int x0 = rect.x + static_cast<int>(std::llround(
+                                   (double)m_xenakisDrawStartTime / duration *
+                                   rect.w));
+        const int x1 = rect.x + static_cast<int>(std::llround(
+                                   (double)m_xenakisDrawCurrentTime / duration *
+                                   rect.w));
+        const int y0 = rect.y + static_cast<int>(std::llround(
+                                   (1.0 - m_xenakisDrawStartPitch) * rect.h));
+        const int y1 = rect.y + static_cast<int>(std::llround(
+                                   (1.0 - m_xenakisDrawCurrentPitch) * rect.h));
+        SDL_SetRenderDrawColor(m_renderer, kAccentText.r, kAccentText.g,
+                               kAccentText.b, 255);
+        SDL_RenderDrawLine(m_renderer, x0, y0, x1, y1);
+        SDL_Rect start{x0 - 2, y0 - 2, 5, 5};
+        SDL_Rect end{x1 - 2, y1 - 2, 5, 5};
+        SDL_RenderFillRect(m_renderer, &start);
+        SDL_RenderFillRect(m_renderer, &end);
     }
     SDL_RenderSetClipRect(m_renderer, nullptr);
 
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 255);
     SDL_RenderDrawRect(m_renderer, &rect);
 
-    std::ostringstream footer;
-    footer << "Read-only preview  ·  groups " << page.groups.size()
-           << "  ·  render to a track to hear it";
-    drawText(footer.str(), area.x + 20, area.y + area.h - 52, kTextFaint,
+    if (page.arcs.empty() && !m_xenakisDrawing) {
+        drawText("Draw an arc: click and drag across the canvas.",
+                 rect.x + 16, rect.y + 16, kTextFaint, fontNormal());
+    }
+
+    static const char* kToolNames[] = {"Draw", "Select", "Erase"};
+    std::ostringstream tool;
+    tool << "Tool: " << kToolNames[std::clamp(m_xenakisTool, 0, 2)]
+         << "  ·  snap pitch " << (m_xenakisSnapPitch ? "on" : "off")
+         << "  ·  snap time " << (m_xenakisSnapTime ? "on" : "off")
+         << "  ·  " << (m_xenakisController.canUndoPage() ? "undo ready"
+                                                         : "no page undo");
+    drawText(tool.str(), area.x + 20, area.y + area.h - 52, kTextFaint,
              fontSmall());
 
     std::ostringstream info;
