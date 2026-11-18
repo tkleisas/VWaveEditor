@@ -965,7 +965,7 @@ void App::drawSidebar() {
                       vwave::xenakisGeneratorName(source),
                   18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                       m_xenakisGenerator = (m_xenakisGenerator + 1) % 4;
-                      
+
                   });
         y += buttonHeight + 6;
         addButton(std::string("Wave: ") +
@@ -974,7 +974,7 @@ void App::drawSidebar() {
                               m_xenakisWaveform % 5)),
                   18, y, buttonWidth, buttonHeight, [this] {
                       m_xenakisWaveform = (m_xenakisWaveform + 1) % 5;
-                      
+
                   });
         addButton(std::string("Group: ") +
                       std::to_string(m_xenakisGroup + 1),
@@ -1013,7 +1013,7 @@ void App::drawSidebar() {
                       18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                           m_xenakisSievePreset =
                               (m_xenakisSievePreset + 1) % 6;
-                          
+
                       });
             y += buttonHeight + 6;
             addButton(std::string("Mode: ") +
@@ -1022,7 +1022,7 @@ void App::drawSidebar() {
                                   m_xenakisSieveMode % 3)),
                       18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                           m_xenakisSieveMode = (m_xenakisSieveMode + 1) % 3;
-                          
+
                       });
             y += buttonHeight + 6;
             addSlider("Note duration",
@@ -1095,7 +1095,7 @@ void App::drawSidebar() {
                                                : "Fictitious play"),
                       18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
                           m_xenakisReplicator = !m_xenakisReplicator;
-                          
+
                       });
             y += buttonHeight + 6;
         }
