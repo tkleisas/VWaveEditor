@@ -237,6 +237,8 @@ nlohmann::json Session::execute(const std::string& command,
         if (command == "oscilloscope_render" ||
             command == "image_spectrogram")
             return executeImageScopeCommands(command, params, error);
+        if (command == "xenakis_render")
+            return executeXenakisCommands(command, params, error);
         if (command == "mastering_analysis" ||
             command == "mastering_render")
             return executeMasteringCommands(command, params, error);
@@ -309,7 +311,8 @@ nlohmann::json Session::execute(const std::string& command,
 std::vector<std::string> Session::commandNames() {
     return {
         "info", "tracks", "list_tracks", "track_info", "mastering_analysis",
-        "image_spectrogram", "oscilloscope_render", "mastering_render",
+        "image_spectrogram", "oscilloscope_render", "xenakis_render",
+        "mastering_render",
         "regenerate_track", "add_track",
         "add_empty_track", "remove_track", "select_track", "track_set",
         "selection_scope", "crop_track", "shift_track",

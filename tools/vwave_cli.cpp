@@ -28,6 +28,8 @@ void printUsage() {
         "  vwave mastering-render <project.vwdoc> [--out-dir DIR] [--add-tracks]\n"
         "  vwave image <image> <out.wav> [--duration SEC] [--phase MODE]\n"
         "  vwave scope <out.wav> [--shape NAME] [--scan-hz HZ] [--duration SEC]\n"
+        "  vwave xenakis render <page.xenpage> <out.wav> [--sample-rate N]\n"
+        "      [--duration SEC] [--gain G] [--no-normalize] [--peak P] [--loop]\n"
         "  vwave slices <audio> <directory> [--mode transients|beats|markers]\n"
         "  vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]\n"
         "      [--morph linear|equal_power|phase_aligned|spectral|harmonic]\n"
@@ -479,6 +481,39 @@ int commandScope(const std::vector<std::string>& args) {
         }
     }
     printJson(executeOrFail(session, "oscilloscope_render", parameters));
+    return 0;
+}
+
+int commandXenakis(const std::vector<std::string>& args) {
+    if (args.size() < 5 || args[2] != "render")
+        return fail("xenakis requires: xenakis render <page.xenpage> <out.wav>");
+    vwave::Session session;
+    json parameters = {{"page_path", args[3]},
+                       {"out", args[4]},
+                       {"gain", 1.0},
+                       {"normalize", true}};
+    for (size_t i = 5; i < args.size(); ++i) {
+        if (args[i] == "--sample-rate") {
+            parameters["sample_rate"] =
+                std::stoi(valueAt(args, i, "--sample-rate"));
+        } else if (args[i] == "--duration") {
+            parameters["duration"] =
+                std::stod(valueAt(args, i, "--duration"));
+        } else if (args[i] == "--gain") {
+            parameters["gain"] = std::stod(valueAt(args, i, "--gain"));
+        } else if (args[i] == "--normalize") {
+            parameters["normalize"] = true;
+        } else if (args[i] == "--no-normalize") {
+            parameters["normalize"] = false;
+        } else if (args[i] == "--peak") {
+            parameters["peak"] = std::stod(valueAt(args, i, "--peak"));
+        } else if (args[i] == "--loop") {
+            parameters["loop"] = true;
+        } else {
+            return fail("unknown xenakis option: " + args[i]);
+        }
+    }
+    printJson(executeOrFail(session, "xenakis_render", parameters));
     return 0;
 }
 
@@ -1016,6 +1051,7 @@ int main(int argc, char** argv) {
         return commandMasteringRender(args);
     if (args[1] == "image") return commandImage(args);
     if (args[1] == "scope") return commandScope(args);
+    if (args[1] == "xenakis") return commandXenakis(args);
     if (args[1] == "wavetable") return commandWavetable(args);
     if (args[1] == "wavetable-design") return commandWavetableDesign(args);
     if (args[1] == "synth") return commandSynth(args);

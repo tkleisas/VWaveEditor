@@ -62,6 +62,15 @@ if(VWAVE_BUILD_GUI)
     pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
 endif()
 
+# XenAudioTools core: pinned submodule, dual-licensed MIT OR GPL-3.0-or-later.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/XenAudioTools/CMakeLists.txt")
+    message(FATAL_ERROR
+        "XenAudioTools submodule is missing. Run: "
+        "git submodule update --init --recursive")
+endif()
+set(XEN_LIBRARY_ONLY ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/XenAudioTools EXCLUDE_FROM_ALL)
+
 function(vwave_set_warnings target)
     target_compile_options(${target} PRIVATE
         -Wall -Wextra -Wpedantic -Wno-unused-parameter
@@ -96,7 +105,7 @@ target_include_directories(vwave_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
-target_link_libraries(vwave_core PUBLIC PkgConfig::SNDFILE Threads::Threads)
+target_link_libraries(vwave_core PUBLIC PkgConfig::SNDFILE Threads::Threads xen::engine)
 target_compile_definitions(vwave_core PUBLIC VWAVE_VERSION_MAJOR=${PROJECT_VERSION_MAJOR})
 if(VWAVE_BUILD_LUA)
     target_link_libraries(vwave_core PUBLIC ${VWAVE_LUA_TARGET})
@@ -188,6 +197,7 @@ if(VWAVE_BUILD_GUI AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/main.cpp)
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/MasteringController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/RecordingController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/ScopeController.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/XenakisController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/SettingsController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/WavetableController.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/vwave/controllers/SelectionController.cpp

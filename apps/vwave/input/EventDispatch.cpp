@@ -352,6 +352,7 @@ void App::handleEvent(const SDL_Event& event) {
         if (extension == ".vwdoc") loadProject(path);
         else if (isScopePath(path)) loadScopePathFile(path);
         else if (isImagePath(path)) loadImage(path);
+        else if (vwave::isXenakisPageFile(path)) loadXenakisPage(path);
         else if (m_timeline.empty()) loadAudio(path);
         else addTrackFile(path);
         break;

@@ -12,6 +12,14 @@ reuses design/algorithmic work from YAWN.
 - **stb_image** — public domain / MIT (dual licensed). Header in
   `third_party/stb_image.h`. Used for image decoding.
 
+## Submodules
+
+- **XenAudioTools core** — Copyright (C) 2026 bokontep. The `lib/` and `shared/`
+  core is dual-licensed **MIT OR GPL-3.0-or-later**; VWaveEditor uses the MIT
+  option. The submodule's VST3/app/UI are GPL-3.0-or-later and are not built by
+  VWaveEditor. Source: `third_party/XenAudioTools`; full MIT text in
+  `LICENSES/XenAudioTools-MIT.txt`.
+
 ## Linked
 
 - **libsndfile** — LGPL-2.1-or-later. Linked as a system shared library.

@@ -287,11 +287,23 @@ without forced correction.
 ### Track recipes
 
 `TimelineTrack` optionally stores a versioned JSON recipe. Image, oscilloscope,
-and synth-note generators attach recipes when they create a track. The project
+synth-note, and Xenakis page generators attach recipes when they create a
+track. The project
 serializer stores them per track. `renderTrackRecipe()` recreates audio from the
 recipe, and `regenerate_track` replaces the track source while preserving its
 timeline offset. Recipes are metadata; they are outside the per-document undo
 history.
+
+### Xenakis page rendering
+
+`src/Xenakis.cpp` links the dual-licensed XenAudioTools core from
+`third_party/XenAudioTools` and renders a `XENPAGE` score through its offline
+engine into `vwave::Audio`. The standalone editor's `XenakisController` runs the
+render in the job system and inserts the result with
+`Timeline::addAudioTrack`; the track stores a `xenakis_page` recipe that embeds
+the page text, so **Process → Regenerate Active Track** is self-contained.
+`isXenakisPageFile` lets File → Open and drag/drop route `.xenpage` files to
+that path.
 
 ### Mastering analysis
 

@@ -51,6 +51,9 @@ private:
     nlohmann::json executeImageScopeCommands(const std::string& command,
                                              const nlohmann::json& params,
                                              std::string* error);
+    nlohmann::json executeXenakisCommands(const std::string& command,
+                                          const nlohmann::json& params,
+                                          std::string* error);
     nlohmann::json executeMasteringCommands(const std::string& command,
                                             const nlohmann::json& params,
                                             std::string* error);

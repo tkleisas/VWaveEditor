@@ -5,6 +5,7 @@
 #include "vwave/Oscilloscope.h"
 #include "vwave/ScopeComposition.h"
 #include "vwave/Synth.h"
+#include "vwave/Xenakis.h"
 #include "vwave/Timeline.h"
 
 #include <nlohmann/json.hpp>
@@ -23,6 +24,8 @@ nlohmann::json makeScopeCompositionRecipe(
 nlohmann::json makeSynthTrackRecipe(const std::string& wavetablePath,
                                    double midiNote, double durationSeconds,
                                    const SynthNoteOptions& options);
+nlohmann::json makeXenakisTrackRecipe(const std::string& pageText,
+                                      const XenakisRenderOptions& options);
 
 bool renderTrackRecipe(const nlohmann::json& recipe, Audio& out,
                        std::string* error = nullptr);

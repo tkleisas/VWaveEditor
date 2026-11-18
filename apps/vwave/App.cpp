@@ -150,6 +150,17 @@ App::App()
               setTab(vwave::EditorTab::Waveform);
               updateWindowTitle();
           }),
+      m_xenakisController(
+          m_jobs, m_dispatcher, m_timeline, m_player,
+          [this](const std::string& status) { setStatus(status); },
+          [this](int64_t start) {
+              syncTrackControls();
+              m_view.fit(m_timeline.lengthFrames());
+              m_playhead = start;
+              clearAnalysis();
+              setTab(vwave::EditorTab::Waveform);
+              updateWindowTitle();
+          }),
       m_wavetableController(
           m_jobs, m_dispatcher, m_timeline, m_player,
           [this](const std::string& status) { setStatus(status); },
@@ -802,6 +813,7 @@ std::shared_ptr<const vwave::Audio> App::activeAudioSnapshot() {
 void App::cancelRenderJobs() {
     m_imageController.cancel();
     m_scopeController.cancel();
+    m_xenakisController.cancel();
     m_wavetableController.cancel();
 }
 
@@ -1053,6 +1065,10 @@ void App::cycleImageFrequencyScale() {
 }
 
 void App::cycleImageTimeMapping() { m_imageController.cycleTimeMapping(); }
+
+void App::loadXenakisPage(const std::string& path) {
+    m_xenakisController.renderFile(path, m_playhead);
+}
 
 void App::loadImage(const std::string& path) { m_imageController.load(path); }
 
@@ -1627,6 +1643,10 @@ bool App::loadFile(const std::string& path) {
     }
     if (isImagePath(path)) {
         return m_imageController.load(path);
+    }
+    if (vwave::isXenakisPageFile(path)) {
+        loadXenakisPage(path);
+        return true;
     }
     return loadAudio(path);
 }

@@ -57,6 +57,10 @@ desktop editor and as an embeddable editing core for
   hold/crossfade transitions, live preview with XY verification, and
   fundamental/dominant tone readouts. See
   [Oscilloscope music](docs/OSCILLOSCOPE.md).
+- **Xenakis pages**: open or drop a `.xenpage` to render it to a track, or run
+  `vwave xenakis render page.xenpage out.wav`. Rendered tracks store a
+  `xenakis_page` recipe and regenerate through **Process → Regenerate Active
+  Track**.
 - **Wavetables**: cycle extraction with pitch detection, harmonic construction,
   per-frame drawing and keyframe positions, ordered and free-blend morphing,
   linear/equal-power/phase-aligned/spectral/harmonic modes, optional phase
@@ -90,6 +94,8 @@ desktop editor and as an embeddable editing core for
 Requirements:
 
 - CMake 3.20+ and a C++17 compiler
+- The pinned `third_party/XenAudioTools` submodule; clone with
+  `--recurse-submodules` or run `git submodule update --init --recursive`
 - libsndfile
 - SDL2 + SDL2_ttf for the standalone editor
 - Lua 5.4 is vendored in `third_party/lua54`
@@ -249,6 +255,7 @@ vwave mastering session.vwdoc --profile definition --out mastering.json
 vwave mastering-render session.vwdoc --profile definition --out-dir mastered
 vwave image cover.png cover.wav --duration 8 --phase fast_griffin_lim
 vwave scope scope.wav --shape lissajous --a 3 --b 2 --scan-hz 90
+vwave xenakis render page.xenpage page.wav --sample-rate 48000
 
 vwave project create session.vwdoc
 vwave project info session.vwdoc

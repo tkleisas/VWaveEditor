@@ -8,9 +8,13 @@ their audio. Recipes survive timeline project save/load.
 - `image_spectrogram` — image path plus all ImageSpectrogramOptions
 - `oscilloscope_render` — embedded `.vscope`-equivalent points plus render options
 - `synth_note` — wavetable path, MIDI note, duration, and synth options
+- `xenakis_page` — serialized `.xenpage` text plus render options
 
 Wavetables themselves are persisted by the wavetable tools; a synth note recipe
 references the `.vwt` path used at render time.
+
+A `xenakis_page` recipe embeds the page text, so the generated track is
+self-contained and does not depend on the original `.xenpage` file being present.
 
 ## UI
 
@@ -50,6 +54,24 @@ Recipes are stored per track:
     "version": 1,
     "scope_path": { "name": "Circle", "closed": true, "points": [[0.8, 0.0]] },
     "options": { "sample_rate": 48000, "duration": 2.0, "scan_hz": 120.0 }
+  }
+}
+```
+
+Example:
+
+```json
+{
+  "type": "xenakis_page",
+  "version": 1,
+  "page": "XENPAGE 1\nname \"study\"\n...",
+  "options": {
+    "sample_rate": 48000,
+    "duration": 0.0,
+    "gain": 1.0,
+    "normalize": true,
+    "peak": 0.9,
+    "loop": false
   }
 }
 ```

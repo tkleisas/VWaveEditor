@@ -11,6 +11,7 @@ vwave mastering <project.vwdoc> [--profile NAME] [--out report.json]
 vwave mastering-render <project.vwdoc> [--out-dir DIR] [--add-tracks]
 vwave image <image> <out.wav> [options]
 vwave scope <out.wav> [options]
+vwave xenakis render <page.xenpage> <out.wav> [options]
 vwave slices <audio> <directory> [--mode transients|beats|markers]
 vwave wavetable <audio> <out.vwt> [--frame-size N] [--frame-count N]
 vwave wavetable-design <spec.json> <out.vwt>
@@ -126,6 +127,20 @@ Renders an XY path to stereo audio. Options: `--shape`, `--path-file`,
 `--duration`, `--scan-hz`, `--sample-rate`, `--gain`, `--smoothing`, `--raw`,
 `--band-limit-hz`, `--oversample`, `--direction`, `--no-normalize`, `--peak`,
 `--save-path`. See [Oscilloscope music](OSCILLOSCOPE.md).
+
+## xenakis
+
+```sh
+vwave xenakis render study.xenpage study.wav
+vwave xenakis render study.xenpage study.wav --sample-rate 48000 \
+    --duration 30 --gain 0.9 --peak 0.8
+vwave xenakis render study.xenpage loop.wav --loop --no-normalize
+```
+
+Renders a Xenakis UPIC `.xenpage` score through the embedded engine. The page
+duration is used unless `--duration` is given; `--loop` follows the page loop
+region. Output is mono float WAV by default; `--format` and `--bit-depth` work
+like the other render commands.
 
 ## image
 

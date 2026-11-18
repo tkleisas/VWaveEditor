@@ -14,6 +14,7 @@
 #include "controllers/ImageController.h"
 #include "controllers/MasteringController.h"
 #include "controllers/ScopeController.h"
+#include "controllers/XenakisController.h"
 #include "controllers/WavetableController.h"
 #include "controllers/SpectralController.h"
 #include "views/WaveformPeakCache.h"
@@ -49,6 +50,7 @@
 #include "vwave/Timeline.h"
 #include "vwave/UiModel.h"
 #include "vwave/Wavetable.h"
+#include "vwave/Xenakis.h"
 
 #include <SDL.h>
 #include <SDL_ttf.h>
@@ -245,6 +247,7 @@ private:
     void drawContextMenu();
     void closeContextMenu();
     void loadImage(const std::string& path);
+    void loadXenakisPage(const std::string& path);
     vwave::app::ScopeShapeParams scopeShapeParams() const;
     vwave::app::ScopeRenderParams scopeRenderParams() const;
     void renderImageToTrack();
@@ -501,6 +504,7 @@ private:
     vwave::app::MasteringController m_masteringController;
     vwave::app::ImageController m_imageController;
     vwave::app::ScopeController m_scopeController;
+    vwave::app::XenakisController m_xenakisController;
     vwave::app::WavetableController m_wavetableController;
     vwave::app::SettingsController m_settingsController;
     vwave::app::WaveformPeakCache m_peakCache;
