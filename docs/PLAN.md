@@ -287,7 +287,7 @@ Deferred:
 
 ## Implementation status
 
-As of the v0.0.9 development line:
+As of the v0.1.0 development line:
 
 - Phases 0–8 are implemented and test-green.
 - Multi-track Timeline, track controls, multi-track playback/export, recording,
@@ -298,6 +298,10 @@ As of the v0.0.9 development line:
 - Documents are region-based over immutable audio blocks, with generation-based
   project work areas, live block spill, autosave recovery, background prefetch,
   and bounded history.
+- The Xenakis/UPIC page editor supports editable arcs and breakpoints, multiple
+  envelopes and frequency tables, direct sieve classes, time zoom/pan, preview
+  seek/scrub, and `.xenpage` track recipes through the pinned XenAudioTools
+  submodule.
 - The automated suite covers audio I/O, region/block models, non-destructive
   history, Timeline tracks/mixdown/persistence, track-aware Session/Lua/MCP
   automation, FFT, resampling, WSOLA/phase-vocoder/PaulStretch, pitch shift,

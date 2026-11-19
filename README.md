@@ -133,7 +133,7 @@ Build options:
 | `VWAVE_WARNINGS_AS_ERRORS` | `OFF` | Strict compiler warnings |
 
 Version numbers are derived from git tags (`vMAJOR.MINOR.PATCH`). The current
-release is `v0.0.9`; untagged build trees fall back to `0.0.9`.
+release is `v0.1.0`; untagged build trees fall back to `0.1.0`.
 
 Artifacts land in `build/bin`:
 
@@ -428,7 +428,7 @@ strategy, and known limitations.
 
 ## Status and roadmap
 
-Version **0.0.9** includes the multi-track editing core, region-based
+Version **0.1.0** includes the multi-track editing core, region-based
 non-destructive documents over immutable audio blocks, generation-based project
 work areas with LRU reload, autosave recovery, background prefetch, the
 track-aware desktop editor, recording, settings, CLI, Lua, MCP, C ABI, the
@@ -439,14 +439,18 @@ described above. The current editing stage also adds undoable range
 move/copy/repeat, selection and track handles, whole-track stretch, zero-cross
 cutting, stereo/mono track conversion, and region arrangements with gaps,
 independent part moves, stretch/repeat, gain/fades, and document-shared undo.
-Version 0.0.9 also splits the desktop editor into focused controllers, services,
+Version 0.1.0 adds the Xenakis/UPIC page editor: editable arcs and
+breakpoints, multiple envelopes and frequency tables, direct sieve editing,
+time zoom/pan, live preview with seek/scrub, and reproducible `.xenpage`
+recipes. It also splits the desktop editor into focused controllers, services,
 views, and input handlers, and moves audio/project/image/wavetable loading plus
 mastering and image rendering onto background workers with stale-result
 rejection.
 
 All planned feature phases are implemented: wavetable design and YAWN interop,
 mastering analysis and processing, the phase-aware 3D spectrum,
-image-to-spectrogram synthesis, and oscilloscope music. Remaining ideas in
+image-to-spectrogram synthesis, oscilloscope music, and Xenakis/UPIC page
+editing. Remaining ideas in
 [docs/IDEAS.md](docs/IDEAS.md) are advanced enhancements and deferred platform
 work, including real-time mastering automation, reference matching, LUFS
 metering, neural capture, and deeper YAWN embedding.
