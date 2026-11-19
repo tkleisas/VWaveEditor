@@ -1,4 +1,5 @@
 #include "test_framework.h"
+#include "test_helpers.h"
 
 #include "vwave/Mcp.h"
 #include "vwave/Session.h"
@@ -7,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 using namespace vwave;
 using nlohmann::json;
@@ -225,4 +227,53 @@ VWTEST("mcp tool names are stable") {
                     "vwave_oscilloscope_render") != names.end());
     CHECK(std::find(names.begin(), names.end(), "vwave_mastering_render") !=
           names.end());
+}
+
+VWTEST("mcp xenakis render tool writes audio") {
+    Session session(Document::fromAudio(tone()));
+    McpServer server(session);
+
+    const json listed = json::parse(server.handleMessage(
+        request(20, "tools/list").dump()));
+    bool found = false;
+    for (const auto& tool : listed["result"]["tools"]) {
+        if (tool["name"] != "vwave_xenakis_render") continue;
+        found = true;
+        CHECK(tool["inputSchema"]["properties"].contains("page"));
+        CHECK(tool["inputSchema"]["properties"].contains("page_path"));
+        CHECK_EQ(tool["inputSchema"]["required"],
+                 json::array({"out"}));
+    }
+    CHECK(found);
+
+    TempDirectory directory;
+    const std::filesystem::path path = directory.path() / "xenakis.wav";
+    const std::string page =
+        "XENPAGE 1\n"
+        "name \"mcp page\"\n"
+        "duration 0.1\n"
+        "loop 0 0.1\n"
+        "groups 1\n"
+        "group 0 0 0 \"Group A\"\n"
+        "envelopes 1\n"
+        "env 4 0 0 0.01 1 0.05 1 0.1 0\n"
+        "tables 1\n"
+        "table 48 72 8.175798915643707 12 0 0 0 0\n"
+        "arcs 1\n"
+        "arc 4 0 0 0 0 0.8 0 2 0 0.5 0.1 0.5\n";
+    const json response = json::parse(server.handleMessage(
+        request(21, "tools/call",
+                callTool("vwave_xenakis_render",
+                         {{"page", page},
+                          {"out", path.string()},
+                          {"sample_rate", 8000},
+                          {"duration", 0.1},
+                          {"normalize", false}}))
+            .dump()));
+    CHECK(!response["result"]["isError"].get<bool>());
+    const json result = json::parse(
+        response["result"]["content"][0]["text"].get<std::string>());
+    CHECK(result["ok"].get<bool>());
+    CHECK_EQ(result["frames"], int64_t{800});
+    CHECK(std::filesystem::exists(path));
 }

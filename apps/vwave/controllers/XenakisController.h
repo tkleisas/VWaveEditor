@@ -39,6 +39,7 @@ public:
     bool previewing() const { return m_previewing || m_previewPending; }
     bool previewPlaying() const { return m_previewing; }
     int64_t previewPosition() const;
+    bool seekPreview(double seconds);
     int previewSampleRate() const { return m_previewSampleRate; }
     void cancel();
 

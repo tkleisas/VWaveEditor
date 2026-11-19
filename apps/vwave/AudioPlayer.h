@@ -30,6 +30,7 @@ public:
                    bool loop = false);
     void updateMix(const vwave::Timeline& timeline);
     void stop();
+    void seek(int64_t sourceFrame);
 
     bool isPlaying() const { return m_playing.load(); }
     int64_t sourcePosition() const { return m_sourcePosition.load(); }
@@ -56,6 +57,7 @@ private:
     std::shared_ptr<const vwave::Audio> m_ownedAudio;
     std::atomic<bool> m_playing{false};
     std::atomic<int64_t> m_sourcePosition{0};
+    std::atomic<int64_t> m_seekRequest{-1};
     int64_t m_sourceStart = 0;
     int64_t m_sourceEnd = 0;
     bool m_loop = false;

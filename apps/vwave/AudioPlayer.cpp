@@ -99,6 +99,7 @@ bool AudioPlayer::play(const vwave::Timeline& timeline, int64_t startFrame,
     m_sourceStart = range.start;
     m_sourceEnd = range.end;
     m_loop = loop;
+    m_seekRequest.store(-1);
     m_readPosition = static_cast<double>(range.start);
     m_sourcePosition.store(range.start);
     buildTracks(timeline);
@@ -151,10 +152,16 @@ void AudioPlayer::stop() {
     SDL_PauseAudioDevice(m_device, 1);
     SDL_LockAudioDevice(m_device);
     m_playing.store(false);
+    m_seekRequest.store(-1);
     m_tracks.clear();
     m_readPosition = static_cast<double>(m_sourceStart);
     SDL_UnlockAudioDevice(m_device);
     m_sourcePosition.store(m_sourceStart);
+}
+
+void AudioPlayer::seek(int64_t sourceFrame) {
+    if (!m_playing.load(std::memory_order_acquire)) return;
+    m_seekRequest.store(sourceFrame, std::memory_order_release);
 }
 
 void AudioPlayer::audioCallback(void* userdata, Uint8* stream, int length) {
@@ -167,6 +174,11 @@ void AudioPlayer::render(Uint8* stream, int length) {
         static_cast<int64_t>(length / static_cast<int>(sizeof(float) * 2));
     std::fill_n(output, requested * 2, 0.0f);
     if (!m_playing.load(std::memory_order_acquire)) return;
+
+    const int64_t seek = m_seekRequest.exchange(-1);
+    if (seek >= 0)
+        m_readPosition = static_cast<double>(
+            std::clamp<int64_t>(seek, m_sourceStart, m_sourceEnd));
 
     const double endPosition = static_cast<double>(m_sourceEnd);
     const double startPosition = static_cast<double>(m_sourceStart);

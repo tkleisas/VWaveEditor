@@ -996,6 +996,62 @@ void App::drawSidebar() {
                           syncXenakisPageControls();
                       });
             y += buttonHeight + 6;
+            const int envelopeCount = std::max(
+                1, static_cast<int>(
+                       m_xenakisController.page().envelopes.size()));
+            const int tableCount = std::max(
+                1, static_cast<int>(m_xenakisController.page()
+                                        .frequencyTables.size()));
+            const int arcEnvelope = std::clamp(
+                selected.envelopeIndex, 0, envelopeCount - 1);
+            const int arcTable = std::clamp(
+                selected.freqTableIndex, 0, tableCount - 1);
+            addButton("Arc env: " +
+                          std::to_string(arcEnvelope + 1) + "/" +
+                          std::to_string(envelopeCount),
+                      18, y, buttonWidth, buttonHeight,
+                      [this, arcIndex, arcEnvelope, envelopeCount] {
+                          const int next =
+                              (arcEnvelope + 1) % envelopeCount;
+                          m_xenakisController.editPage(
+                              [arcIndex, next](xen::Page& page) {
+                                  if (arcIndex <
+                                      static_cast<int>(page.arcs.size()))
+                                      page.arcs[arcIndex].envelopeIndex =
+                                          next;
+                              });
+                          syncXenakisPageControls();
+                      });
+            addButton("Arc table: " +
+                          std::to_string(arcTable + 1) + "/" +
+                          std::to_string(tableCount),
+                      18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                      [this, arcIndex, arcTable, tableCount] {
+                          const int next = (arcTable + 1) % tableCount;
+                          m_xenakisController.editPage(
+                              [arcIndex, next](xen::Page& page) {
+                                  if (arcIndex <
+                                      static_cast<int>(page.arcs.size()))
+                                      page.arcs[arcIndex].freqTableIndex =
+                                          next;
+                              });
+                          syncXenakisPageControls();
+                      });
+            y += buttonHeight + 6;
+            if (m_xenakisSelectedPoint >= 0) {
+                drawText("Breakpoint " +
+                             std::to_string(m_xenakisSelectedPoint + 1) +
+                             " of " +
+                             std::to_string(selected.points.size()),
+                         18, y, kTextDim, fontSmall());
+                y += 18;
+                addButton("Delete Point", 18, y,
+                          buttonWidth * 2 + gap, buttonHeight, [this] {
+                              deleteXenakisPoint(m_xenakisSelectedArc,
+                                                 m_xenakisSelectedPoint);
+                          });
+                y += buttonHeight + 6;
+            }
         } else {
             drawText("No arc selected.", 18, y, kTextFaint, fontSmall());
             y += 18;
@@ -1186,106 +1242,458 @@ void App::drawSidebar() {
                   });
         y += 30;
         drawSection("ENVELOPE", y);
+        const int envelopeCount = std::max(
+            1, static_cast<int>(
+                   m_xenakisController.page().envelopes.size()));
+        const int envelopeIndex = std::clamp(
+            m_xenakisEnvelopeIndex, 0, envelopeCount - 1);
+        addButton("Envelope: " +
+                      std::to_string(envelopeIndex + 1) + "/" +
+                      std::to_string(envelopeCount),
+                  18, y, buttonWidth, buttonHeight,
+                  [this, envelopeCount] {
+                      m_xenakisEnvelopeIndex =
+                          (m_xenakisEnvelopeIndex + 1) % envelopeCount;
+                      syncXenakisPageControls();
+                  });
+        addButton("+ Envelope", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      m_xenakisController.editPage([](xen::Page& page) {
+                          if (page.envelopes.empty())
+                              page.envelopes.push_back(
+                                  xen::Envelope::ad(0.01f, 0.05f));
+                          else
+                              page.envelopes.push_back(
+                                  page.envelopes.back());
+                      });
+                      m_xenakisEnvelopeIndex = std::max(
+                          0, static_cast<int>(
+                                 m_xenakisController.page()
+                                     .envelopes.size()) -
+                                 1);
+                      syncXenakisPageControls();
+                  });
+        y += buttonHeight + 6;
+        addButton("Delete Envelope", 18, y, buttonWidth * 2 + gap,
+                  buttonHeight, [this] {
+                      const int index = m_xenakisEnvelopeIndex;
+                      if (m_xenakisController.page().envelopes.size() <= 1) {
+                          setStatus("Keep at least one envelope");
+                          return;
+                      }
+                      m_xenakisController.editPage(
+                          [index](xen::Page& page) {
+                              if (page.envelopes.size() <= 1 ||
+                                  index >= static_cast<int>(
+                                               page.envelopes.size()))
+                                  return;
+                              page.envelopes.erase(page.envelopes.begin() +
+                                                   index);
+                              for (auto& arc : page.arcs) {
+                                  if (arc.envelopeIndex == index)
+                                      arc.envelopeIndex = 0;
+                                  else if (arc.envelopeIndex > index)
+                                      --arc.envelopeIndex;
+                              }
+                          });
+                      m_xenakisEnvelopeIndex = std::max(0, index - 1);
+                      syncXenakisPageControls();
+                  }, false, false,
+                  m_xenakisController.page().envelopes.size() > 1);
+        y += buttonHeight + 6;
         addSlider("Attack", formatMorph(m_xenakisAttack.value), 18, y, 256,
                   m_xenakisAttack, [this](double) {
-                      m_xenakisController.editPage([this](xen::Page& page) {
-                          xen::Envelope envelope = xen::Envelope::ad(
-                              static_cast<float>(m_xenakisAttack.value),
-                              static_cast<float>(m_xenakisRelease.value));
-                          if (page.envelopes.empty())
-                              page.envelopes.push_back(envelope);
-                          else
-                              page.envelopes[0] = envelope;
-                      }, "envelope_attack");
+                      const int index = m_xenakisEnvelopeIndex;
+                      m_xenakisController.editPage(
+                          [this, index](xen::Page& page) {
+                              if (page.envelopes.empty())
+                                  page.envelopes.push_back(
+                                      xen::Envelope::ad(0.01f, 0.05f));
+                              const int i = std::clamp(
+                                  index, 0,
+                                  static_cast<int>(page.envelopes.size()) -
+                                      1);
+                              page.envelopes[static_cast<size_t>(i)] =
+                                  xen::Envelope::ad(
+                                      static_cast<float>(
+                                          m_xenakisAttack.value),
+                                      static_cast<float>(
+                                          m_xenakisRelease.value));
+                          }, "envelope_attack");
                   });
         y += 30;
         addSlider("Release", formatMorph(m_xenakisRelease.value), 18, y, 256,
                   m_xenakisRelease, [this](double) {
-                      m_xenakisController.editPage([this](xen::Page& page) {
-                          xen::Envelope envelope = xen::Envelope::ad(
-                              static_cast<float>(m_xenakisAttack.value),
-                              static_cast<float>(m_xenakisRelease.value));
-                          if (page.envelopes.empty())
-                              page.envelopes.push_back(envelope);
-                          else
-                              page.envelopes[0] = envelope;
-                      }, "envelope_release");
+                      const int index = m_xenakisEnvelopeIndex;
+                      m_xenakisController.editPage(
+                          [this, index](xen::Page& page) {
+                              if (page.envelopes.empty())
+                                  page.envelopes.push_back(
+                                      xen::Envelope::ad(0.01f, 0.05f));
+                              const int i = std::clamp(
+                                  index, 0,
+                                  static_cast<int>(page.envelopes.size()) -
+                                      1);
+                              page.envelopes[static_cast<size_t>(i)] =
+                                  xen::Envelope::ad(
+                                      static_cast<float>(
+                                          m_xenakisAttack.value),
+                                      static_cast<float>(
+                                          m_xenakisRelease.value));
+                          }, "envelope_release");
                   });
         y += 30;
 
         drawSection("TUNING", y);
-        addSlider("Table low", formatInt(m_xenakisTableLow.value), 18, y,
-                  256, m_xenakisTableLow, [this](double) {
-                      m_xenakisController.editPage([this](xen::Page& page) {
+        const int tableCount = std::max(
+            1, static_cast<int>(
+                   m_xenakisController.page().frequencyTables.size()));
+        const int tableIndex = std::clamp(
+            m_xenakisTableIndex, 0, tableCount - 1);
+        addButton("Table: " + std::to_string(tableIndex + 1) + "/" +
+                      std::to_string(tableCount),
+                  18, y, buttonWidth, buttonHeight, [this, tableCount] {
+                      m_xenakisTableIndex =
+                          (m_xenakisTableIndex + 1) % tableCount;
+                      syncXenakisPageControls();
+                  });
+        addButton("+ Table", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this] {
+                      m_xenakisController.editPage([](xen::Page& page) {
                           if (page.frequencyTables.empty())
                               page.frequencyTables.push_back(
                                   xen::FrequencyTable{});
-                          auto& table = page.frequencyTables.front();
-                          const int low = std::clamp(
-                              static_cast<int>(
-                                  std::lround(m_xenakisTableLow.value)),
-                              0, 126);
-                          const int high = std::clamp(
-                              static_cast<int>(
-                                  std::lround(m_xenakisTableHigh.value)),
-                              0, 127);
-                          table.lowIndex = low;
-                          table.highIndex = std::max(low + 1, high);
-                      }, "table_low");
+                          else
+                              page.frequencyTables.push_back(
+                                  page.frequencyTables.back());
+                      });
+                      m_xenakisTableIndex = std::max(
+                          0, static_cast<int>(
+                                 m_xenakisController.page()
+                                     .frequencyTables.size()) -
+                                 1);
+                      syncXenakisPageControls();
+                  });
+        y += buttonHeight + 6;
+        addButton("Delete Table", 18, y, buttonWidth * 2 + gap,
+                  buttonHeight, [this] {
+                      const int index = m_xenakisTableIndex;
+                      if (m_xenakisController.page().frequencyTables.size() <=
+                          1) {
+                          setStatus("Keep at least one frequency table");
+                          return;
+                      }
+                      m_xenakisController.editPage(
+                          [index](xen::Page& page) {
+                              if (page.frequencyTables.size() <= 1 ||
+                                  index >= static_cast<int>(
+                                               page.frequencyTables.size()))
+                                  return;
+                              page.frequencyTables.erase(
+                                  page.frequencyTables.begin() + index);
+                              for (auto& arc : page.arcs) {
+                                  if (arc.freqTableIndex == index)
+                                      arc.freqTableIndex = 0;
+                                  else if (arc.freqTableIndex > index)
+                                      --arc.freqTableIndex;
+                              }
+                          });
+                      m_xenakisTableIndex = std::max(0, index - 1);
+                      syncXenakisPageControls();
+                  }, false, false,
+                  m_xenakisController.page().frequencyTables.size() > 1);
+        y += buttonHeight + 6;
+        addSlider("Table low", formatInt(m_xenakisTableLow.value), 18, y,
+                  256, m_xenakisTableLow, [this, tableIndex](double) {
+                      m_xenakisController.editPage(
+                          [this, tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              auto& table =
+                                  page.frequencyTables[static_cast<size_t>(
+                                      i)];
+                              const int low = std::clamp(
+                                  static_cast<int>(
+                                      std::lround(m_xenakisTableLow.value)),
+                                  0, 126);
+                              const int high = std::clamp(
+                                  static_cast<int>(std::lround(
+                                      m_xenakisTableHigh.value)),
+                                  0, 127);
+                              table.lowIndex = low;
+                              table.highIndex = std::max(low + 1, high);
+                          }, "table_low");
                       syncXenakisPageControls();
                   });
         y += 30;
         addSlider("Table high", formatInt(m_xenakisTableHigh.value), 18, y,
-                  256, m_xenakisTableHigh, [this](double) {
-                      m_xenakisController.editPage([this](xen::Page& page) {
-                          if (page.frequencyTables.empty())
-                              page.frequencyTables.push_back(
-                                  xen::FrequencyTable{});
-                          auto& table = page.frequencyTables.front();
-                          const int low = std::clamp(
-                              static_cast<int>(
-                                  std::lround(m_xenakisTableLow.value)),
-                              0, 126);
-                          const int high = std::clamp(
-                              static_cast<int>(
-                                  std::lround(m_xenakisTableHigh.value)),
-                              0, 127);
-                          table.lowIndex = low;
-                          table.highIndex = std::max(low + 1, high);
-                      }, "table_high");
+                  256, m_xenakisTableHigh, [this, tableIndex](double) {
+                      m_xenakisController.editPage(
+                          [this, tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              auto& table =
+                                  page.frequencyTables[static_cast<size_t>(
+                                      i)];
+                              const int low = std::clamp(
+                                  static_cast<int>(
+                                      std::lround(m_xenakisTableLow.value)),
+                                  0, 126);
+                              const int high = std::clamp(
+                                  static_cast<int>(std::lround(
+                                      m_xenakisTableHigh.value)),
+                                  0, 127);
+                              table.lowIndex = low;
+                              table.highIndex = std::max(low + 1, high);
+                          }, "table_high");
                       syncXenakisPageControls();
                   });
         y += 30;
         addSlider("Divisions",
                   formatInt(m_xenakisTableDivisions.value), 18, y, 256,
-                  m_xenakisTableDivisions, [this](double) {
-                      m_xenakisController.editPage([this](xen::Page& page) {
-                          if (page.frequencyTables.empty())
-                              page.frequencyTables.push_back(
-                                  xen::FrequencyTable{});
-                          page.frequencyTables.front()
-                              .tuning.divisionsPerOctave =
-                              std::clamp(m_xenakisTableDivisions.value, 1.0,
-                                         48.0);
-                      }, "table_divisions");
+                  m_xenakisTableDivisions, [this, tableIndex](double) {
+                      m_xenakisController.editPage(
+                          [this, tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              page.frequencyTables[static_cast<size_t>(i)]
+                                  .tuning.divisionsPerOctave =
+                                  std::clamp(m_xenakisTableDivisions.value,
+                                             1.0, 48.0);
+                          }, "table_divisions");
                       syncXenakisPageControls();
                   });
         y += 30;
         addButton(std::string("Discrete: ") +
                       (m_xenakisTableDiscrete ? "On" : "Off"),
-                  18, y, buttonWidth * 2 + gap, buttonHeight, [this] {
+                  18, y, buttonWidth, buttonHeight, [this, tableIndex] {
                       m_xenakisTableDiscrete = !m_xenakisTableDiscrete;
                       const bool discrete = m_xenakisTableDiscrete;
                       m_xenakisController.editPage(
-                          [discrete](xen::Page& page) {
+                          [discrete, tableIndex](xen::Page& page) {
                               if (page.frequencyTables.empty())
                                   page.frequencyTables.push_back(
                                       xen::FrequencyTable{});
-                              page.frequencyTables.front()
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              page.frequencyTables[static_cast<size_t>(i)]
                                   .tuning.discrete = discrete;
                           });
                   });
+        const bool hasTable =
+            !m_xenakisController.page().frequencyTables.empty();
+        const bool sieveEnabled =
+            hasTable &&
+            m_xenakisController.page()
+                .frequencyTables[static_cast<size_t>(tableIndex)]
+                .useSieve;
+        addButton(std::string("Sieve: ") +
+                      (sieveEnabled ? "On" : "Off"),
+                  18 + buttonWidth + gap, y, buttonWidth, buttonHeight,
+                  [this, tableIndex] {
+                      m_xenakisController.editPage(
+                          [tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              auto& table =
+                                  page.frequencyTables[static_cast<size_t>(
+                                      i)];
+                              table.useSieve = !table.useSieve;
+                          });
+                      syncXenakisPageControls();
+                  }, false, sieveEnabled);
         y += buttonHeight + 6;
+        addSlider("Sieve mod", formatInt(m_xenakisSieveModulus.value), 18, y,
+                  256, m_xenakisSieveModulus, [this, tableIndex](double) {
+                      m_xenakisController.editPage(
+                          [this, tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              auto& table =
+                                  page.frequencyTables[static_cast<size_t>(
+                                      i)];
+                              const int modulus = std::clamp(
+                                  static_cast<int>(
+                                      std::lround(
+                                          m_xenakisSieveModulus.value)),
+                                  2, 24);
+                              const int offset = std::clamp(
+                                  static_cast<int>(std::lround(
+                                      m_xenakisSieveOffset.value)),
+                                  0, modulus - 1);
+                              if (table.sieve.groups.empty())
+                                  table.sieve.addClass(modulus, offset);
+                              else if (table.sieve.groups.back().empty())
+                                  table.sieve.groups.back().push_back(
+                                      {modulus, offset});
+                              else
+                                  table.sieve.groups.back().front() =
+                                      xen::SieveClass{modulus, offset};
+                          }, "table_sieve_mod");
+                      syncXenakisPageControls();
+                  });
+        y += 30;
+        addSlider("Sieve offset", formatInt(m_xenakisSieveOffset.value), 18,
+                  y, 256, m_xenakisSieveOffset, [this, tableIndex](double) {
+                      m_xenakisController.editPage(
+                          [this, tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              auto& table =
+                                  page.frequencyTables[static_cast<size_t>(
+                                      i)];
+                              const int modulus = std::clamp(
+                                  static_cast<int>(
+                                      std::lround(
+                                          m_xenakisSieveModulus.value)),
+                                  2, 24);
+                              const int offset = std::clamp(
+                                  static_cast<int>(std::lround(
+                                      m_xenakisSieveOffset.value)),
+                                  0, modulus - 1);
+                              if (table.sieve.groups.empty())
+                                  table.sieve.addClass(modulus, offset);
+                              else if (table.sieve.groups.back().empty())
+                                  table.sieve.groups.back().push_back(
+                                      {modulus, offset});
+                              else
+                                  table.sieve.groups.back().front() =
+                                      xen::SieveClass{modulus, offset};
+                          }, "table_sieve_offset");
+                      syncXenakisPageControls();
+                  });
+        y += 30;
+        addButton("Add Class", 18, y, buttonWidth, buttonHeight,
+                  [this, tableIndex] {
+                      m_xenakisController.editPage(
+                          [this, tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty())
+                                  page.frequencyTables.push_back(
+                                      xen::FrequencyTable{});
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              auto& table =
+                                  page.frequencyTables[static_cast<size_t>(
+                                      i)];
+                              const int modulus = std::clamp(
+                                  static_cast<int>(
+                                      std::lround(
+                                          m_xenakisSieveModulus.value)),
+                                  2, 24);
+                              const int offset = std::clamp(
+                                  static_cast<int>(std::lround(
+                                      m_xenakisSieveOffset.value)),
+                                  0, modulus - 1);
+                              table.sieve.addClass(modulus, offset);
+                              table.useSieve = true;
+                          });
+                      syncXenakisPageControls();
+                  });
+        addButton("Remove Last", 18 + buttonWidth + gap, y, buttonWidth,
+                  buttonHeight, [this, tableIndex] {
+                      m_xenakisController.editPage(
+                          [tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty()) return;
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              auto& sieve =
+                                  page.frequencyTables[static_cast<size_t>(
+                                      i)]
+                                      .sieve;
+                              if (!sieve.groups.empty())
+                                  sieve.groups.pop_back();
+                          });
+                      syncXenakisPageControls();
+                  });
+        y += buttonHeight + 6;
+        addButton("Clear Sieve", 18, y, buttonWidth * 2 + gap,
+                  buttonHeight, [this, tableIndex] {
+                      m_xenakisController.editPage(
+                          [tableIndex](xen::Page& page) {
+                              if (page.frequencyTables.empty()) return;
+                              const int i = std::clamp(
+                                  tableIndex, 0,
+                                  static_cast<int>(
+                                      page.frequencyTables.size()) -
+                                      1);
+                              page.frequencyTables[static_cast<size_t>(i)]
+                                  .sieve.groups.clear();
+                          });
+                      syncXenakisPageControls();
+                  });
+        y += buttonHeight + 6;
+        if (hasTable) {
+            const xen::FrequencyTable& table =
+                m_xenakisController.page()
+                    .frequencyTables[static_cast<size_t>(tableIndex)];
+            std::ostringstream sieveInfo;
+            sieveInfo << "Classes: ";
+            if (table.sieve.groups.empty()) {
+                sieveInfo << "none";
+            } else {
+                size_t emitted = 0;
+                for (const auto& group : table.sieve.groups) {
+                    if (emitted >= 8) {
+                        sieveInfo << " ...";
+                        break;
+                    }
+                    if (emitted != 0) sieveInfo << " | ";
+                    for (size_t c = 0; c < group.size() && emitted < 8;
+                         ++c, ++emitted) {
+                        if (c != 0) sieveInfo << "&";
+                        sieveInfo << group[c].modulus << ":"
+                                  << group[c].offset;
+                    }
+                }
+            }
+            drawText(sieveInfo.str(), 18, y, kTextFaint, fontSmall());
+            y += 18;
+        }
 
         drawSection("GENDYN", y);
         addSlider("Segments", formatInt(m_xenakisGendynSegments.value), 18, y,

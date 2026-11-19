@@ -222,19 +222,25 @@ further processing.
 Press `7` or choose **Xenakis**. The canvas is editable: choose **Draw**,
 **Select**, or **Erase**; drag to add a line arc, or enable **Freehand** for a
 multi-point arc; click an arc to select it and use the arc weight, mute, delete,
-waveform, and group controls. Pitch and time snapping are toggled in the
-sidebar. Page edits are undoable with `Ctrl+Z` / `Ctrl+Y` while the tab is
-active, or with the **Undo Page** / **Redo Page** buttons. **Preview Page**
-renders the page, loops it through the audio device, and draws a moving
-playhead; editing stops the preview. **GENDYN** controls the stochastic waveform
-engine; **Group** sets mute, solo, and transpose; **Envelope** sets the page
-attack/release; **Tuning** edits the table low/high index, divisions per octave,
-and discrete mode; **Render** controls duration, gain, peak, normalization, and
-looping. Generator sliders take effect when **Generate Page** is pressed, so
-hand edits are preserved. **Render to Track** inserts the page as a new track
-with an embedded `xenakis_page` recipe. **Load Page** / **Save Page** handle
-`.xenpage` files for editing; File → Open and drag/drop render a page directly
-to a track.
+waveform, group, envelope, and frequency-table controls. In Draw or Select
+mode, double-click an arc to insert a breakpoint, drag breakpoints to reshape
+the arc, and right-click a breakpoint to delete it. The mouse wheel zooms time
+around the cursor, Shift+wheel or the middle mouse button pans, and the
+toolbar's zoom/Fit buttons target the Xenakis view. Pitch and time snapping are
+toggled in the sidebar. Page edits are undoable with `Ctrl+Z` / `Ctrl+Y` while
+the tab is active, or with the **Undo Page** / **Redo Page** buttons.
+**Preview Page** renders the page, loops it through the audio device, and draws
+a moving playhead; click or drag the canvas to seek while previewing, and
+editing stops the preview. **GENDYN** controls the stochastic waveform engine;
+**Group** sets mute, solo, and transpose; **Envelope** stores multiple
+attack/release envelopes, shared per arc; **Tuning** stores multiple frequency
+tables with low/high index, divisions per octave, discrete mode, and direct
+sieve-class editing; **Render** controls duration, gain, peak, normalization,
+and looping. Generator sliders take effect when **Generate Page** is pressed,
+so hand edits are preserved. **Render to Track** inserts the page as a new
+track with an embedded `xenakis_page` recipe. **Load Page** / **Save Page**
+handle `.xenpage` files for editing; File → Open and drag/drop render a page
+directly to a track.
 
 ### Recording
 

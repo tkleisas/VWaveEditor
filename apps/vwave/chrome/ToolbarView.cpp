@@ -114,14 +114,18 @@ void App::syncToolbarWidgets() {
 
     const bool playing = m_player.isPlaying();
     const bool hasAudio = !m_timeline.empty();
+    const bool xenakisView = m_tab == vwave::EditorTab::Xenakis;
     auto& play = *buttons[static_cast<size_t>(ToolbarButton::Play)];
     play.label = playing ? "Playing" : "Play";
     play.active = playing;
     play.enabled = hasAudio;
     buttons[static_cast<size_t>(ToolbarButton::Stop)]->enabled = playing;
-    buttons[static_cast<size_t>(ToolbarButton::ZoomOut)]->enabled = hasAudio;
-    buttons[static_cast<size_t>(ToolbarButton::ZoomIn)]->enabled = hasAudio;
-    buttons[static_cast<size_t>(ToolbarButton::Fit)]->enabled = hasAudio;
+    buttons[static_cast<size_t>(ToolbarButton::ZoomOut)]->enabled =
+        hasAudio || xenakisView;
+    buttons[static_cast<size_t>(ToolbarButton::ZoomIn)]->enabled =
+        hasAudio || xenakisView;
+    buttons[static_cast<size_t>(ToolbarButton::Fit)]->enabled =
+        hasAudio || xenakisView;
     buttons[static_cast<size_t>(ToolbarButton::Start)]->enabled = hasAudio;
     buttons[static_cast<size_t>(ToolbarButton::End)]->enabled = hasAudio;
 

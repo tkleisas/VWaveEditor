@@ -5,6 +5,8 @@
 
 #include <xen/page_model.h>
 
+#include <algorithm>
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -183,6 +185,16 @@ int64_t XenakisController::previewPosition() const {
     return m_previewing && m_player.isPlaying()
                ? m_player.sourcePosition()
                : 0;
+}
+
+bool XenakisController::seekPreview(double seconds) {
+    if (!m_previewing || m_previewSampleRate <= 0 || m_previewFrames <= 0)
+        return false;
+    const double frame =
+        std::round(std::max(0.0, seconds) * m_previewSampleRate);
+    m_player.seek(std::clamp<int64_t>(
+        static_cast<int64_t>(frame), 0, m_previewFrames - 1));
+    return true;
 }
 
 void XenakisController::preview(

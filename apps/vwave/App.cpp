@@ -267,6 +267,8 @@ App::App()
     m_xenakisTableLow = {0.0, 126.0, 0.0, false, 1.0};
     m_xenakisTableHigh = {1.0, 127.0, 120.0, false, 1.0};
     m_xenakisTableDivisions = {5.0, 24.0, 12.0, false, 1.0};
+    m_xenakisSieveModulus = {2.0, 24.0, 3.0, false, 1.0};
+    m_xenakisSieveOffset = {0.0, 23.0, 0.0, false, 1.0};
     m_masteringBands = {8.0, 64.0, 32.0, true, 1.0};
     m_masteringMaxCut = {0.0, 24.0, 12.0, false, 0.5};
     m_masteringMaxBoost = {0.0, 6.0, 2.0, false, 0.5};
@@ -798,6 +800,12 @@ const vwave::Document& App::activeDocument() const {
 }
 
 void App::zoomTime(double factor) {
+    if (m_tab == vwave::EditorTab::Xenakis) {
+        const double anchor =
+            xenakisViewStart() + xenakisViewDuration() * 0.5;
+        zoomXenakisView(factor, anchor);
+        return;
+    }
     const int width = m_tab == vwave::EditorTab::Spectrum
                           ? std::max(1, m_spectrumArea.w)
                           : std::max(1, m_waveArea.w);
@@ -805,6 +813,10 @@ void App::zoomTime(double factor) {
 }
 
 void App::fitTime() {
+    if (m_tab == vwave::EditorTab::Xenakis) {
+        fitXenakisView();
+        return;
+    }
     m_view.fit(m_timeline.lengthFrames());
 }
 
@@ -1105,14 +1117,18 @@ void App::cycleImageTimeMapping() { m_imageController.cycleTimeMapping(); }
 
 void App::loadXenakisPage(const std::string& path) {
     m_xenakisSelectedArc = -1;
+    m_xenakisSelectedPoint = -1;
     m_xenakisController.renderFile(path, m_playhead);
     syncXenakisPageControls();
+    fitXenakisView();
 }
 
 void App::loadXenakisPageForEditing(const std::string& path) {
     m_xenakisSelectedArc = -1;
+    m_xenakisSelectedPoint = -1;
     if (m_xenakisController.openPageFile(path)) {
         syncXenakisPageControls();
+        fitXenakisView();
         setStatus("Loaded Xenakis page");
     }
 }
@@ -1228,27 +1244,99 @@ vwave::XenakisRenderOptions App::xenakisRenderOptions() const {
     return options;
 }
 
+double App::xenakisViewDuration() const {
+    const xen::Page& page = m_xenakisController.page();
+    const double pageDuration = std::max(0.001, page.duration);
+    if (m_xenakisViewDuration <= 0.0) return pageDuration;
+    return std::clamp(m_xenakisViewDuration, 0.05, pageDuration);
+}
+
+double App::xenakisViewStart() const {
+    const xen::Page& page = m_xenakisController.page();
+    const double duration = xenakisViewDuration();
+    const double maxStart =
+        std::max(0.0, page.duration - duration);
+    return std::clamp(m_xenakisViewStart, 0.0, maxStart);
+}
+
+void App::fitXenakisView() {
+    m_xenakisViewStart = 0.0;
+    m_xenakisViewDuration = 0.0;
+}
+
+void App::zoomXenakisView(double factor, double anchorTime) {
+    const xen::Page& page = m_xenakisController.page();
+    const double pageDuration = std::max(0.001, page.duration);
+    const double oldStart = xenakisViewStart();
+    const double oldDuration = xenakisViewDuration();
+    const double newDuration = std::clamp(
+        oldDuration * factor, std::min(0.1, pageDuration), pageDuration);
+    if (newDuration >= pageDuration * 0.999) {
+        fitXenakisView();
+        return;
+    }
+    const double ratio = newDuration / oldDuration;
+    double newStart =
+        anchorTime - (anchorTime - oldStart) * ratio;
+    newStart = std::clamp(newStart, 0.0,
+                          std::max(0.0, pageDuration - newDuration));
+    m_xenakisViewDuration = newDuration;
+    m_xenakisViewStart = newStart;
+}
+
+void App::panXenakisView(double seconds) {
+    const xen::Page& page = m_xenakisController.page();
+    const double duration = xenakisViewDuration();
+    const double maxStart =
+        std::max(0.0, page.duration - duration);
+    m_xenakisViewStart =
+        std::clamp(m_xenakisViewStart + seconds, 0.0, maxStart);
+}
+
 void App::generateXenakisPage() {
     m_xenakisSelectedArc = -1;
+    m_xenakisSelectedPoint = -1;
     m_xenakisController.generate(xenakisGenerateOptions());
     syncXenakisPageControls();
+    fitXenakisView();
 }
 
 void App::syncXenakisPageControls() {
     if (!m_xenakisController.hasPage()) return;
     const xen::Page& page = m_xenakisController.page();
-    if (!page.envelopes.empty() && page.envelopes[0].points.size() >= 4) {
-        m_xenakisAttack.value = page.envelopes[0].points[1].time;
-        m_xenakisRelease.value =
-            1.0 - page.envelopes[0].points[2].time;
+    if (!page.envelopes.empty()) {
+        m_xenakisEnvelopeIndex = std::clamp(
+            m_xenakisEnvelopeIndex, 0,
+            static_cast<int>(page.envelopes.size()) - 1);
+        const xen::Envelope& envelope =
+            page.envelopes[static_cast<size_t>(m_xenakisEnvelopeIndex)];
+        if (envelope.points.size() >= 4) {
+            m_xenakisAttack.value = envelope.points[1].time;
+            m_xenakisRelease.value =
+                1.0 - envelope.points[2].time;
+        }
+    } else {
+        m_xenakisEnvelopeIndex = 0;
     }
     if (!page.frequencyTables.empty()) {
-        const xen::FrequencyTable& table = page.frequencyTables.front();
+        m_xenakisTableIndex = std::clamp(
+            m_xenakisTableIndex, 0,
+            static_cast<int>(page.frequencyTables.size()) - 1);
+        const xen::FrequencyTable& table =
+            page.frequencyTables[static_cast<size_t>(m_xenakisTableIndex)];
         m_xenakisTableLow.value = table.lowIndex;
         m_xenakisTableHigh.value = table.highIndex;
         m_xenakisTableDivisions.value =
             table.tuning.divisionsPerOctave;
         m_xenakisTableDiscrete = table.tuning.discrete;
+        if (!table.sieve.groups.empty() &&
+            !table.sieve.groups.back().empty()) {
+            const xen::SieveClass& c = table.sieve.groups.back().front();
+            m_xenakisSieveModulus.value = c.modulus;
+            m_xenakisSieveOffset.value = c.offset;
+        }
+    } else {
+        m_xenakisTableIndex = 0;
     }
     if (!page.groups.empty()) {
         m_xenakisGroup = std::clamp(
@@ -1269,8 +1357,21 @@ void App::syncXenakisPageControls() {
             page.arcs[static_cast<size_t>(m_xenakisSelectedArc)].muted;
     } else {
         m_xenakisSelectedArc = -1;
+        m_xenakisSelectedPoint = -1;
         m_xenakisArcMute = false;
     }
+    if (m_xenakisSelectedArc >= 0 &&
+        m_xenakisSelectedPoint >=
+            static_cast<int>(page.arcs[static_cast<size_t>(
+                                         m_xenakisSelectedArc)]
+                                 .points.size()))
+        m_xenakisSelectedPoint = -1;
+    const double pageDuration = std::max(0.001, page.duration);
+    if (m_xenakisViewDuration > pageDuration)
+        m_xenakisViewDuration = pageDuration;
+    m_xenakisViewStart = std::clamp(
+        m_xenakisViewStart, 0.0,
+        std::max(0.0, pageDuration - xenakisViewDuration()));
 }
 
 void App::renderXenakisToTrack() {

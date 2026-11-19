@@ -126,6 +126,11 @@ bool App::handleContextMenuInput(const SDL_Event& event) {
             pointer->button != 3)
             return false;
 
+        if (m_tab == vwave::EditorTab::Xenakis) {
+            SDL_Point point{pointer->position.x, pointer->position.y};
+            if (SDL_PointInRect(&point, &m_xenakisArea)) return false;
+        }
+
         m_openMenu = -1;
         if (m_tab == vwave::EditorTab::Waveform) {
             refreshTimelineCanvas();

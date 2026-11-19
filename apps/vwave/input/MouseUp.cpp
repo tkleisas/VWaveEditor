@@ -15,7 +15,10 @@ using namespace vwave::app;
 using namespace vwave::ui;
 
 void App::handleMouseUp(const SDL_MouseButtonEvent& event) {
-    if (event.button == SDL_BUTTON_MIDDLE) m_panning = false;
+    if (event.button == SDL_BUTTON_MIDDLE) {
+        m_panning = false;
+        m_xenakisPanning = false;
+    }
     m_panningOverview = false;
     m_drawingWavetable = false;
     m_lastWavetableSample = -1;

@@ -4,6 +4,8 @@
 #include "vwave/Recipe.h"
 #include "vwave/Xenakis.h"
 
+#include <xen/page_model.h>
+
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -158,4 +160,42 @@ VWTEST("xenakis page rejects malformed input") {
     CHECK(audio.empty());
     CHECK(!error.empty());
     CHECK(!isXenakisPageFile("missing.xenpage"));
+}
+
+VWTEST("xenakis pages keep multiple envelopes tables and sieves") {
+    xen::Page page;
+    page.name = "multi";
+    page.duration = 2.0;
+    page.loopStart = 0.0;
+    page.loopEnd = 2.0;
+    page.envelopes.push_back(xen::Envelope::ad(0.2f, 0.4f));
+    xen::FrequencyTable table;
+    table.lowIndex = 24.0;
+    table.highIndex = 96.0;
+    table.tuning.divisionsPerOctave = 5.0;
+    table.useSieve = true;
+    table.sieve.addClass(3, 0);
+    table.sieve.addClass(5, 2);
+    page.frequencyTables.push_back(table);
+
+    xen::Arc arc = xen::Arc::line(0.0, 1.0, 0.25f, 0.75f,
+                                   xen::WaveformType::Saw);
+    arc.envelopeIndex = 1;
+    arc.freqTableIndex = 1;
+    page.arcs.push_back(arc);
+
+    const std::string text = xen::serializePage(page);
+    xen::Page loaded;
+    REQUIRE(xen::deserializePage(text, loaded));
+    CHECK_EQ(loaded.envelopes.size(), size_t{2});
+    CHECK_EQ(loaded.frequencyTables.size(), size_t{2});
+    REQUIRE(loaded.arcs.size() == size_t{1});
+    CHECK_EQ(loaded.arcs[0].envelopeIndex, 1);
+    CHECK_EQ(loaded.arcs[0].freqTableIndex, 1);
+    CHECK(loaded.frequencyTables[1].useSieve);
+    CHECK(loaded.frequencyTables[1].sieve.matches(3));
+    CHECK(loaded.frequencyTables[1].sieve.matches(7));
+    CHECK(!loaded.frequencyTables[1].sieve.matches(1));
+    CHECK_NEAR(loaded.frequencyTables[1].tuning.divisionsPerOctave,
+               5.0, 1e-9);
 }

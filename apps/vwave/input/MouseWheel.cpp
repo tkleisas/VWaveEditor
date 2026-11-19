@@ -29,6 +29,22 @@ void App::handleWheel(const SDL_MouseWheelEvent& event) {
         return;
     }
     if (!SDL_PointInRect(&wheelPoint, &m_contentRect)) return;
+    if (m_tab == vwave::EditorTab::Xenakis) {
+        if (!SDL_PointInRect(&wheelPoint, &m_xenakisArea)) return;
+        if (event.y != 0) {
+            if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
+                panXenakisView(-static_cast<double>(event.y) *
+                               xenakisViewDuration() * 0.15);
+            } else {
+                const double anchor = xenakisTimeAt(mouseX, false);
+                zoomXenakisView(event.y > 0 ? 0.8 : 1.25, anchor);
+            }
+        } else if (event.x != 0) {
+            panXenakisView(-static_cast<double>(event.x) *
+                           xenakisViewDuration() * 0.15);
+        }
+        return;
+    }
     if (m_tab == vwave::EditorTab::Mastering ||
         m_tab == vwave::EditorTab::Image ||
         m_tab == vwave::EditorTab::Oscilloscope)

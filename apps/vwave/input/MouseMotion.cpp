@@ -31,7 +31,24 @@ void App::handleMouseMotion(const SDL_MouseMotionEvent& event) {
     if (m_tab == vwave::EditorTab::Spectrum && m_spectrum3D) {
         handleSpectrumHover(event);
     }
-    if (m_tab == vwave::EditorTab::Xenakis && m_xenakisDrawing) {
+    if (m_tab == vwave::EditorTab::Xenakis && m_xenakisPanning) {
+        const double secondsPerPixel =
+            xenakisViewDuration() /
+            static_cast<double>(std::max(1, m_xenakisArea.w));
+        const double pageDuration = std::max(
+            0.001, m_xenakisController.page().duration);
+        const double maxStart =
+            std::max(0.0, pageDuration - xenakisViewDuration());
+        m_xenakisViewStart = std::clamp(
+            m_xenakisPanStartView -
+                static_cast<double>(event.x - m_xenakisPanStartX) *
+                    secondsPerPixel,
+            0.0, maxStart);
+        return;
+    }
+    if (m_tab == vwave::EditorTab::Xenakis &&
+        (m_xenakisDrawing || m_xenakisDraggingPoint ||
+         m_xenakisScrubbingPreview)) {
         handleXenakisMouseMotion(event);
         return;
     }

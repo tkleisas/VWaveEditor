@@ -30,6 +30,12 @@ void App::drawXenakis(const SDL_Rect& area) {
     SDL_Rect rect{area.x + 20, area.y + 46, area.w - 40, area.h - 112};
     if (rect.w <= 0 || rect.h <= 0) return;
     m_xenakisArea = rect;
+    const double viewStart = xenakisViewStart();
+    const double viewDuration = xenakisViewDuration();
+    const auto xForTime = [&](double time) {
+        return rect.x + static_cast<int>(std::llround(
+                            (time - viewStart) / viewDuration * rect.w));
+    };
 
     SDL_SetRenderDrawColor(m_renderer, kCanvas.r, kCanvas.g, kCanvas.b, 255);
     SDL_RenderFillRect(m_renderer, &rect);
@@ -39,14 +45,19 @@ void App::drawXenakis(const SDL_Rect& area) {
                               5.0,  10.0, 15.0, 30.0, 60.0};
     for (double target : targets) {
         step = target;
-        if (duration / target <= 10.0) break;
+        if (viewDuration / target <= 10.0) break;
     }
 
     SDL_SetRenderDrawColor(m_renderer, kBorder.r, kBorder.g, kBorder.b, 90);
-    for (double t = 0.0; t <= duration + 1e-9; t += step) {
-        const int x = rect.x + static_cast<int>(std::llround(
-                                     (t / duration) * rect.w));
+    const double firstTime = std::floor(viewStart / step) * step;
+    for (double t = firstTime;
+         t <= viewStart + viewDuration + 1e-9; t += step) {
+        const int x = xForTime(t);
+        if (x < rect.x || x > rect.x + rect.w) continue;
         SDL_RenderDrawLine(m_renderer, x, rect.y, x, rect.y + rect.h);
+        if (x <= rect.x + rect.w - 40)
+            drawText(formatSeconds(t), x + 3, rect.y + 2, kTextFaint,
+                     fontSmall());
     }
 
     const xen::FrequencyTable* table =
@@ -95,10 +106,8 @@ void App::drawXenakis(const SDL_Rect& area) {
                 arc.points[point - 1].pitch, 0.0, 1.0);
             const double p1 = std::clamp<double>(
                 arc.points[point].pitch, 0.0, 1.0);
-            const int x0 = rect.x + static_cast<int>(
-                                       std::llround(t0 / duration * rect.w));
-            const int x1 = rect.x + static_cast<int>(
-                                       std::llround(t1 / duration * rect.w));
+            const int x0 = xForTime(t0);
+            const int x1 = xForTime(t1);
             const int y0 = rect.y + static_cast<int>(
                                        std::llround((1.0 - p0) * rect.h));
             const int y1 = rect.y + static_cast<int>(
@@ -115,6 +124,33 @@ void App::drawXenakis(const SDL_Rect& area) {
         }
     }
 
+    if (m_xenakisSelectedArc >= 0 &&
+        m_xenakisSelectedArc < static_cast<int>(page.arcs.size())) {
+        const xen::Arc& arc =
+            page.arcs[static_cast<size_t>(m_xenakisSelectedArc)];
+        for (size_t i = 0; i < arc.points.size(); ++i) {
+            const int x = xForTime(arc.points[i].time);
+            const int y = rect.y + static_cast<int>(std::llround(
+                                       (1.0 - std::clamp<double>(
+                                                  arc.points[i].pitch, 0.0,
+                                                  1.0)) *
+                                       rect.h));
+            const bool current =
+                static_cast<int>(i) == m_xenakisSelectedPoint;
+            if (current) {
+                SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                       kOrange.b, 255);
+                SDL_Rect marker{x - 4, y - 4, 9, 9};
+                SDL_RenderFillRect(m_renderer, &marker);
+            } else {
+                SDL_SetRenderDrawColor(m_renderer, kText.r, kText.g,
+                                       kText.b, 220);
+                SDL_Rect marker{x - 2, y - 2, 5, 5};
+                SDL_RenderFillRect(m_renderer, &marker);
+            }
+        }
+    }
+
     if (m_xenakisDrawing && m_xenakisFreehand &&
         m_xenakisFreehandPoints.size() >= 2) {
         std::vector<xen::ArcPoint> preview = m_xenakisFreehandPoints;
@@ -123,26 +159,18 @@ void App::drawXenakis(const SDL_Rect& area) {
         SDL_SetRenderDrawColor(m_renderer, kAccentText.r, kAccentText.g,
                                kAccentText.b, 255);
         for (size_t i = 1; i < preview.size(); ++i) {
-            const int x0 = rect.x + static_cast<int>(std::llround(
-                                       (double)preview[i - 1].time /
-                                       duration * rect.w));
+            const int x0 = xForTime(preview[i - 1].time);
             const int y0 = rect.y + static_cast<int>(std::llround(
                                        (1.0 - preview[i - 1].pitch) *
                                        rect.h));
-            const int x1 = rect.x + static_cast<int>(std::llround(
-                                       (double)preview[i].time / duration *
-                                       rect.w));
+            const int x1 = xForTime(preview[i].time);
             const int y1 = rect.y + static_cast<int>(std::llround(
                                        (1.0 - preview[i].pitch) * rect.h));
             SDL_RenderDrawLine(m_renderer, x0, y0, x1, y1);
         }
     } else if (m_xenakisDrawing) {
-        const int x0 = rect.x + static_cast<int>(std::llround(
-                                   (double)m_xenakisDrawStartTime / duration *
-                                   rect.w));
-        const int x1 = rect.x + static_cast<int>(std::llround(
-                                   (double)m_xenakisDrawCurrentTime / duration *
-                                   rect.w));
+        const int x0 = xForTime(m_xenakisDrawStartTime);
+        const int x1 = xForTime(m_xenakisDrawCurrentTime);
         const int y0 = rect.y + static_cast<int>(std::llround(
                                    (1.0 - m_xenakisDrawStartPitch) * rect.h));
         const int y1 = rect.y + static_cast<int>(std::llround(
@@ -160,14 +188,16 @@ void App::drawXenakis(const SDL_Rect& area) {
         const double seconds =
             static_cast<double>(m_xenakisController.previewPosition()) /
             static_cast<double>(m_xenakisController.previewSampleRate());
-        const int x = rect.x + static_cast<int>(std::llround(
-                                   std::clamp(seconds / duration, 0.0, 1.0) *
-                                   rect.w));
-        SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g, kOrange.b,
-                               255);
-        SDL_RenderDrawLine(m_renderer, x, rect.y, x, rect.y + rect.h);
-        SDL_Rect marker{x - 3, rect.y, 7, 5};
-        SDL_RenderFillRect(m_renderer, &marker);
+        if (seconds >= viewStart &&
+            seconds <= viewStart + viewDuration) {
+            const int x = xForTime(seconds);
+            SDL_SetRenderDrawColor(m_renderer, kOrange.r, kOrange.g,
+                                   kOrange.b, 255);
+            SDL_RenderDrawLine(m_renderer, x, rect.y, x,
+                               rect.y + rect.h);
+            SDL_Rect marker{x - 3, rect.y, 7, 5};
+            SDL_RenderFillRect(m_renderer, &marker);
+        }
     }
 
     SDL_RenderSetClipRect(m_renderer, nullptr);
@@ -189,11 +219,22 @@ void App::drawXenakis(const SDL_Rect& area) {
                                                          : "no page undo");
     drawText(tool.str(), area.x + 20, area.y + area.h - 52, kTextFaint,
              fontSmall());
+    drawText(m_xenakisController.previewing()
+                 ? "Preview: click or drag the canvas to seek  \u00b7  "
+                   "double-click a point to add  \u00b7  right-click to "
+                   "delete"
+                 : "Double-click an arc to add a point  \u00b7  "
+                   "right-click a breakpoint to delete",
+             area.x + 20, area.y + area.h - 68, kTextFaint, fontSmall());
 
     std::ostringstream info;
     info << "Source " << m_xenakisController.pageName() << "  ·  GENDYN "
          << (m_xenakisMirror ? "mirror" : "free") << "  ·  "
          << (m_xenakisNormalize ? "normalize" : "raw");
+    if (m_xenakisViewDuration > 0.0) {
+        info << "  ·  view " << formatSeconds(viewStart) << "-"
+             << formatSeconds(viewStart + viewDuration);
+    }
     drawText(info.str(), area.x + 20, area.y + area.h - 30, kTextDim,
              fontSmall());
 }
