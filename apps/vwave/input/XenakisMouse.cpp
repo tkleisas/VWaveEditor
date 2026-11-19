@@ -28,14 +28,29 @@ double App::xenakisTimeAt(int x, bool snap) const {
     return std::clamp(time, 0.0, duration);
 }
 
-float App::xenakisPitchAt(int y, bool snap) const {
+const xen::FrequencyTable* App::xenakisActiveTable() const {
     const xen::Page& page = m_xenakisController.page();
+    if (page.frequencyTables.empty()) return nullptr;
+    if (m_xenakisSelectedArc >= 0 &&
+        m_xenakisSelectedArc < static_cast<int>(page.arcs.size()))
+        return &page.tableFor(
+            page.arcs[static_cast<size_t>(m_xenakisSelectedArc)]);
+    if (m_xenakisTableIndex >= 0 &&
+        m_xenakisTableIndex <
+            static_cast<int>(page.frequencyTables.size()))
+        return &page.frequencyTables[static_cast<size_t>(
+            m_xenakisTableIndex)];
+    return &page.frequencyTables.front();
+}
+
+float App::xenakisPitchAt(int y, bool snap) const {
     if (m_xenakisArea.h <= 0) return 0.5f;
     double pitch = 1.0 - static_cast<double>(y - m_xenakisArea.y) /
                               static_cast<double>(m_xenakisArea.h);
     pitch = std::clamp(pitch, 0.0, 1.0);
-    if (snap && !page.frequencyTables.empty()) {
-        const xen::FrequencyTable& table = page.frequencyTables.front();
+    const xen::FrequencyTable* active = xenakisActiveTable();
+    if (snap && active != nullptr) {
+        const xen::FrequencyTable& table = *active;
         double index = table.indexForNorm(pitch);
         if (table.useSieve && !table.sieve.empty()) {
             const int64_t base = static_cast<int64_t>(std::llround(index));
@@ -246,6 +261,18 @@ void App::handleXenakisMouseDown(const SDL_MouseButtonEvent& event) {
     if (m_xenakisTool == 1 || hit >= 0) {
         m_xenakisSelectedArc = hit;
         m_xenakisSelectedPoint = -1;
+        if (hit >= 0) {
+            const xen::Page& page = m_xenakisController.page();
+            const xen::Arc& arc = page.arcs[static_cast<size_t>(hit)];
+            if (!page.envelopes.empty())
+                m_xenakisEnvelopeIndex = std::clamp(
+                    arc.envelopeIndex, 0,
+                    static_cast<int>(page.envelopes.size()) - 1);
+            if (!page.frequencyTables.empty())
+                m_xenakisTableIndex = std::clamp(
+                    arc.freqTableIndex, 0,
+                    static_cast<int>(page.frequencyTables.size()) - 1);
+        }
         syncXenakisPageControls();
         setStatus(hit >= 0 ? "Arc selected" : "Selection cleared");
         return;

@@ -60,8 +60,7 @@ void App::drawXenakis(const SDL_Rect& area) {
                      fontSmall());
     }
 
-    const xen::FrequencyTable* table =
-        page.frequencyTables.empty() ? nullptr : &page.frequencyTables.front();
+    const xen::FrequencyTable* table = xenakisActiveTable();
     if (table != nullptr) {
         const double low = table->lowIndex;
         const double high = std::max(low + 1.0, table->highIndex);

@@ -285,6 +285,7 @@ private:
     int xenakisArcAt(int x, int y) const;
     int xenakisPointAt(int x, int y, int arcIndex) const;
     void insertXenakisPoint(int arcIndex, double time, float pitch);
+    const xen::FrequencyTable* xenakisActiveTable() const;
     void deleteXenakisPoint(int arcIndex, int pointIndex);
     double xenakisTimeAt(int x, bool snap) const;
     float xenakisPitchAt(int y, bool snap) const;
