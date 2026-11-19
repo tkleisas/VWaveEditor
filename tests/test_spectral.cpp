@@ -259,3 +259,65 @@ VWTEST("spectral band gains apply a multi-band curve") {
     CHECK(spectralBandGains(audio, {20.0}, {0.0}).empty());
     CHECK(spectralBandGains(audio, {20.0, 10.0}, {0.0}).empty());
 }
+
+VWTEST("spectral edit settings dispatch every edit kind") {
+    const Audio audio = makeMix({440.0, 3000.0}, {0.3, 0.1}, 0.4);
+
+    SpectralEditSettings gain;
+    gain.type = SpectralEditType::Gain;
+    gain.lowHz = 300.0;
+    gain.highHz = 600.0;
+    gain.gainDb = 12.0;
+    const Audio boosted = applySpectralEdit(audio, gain);
+    CHECK_EQ(boosted.numFrames(), audio.numFrames());
+    CHECK_NEAR(amplitudeAt(boosted, 440.0, 0.1, 0.3) /
+                   amplitudeAt(audio, 440.0, 0.1, 0.3),
+               3.981, 0.12);
+    CHECK_NEAR(amplitudeAt(boosted, 3000.0, 0.1, 0.3) /
+                   amplitudeAt(audio, 3000.0, 0.1, 0.3),
+               1.0, 0.05);
+
+    SpectralEditSettings gate;
+    gate.type = SpectralEditType::Gate;
+    gate.thresholdDb = -5.0;
+    const Audio gated = applySpectralEdit(audio, gate);
+    CHECK(!gated.empty());
+    CHECK(amplitudeAt(gated, 3000.0, 0.1, 0.3) <
+          amplitudeAt(audio, 3000.0, 0.1, 0.3) * 0.5);
+
+    SpectralEditSettings filter;
+    filter.type = SpectralEditType::Filter;
+    filter.cutoffHz = 1000.0;
+    filter.lowpass = true;
+    const Audio filtered = applySpectralEdit(audio, filter);
+    CHECK(!filtered.empty());
+    CHECK(amplitudeAt(filtered, 3000.0, 0.1, 0.3) <
+          amplitudeAt(audio, 3000.0, 0.1, 0.3) * 0.1);
+
+    SpectralEditSettings blur;
+    blur.type = SpectralEditType::Blur;
+    blur.blurTime = 1;
+    blur.blurFrequency = 2;
+    const Audio blurred = applySpectralEdit(audio, blur);
+    CHECK(!blurred.empty());
+    CHECK_EQ(blurred.numFrames(), audio.numFrames());
+
+    filter.cutoffHz = 0.0;
+    CHECK(applySpectralEdit(audio, filter).empty());
+}
+
+VWTEST("spectral blur with zero radii preserves the signal") {
+    const Audio audio = makeMix({440.0, 3000.0}, {0.2, 0.1}, 0.4);
+    SpectralEditSettings edit;
+    edit.type = SpectralEditType::Blur;
+    const Audio same = applySpectralEdit(audio, edit);
+    CHECK_EQ(same.numFrames(), audio.numFrames());
+    for (int64_t i = 4800; i < 14400; ++i)
+        CHECK_NEAR(same.sample(0, i), audio.sample(0, i), 1e-3);
+
+    edit.blurTime = -1;
+    CHECK(applySpectralEdit(audio, edit).empty());
+    edit.blurTime = 0;
+    edit.blurFrequency = -1;
+    CHECK(applySpectralEdit(audio, edit).empty());
+}

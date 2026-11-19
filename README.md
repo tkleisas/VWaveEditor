@@ -42,9 +42,11 @@ desktop editor and as an embeddable editing core for
   offline processed-stem rendering with a mix ceiling. See
   [Mastering analysis and processing](docs/MASTERING.md).
 - **Spectral editing**: STFT gain, Butterworth low/high-pass masks, spectral
-  gating, blur, and time-frequency region editing. Independent time and
-  log-frequency zoom. A phase-aware CPU-projected 3D waterfall adds magnitude
-  height, phase color, confidence alpha, and hover readouts. See
+  gating, blur, and time-frequency region editing. Live preview loops the
+  selected band/region with debounced background rendering and A/B dry/wet
+  auditioning before committing. Independent time and log-frequency zoom. A
+  phase-aware CPU-projected 3D waterfall adds magnitude height, phase color,
+  confidence alpha, and hover readouts. See
   [Phase-aware 3D spectrum](docs/PHASE3D.md).
 - **Image to spectrogram**: load PNG/JPEG/BMP/TGA/GIF/PPM/PGM/HDR images, map
   luminance/color/alpha to magnitude and phase, choose linear/log frequency and
@@ -442,7 +444,8 @@ independent part moves, stretch/repeat, gain/fades, and document-shared undo.
 Version 0.1.0 adds the Xenakis/UPIC page editor: editable arcs and
 breakpoints, multiple envelopes and frequency tables, direct sieve editing,
 time zoom/pan, live preview with seek/scrub, and reproducible `.xenpage`
-recipes. It also splits the desktop editor into focused controllers, services,
+recipes. It also adds live spectral-edit previews with looping and A/B
+dry/wet auditioning. It also splits the desktop editor into focused controllers, services,
 views, and input handlers, and moves audio/project/image/wavetable loading plus
 mastering and image rendering onto background workers with stale-result
 rejection.
@@ -459,7 +462,8 @@ Deliberate remaining work:
 
 - neural amp/instrument capture training and inference (linear IR capture is
   implemented; a capture-manifest backend is in place for future models)
-- real-time preview of spectral edits
+- true streaming spectral monitoring (bounded-region preview rendering is
+  implemented)
 - VST3/AU effect hosting inside the editor
 - multichannel UI beyond stereo
 - performance work for multi-hour files and spectral jobs

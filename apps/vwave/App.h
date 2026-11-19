@@ -307,6 +307,13 @@ private:
     void applySpectralFilter(bool lowpass);
     void applySpectralGate();
     void applySpectralBlur();
+    void toggleSpectralPreview();
+    void toggleSpectralPreviewWet();
+    void cycleSpectralPreviewKind();
+    void queueSpectralPreview(vwave::app::SpectralEditKind kind,
+                              int delayMs = 120);
+    void updateSpectralPreview();
+    vwave::app::SpectralPreviewParams spectralPreviewParams() const;
     void addMarkerAtPlayhead();
     void ensureSpectrogram();
     void ensurePhaseSpectrogram();
@@ -661,5 +668,7 @@ private:
     int m_sliceMode = 0;
     int m_processTarget = 0;
     bool m_filterLowpass = true;
+    bool m_spectralPreviewDirty = false;
+    Uint32 m_spectralPreviewDue = 0;
     int m_frameSizeIndex = 3;
 };

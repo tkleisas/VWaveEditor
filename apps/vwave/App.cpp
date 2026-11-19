@@ -114,7 +114,7 @@ App::App()
           },
           [this](const std::string& status) { setStatus(status); }),
       m_spectralController(
-          m_timeline, m_player,
+          m_timeline, m_player, m_jobs, m_dispatcher,
           [this](const std::function<bool(std::string*)>& edit,
                  const std::string& success) { runEdit(edit, success); },
           [this](const std::string& status) { setStatus(status); }),
@@ -672,6 +672,7 @@ int App::run() {
     while (m_running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) handleEvent(event);
+        updateSpectralPreview();
         updatePlayback();
         updateRecording();
         m_dispatcher.drain();
@@ -1631,6 +1632,11 @@ void App::setTab(vwave::EditorTab tab) {
     if (m_tab == vwave::EditorTab::Xenakis &&
         tab != vwave::EditorTab::Xenakis)
         m_xenakisController.stopPreview();
+    if (m_tab == vwave::EditorTab::Spectrum &&
+        tab != vwave::EditorTab::Spectrum) {
+        m_spectralController.setPreviewEnabled(false);
+        m_spectralPreviewDirty = false;
+    }
     if (m_tab != tab) m_sidebarScroll = 0.0;
     closeContextMenu();
     m_tab = tab;
@@ -1642,15 +1648,34 @@ void App::setTab(vwave::EditorTab tab) {
 void App::togglePlay() {
     if (m_xenakisController.previewing())
         m_xenakisController.stopPreview();
+    if (m_spectralController.previewEnabled()) {
+        m_spectralController.setPreviewEnabled(false);
+        m_spectralPreviewDirty = false;
+    }
     if (m_recordingController.recording()) stopRecording();
     requestPrefetch();
     m_playback.togglePlay();
 }
 
-void App::stopPlayback() { m_playback.stop(); }
+void App::stopPlayback() {
+    if (m_spectralController.previewEnabled()) {
+        m_spectralController.setPreviewEnabled(false);
+        m_spectralPreviewDirty = false;
+        setStatus("Spectral preview stopped");
+    }
+    m_playback.stop();
+}
 
 void App::updatePlayback() {
     updateWaveDragAutoscroll();
+    if (m_spectralController.previewEnabled()) {
+        if (m_spectralController.previewPlaying() &&
+            !m_player.isPlaying()) {
+            m_spectralController.setPreviewEnabled(false);
+            m_spectralPreviewDirty = false;
+        }
+        return;
+    }
     if (m_xenakisController.previewing()) {
         if (m_xenakisController.previewPlaying() &&
             !m_player.isPlaying())
@@ -1683,6 +1708,10 @@ void App::updatePlayback() {
 
 void App::runEdit(const std::function<bool(std::string*)>& edit,
                   const std::string& success) {
+    if (m_tab == vwave::EditorTab::Spectrum) {
+        m_spectralController.setPreviewEnabled(false);
+        m_spectralPreviewDirty = false;
+    }
     m_player.stop();
     std::string error;
     if (edit(&error)) {
@@ -1710,7 +1739,9 @@ void App::markEdited() {
     m_overviewDirty = true;
     m_spectrogramDirty = true;
     m_analysisData.clear();
+    m_spectralController.setPreviewEnabled(false);
     m_spectralController.clear();
+    m_spectralPreviewDirty = false;
     markDirty();
 }
 
@@ -1731,7 +1762,9 @@ void App::clearAnalysis() {
     m_analysisData.clear();
     m_overviewDirty = true;
     m_spectrogramDirty = true;
+    m_spectralController.setPreviewEnabled(false);
     m_spectralController.clear();
+    m_spectralPreviewDirty = false;
 }
 
 void App::analyzeBeats() {
@@ -1909,7 +1942,8 @@ vwave::Range App::spectralTimeRange() const {
 }
 
 void App::applySpectralGain(double db) {
-    m_spectralController.applyGain(db);
+    m_spectralController.applyGain(m_spectralLow.value, m_spectralHigh.value,
+                                   db);
 }
 
 void App::applySpectralFilter(bool lowpass) {
@@ -1924,6 +1958,90 @@ void App::applySpectralBlur() {
     m_spectralController.applyBlur(
         static_cast<int>(std::lround(m_spectralBlurTime.value)),
         static_cast<int>(std::lround(m_spectralBlurFrequency.value)));
+}
+
+vwave::app::SpectralPreviewParams App::spectralPreviewParams() const {
+    vwave::app::SpectralPreviewParams params;
+    params.kind = m_spectralController.previewKind();
+    params.lowHz = m_spectralLow.value;
+    params.highHz = m_spectralHigh.value;
+    params.gainDb = m_spectralGain.value;
+    params.thresholdDb = m_spectralGate.value;
+    params.cutoffHz = m_spectralCutoff.value;
+    params.lowpass = m_filterLowpass;
+    params.blurTime =
+        static_cast<int>(std::lround(m_spectralBlurTime.value));
+    params.blurFrequency =
+        static_cast<int>(std::lround(m_spectralBlurFrequency.value));
+    return params;
+}
+
+void App::toggleSpectralPreview() {
+    if (m_spectralController.previewEnabled()) {
+        m_spectralController.setPreviewEnabled(false);
+        m_spectralPreviewDirty = false;
+        setStatus("Spectral preview stopped");
+        return;
+    }
+    if (!hasTracks() || activeDocument().audio().empty()) {
+        setStatus("Open an audio file first");
+        return;
+    }
+    stopPlayback();
+    m_spectralController.setPreviewEnabled(true);
+    m_spectralPreviewDirty = true;
+    m_spectralPreviewDue = SDL_GetTicks();
+    setStatus("Live spectral preview enabled");
+}
+
+void App::toggleSpectralPreviewWet() {
+    if (!m_spectralController.previewEnabled()) {
+        setStatus("Enable spectral preview first");
+        return;
+    }
+    m_spectralController.setPreviewWet(
+        !m_spectralController.previewWet());
+}
+
+void App::cycleSpectralPreviewKind() {
+    using vwave::app::SpectralEditKind;
+    SpectralEditKind kind = m_spectralController.previewKind();
+    switch (kind) {
+    case SpectralEditKind::Gain: kind = SpectralEditKind::Gate; break;
+    case SpectralEditKind::Gate: kind = SpectralEditKind::Filter; break;
+    case SpectralEditKind::Filter: kind = SpectralEditKind::Blur; break;
+    case SpectralEditKind::Blur: kind = SpectralEditKind::Gain; break;
+    }
+    m_spectralController.setPreviewKind(kind);
+    queueSpectralPreview(kind, 0);
+    setStatus(std::string("Spectral preview mode: ") +
+              vwave::app::spectralEditKindName(kind));
+}
+
+void App::queueSpectralPreview(vwave::app::SpectralEditKind kind,
+                               int delayMs) {
+    m_spectralController.setPreviewKind(kind);
+    if (!m_spectralController.previewEnabled()) return;
+    if (m_spectralPreviewDirty &&
+        delayMs > 0) {
+        m_spectralPreviewDue =
+            std::max(m_spectralPreviewDue,
+                     SDL_GetTicks() + static_cast<Uint32>(delayMs));
+        return;
+    }
+    m_spectralPreviewDirty = true;
+    m_spectralPreviewDue =
+        SDL_GetTicks() + static_cast<Uint32>(std::max(0, delayMs));
+}
+
+void App::updateSpectralPreview() {
+    if (!m_spectralPreviewDirty ||
+        !m_spectralController.previewEnabled())
+        return;
+    if (SDL_GetTicks() < m_spectralPreviewDue) return;
+    m_spectralPreviewDirty = false;
+    m_spectralController.requestPreview(spectralPreviewParams(),
+                                        m_playhead);
 }
 
 void App::addMarkerAtPlayhead() { m_selection.addMarkerAtPlayhead(); }

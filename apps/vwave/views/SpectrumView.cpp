@@ -199,6 +199,59 @@ void App::drawSpectrum(const SDL_Rect& area) {
                  kAccent, fontSmall());
     }
 
+    if (m_spectralController.previewEnabled() &&
+        !m_spectralController.previewRange().empty()) {
+        const vwave::Range preview = m_spectralController.previewRange();
+        const int previewLeft = std::clamp(
+            rect.x + static_cast<int>(
+                         (static_cast<double>(trackStart + preview.start) -
+                          m_view.startFrame) /
+                         std::max(1.0, m_view.visibleFrames) * rect.w),
+            rect.x, rect.x + rect.w);
+        const int previewRight = std::clamp(
+            rect.x + static_cast<int>(
+                         (static_cast<double>(trackStart + preview.end) -
+                          m_view.startFrame) /
+                         std::max(1.0, m_view.visibleFrames) * rect.w),
+            rect.x, rect.x + rect.w);
+        if (previewRight > previewLeft) {
+            SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                   kAccent.b, 12);
+            SDL_Rect previewFill{previewLeft, rect.y,
+                                 previewRight - previewLeft, rect.h};
+            SDL_RenderFillRect(m_renderer, &previewFill);
+            SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                   kAccent.b, 160);
+            SDL_RenderDrawRect(m_renderer, &previewFill);
+            std::string label = std::string("Preview ") +
+                                (m_spectralController.previewWet()
+                                     ? "wet"
+                                     : "dry");
+            if (m_spectralController.previewPending())
+                label += " (rendering)";
+            drawText(label, previewLeft + 4, rect.y + rect.h - 18,
+                     kAccent, fontSmall());
+        }
+        if (m_spectralController.previewPlaying()) {
+            const int64_t previewFrame =
+                preview.start +
+                std::clamp<int64_t>(m_spectralController.previewPosition(),
+                                    0, preview.length());
+            const int previewX = rect.x + static_cast<int>(
+                (static_cast<double>(trackStart + previewFrame) -
+                 m_view.startFrame) /
+                std::max(1.0, m_view.visibleFrames) * rect.w);
+            if (previewX >= rect.x && previewX <= rect.x + rect.w) {
+                SDL_SetRenderDrawColor(m_renderer, kAccent.r, kAccent.g,
+                                       kAccent.b, 255);
+                SDL_RenderDrawLine(m_renderer, previewX, rect.y, previewX,
+                                   rect.y + rect.h);
+                SDL_Rect marker{previewX - 3, rect.y + rect.h - 7, 7, 6};
+                SDL_RenderFillRect(m_renderer, &marker);
+            }
+        }
+    }
+
     const int x = rect.x + static_cast<int>(
         (static_cast<double>(m_playhead) - m_view.startFrame) /
         std::max(1.0, m_view.visibleFrames) * rect.w);

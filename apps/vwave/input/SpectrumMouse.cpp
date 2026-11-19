@@ -22,6 +22,8 @@ void App::handleSpectrumMouseDown(const SDL_MouseButtonEvent& event) {
         const int64_t frame =
             laneFrameAtX(m_spectrumArea, event.x);
         if ((SDL_GetModState() & KMOD_SHIFT) != 0) {
+            m_spectralController.setPreviewEnabled(false);
+            m_spectralPreviewDirty = false;
             m_player.stop();
             m_playhead = clampFrame(frame, m_timeline.lengthFrames());
             m_timeline.clearSelection();
@@ -111,6 +113,8 @@ if (m_draggingSpectrum) {
                                 m_timeline.lengthFrames());
         m_timeline.clearSelection();
         m_spectralController.clear();
+        if (m_spectralController.previewEnabled())
+            queueSpectralPreview(m_spectralController.previewKind(), 0);
         setStatus("Playhead " +
                   formatSeconds(static_cast<double>(m_playhead) /
                                 std::max(1, m_timeline.sampleRate())));
@@ -120,6 +124,8 @@ if (m_draggingSpectrum) {
     } else {
         m_spectralLow.setValue(m_spectralController.region().lowHz);
         m_spectralHigh.setValue(m_spectralController.region().highHz);
+        if (m_spectralController.previewEnabled())
+            queueSpectralPreview(m_spectralController.previewKind(), 0);
     }
     m_spectrumClickCandidate = false;
 }

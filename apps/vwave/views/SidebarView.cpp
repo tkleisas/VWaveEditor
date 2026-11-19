@@ -198,6 +198,56 @@ void App::drawSidebar() {
         drawText(truncateText(regionText, fontSmall(), 256), 18, y, kTextFaint,
                  fontSmall());
         y += 18;
+        drawSection("LIVE PREVIEW", y);
+        using vwave::app::SpectralEditKind;
+        const bool spectralPreview =
+            m_spectralController.previewEnabled();
+        grid({{std::string("Preview: ") +
+                   (spectralPreview ? "On" : "Off"),
+               [this] { toggleSpectralPreview(); }},
+              {"Mode: " +
+                   std::string(vwave::app::spectralEditKindName(
+                       m_spectralController.previewKind())),
+               [this] { cycleSpectralPreviewKind(); }}});
+        grid({{std::string("A/B: ") +
+                   (m_spectralController.previewWet() ? "Wet" : "Dry"),
+               [this] { toggleSpectralPreviewWet(); }},
+              {"Clear Region", [this] {
+                   m_spectralController.clear();
+                   m_spectralPreviewDirty = false;
+                   if (m_spectralController.previewEnabled())
+                       queueSpectralPreview(
+                           m_spectralController.previewKind(), 0);
+                   setStatus("Spectral region cleared");
+               }}});
+        if (spectralPreview) {
+            std::ostringstream previewInfo;
+            if (m_spectralController.previewPending())
+                previewInfo << "Rendering";
+            else if (m_spectralController.previewPlaying())
+                previewInfo << "Looping";
+            else
+                previewInfo << "Ready";
+            const vwave::Range previewRange =
+                m_spectralController.previewRange();
+            if (previewRange.length() > 0) {
+                const double sampleRate =
+                    std::max(1, activeDocument().sampleRate());
+                previewInfo << "  "
+                            << formatSeconds(static_cast<double>(
+                                                 previewRange.start) /
+                                             sampleRate)
+                            << " - "
+                            << formatSeconds(static_cast<double>(
+                                                 previewRange.end) /
+                                             sampleRate);
+                if (m_spectralController.previewClipped())
+                    previewInfo << " (6 s max)";
+            }
+            drawText(truncateText(previewInfo.str(), fontSmall(), 256), 18,
+                     y, kAccent, fontSmall());
+            y += 18;
+        }
         grid({{std::string("View: ") + (m_spectrum3D ? "3D" : "2D"),
                [this] {
                    m_spectrum3D = !m_spectrum3D;
@@ -212,34 +262,68 @@ void App::drawSidebar() {
             y += 18;
         }
         addSlider("Low frequency", formatHz(m_spectralLow.value), 18, y, 256,
-                  m_spectralLow);
+                  m_spectralLow, [this](double) {
+                      if (m_spectralLow.value >= m_spectralHigh.value) {
+                          m_spectralHigh.setValue(std::min(
+                              m_spectralHigh.maximum,
+                              std::max(m_spectralLow.value * 1.05,
+                                       m_spectralLow.value + 1.0)));
+                      }
+                      m_spectralController.setBand(
+                          m_spectralLow.value, m_spectralHigh.value);
+                      queueSpectralPreview(SpectralEditKind::Gain);
+                  });
         y += 30;
         addSlider("High frequency", formatHz(m_spectralHigh.value), 18, y, 256,
-                  m_spectralHigh);
+                  m_spectralHigh, [this](double) {
+                      if (m_spectralHigh.value <= m_spectralLow.value) {
+                          m_spectralLow.setValue(std::max(
+                              m_spectralLow.minimum,
+                              std::min(m_spectralHigh.value / 1.05,
+                                       m_spectralHigh.value - 1.0)));
+                      }
+                      m_spectralController.setBand(
+                          m_spectralLow.value, m_spectralHigh.value);
+                      queueSpectralPreview(SpectralEditKind::Gain);
+                  });
         y += 30;
         addSlider("Band gain", formatDb(m_spectralGain.value), 18, y, 256,
-                  m_spectralGain);
+                  m_spectralGain, [this](double) {
+                      queueSpectralPreview(SpectralEditKind::Gain);
+                  });
         y += 30;
         grid({{"Apply Gain",
                [this] { applySpectralGain(m_spectralGain.value); }},
               {"Erase", [this] { applySpectralGain(-120.0); }}});
         addSlider("Gate threshold", formatDb(m_spectralGate.value), 18, y, 256,
-                  m_spectralGate);
+                  m_spectralGate, [this](double) {
+                      queueSpectralPreview(SpectralEditKind::Gate);
+                  });
         y += 30;
         grid({{"Apply Gate", [this] { applySpectralGate(); }},
               {"Filter: " + std::string(m_filterLowpass ? "LPF" : "HPF"),
-               [this] { m_filterLowpass = !m_filterLowpass; }}});
+               [this] {
+                   m_filterLowpass = !m_filterLowpass;
+                   queueSpectralPreview(SpectralEditKind::Filter);
+               }}});
         addSlider("Filter cutoff", formatHz(m_spectralCutoff.value), 18, y, 256,
-                  m_spectralCutoff);
+                  m_spectralCutoff, [this](double) {
+                      queueSpectralPreview(SpectralEditKind::Filter);
+                  });
         y += 30;
         grid({{"Apply Filter",
                [this] { applySpectralFilter(m_filterLowpass); }},
               {"Apply Blur", [this] { applySpectralBlur(); }}});
         addSlider("Blur time", formatInt(m_spectralBlurTime.value), 18, y, 256,
-                  m_spectralBlurTime);
+                  m_spectralBlurTime, [this](double) {
+                      queueSpectralPreview(SpectralEditKind::Blur);
+                  });
         y += 30;
         addSlider("Blur frequency", formatInt(m_spectralBlurFrequency.value),
-                  18, y, 256, m_spectralBlurFrequency);
+                  18, y, 256, m_spectralBlurFrequency,
+                  [this](double) {
+                      queueSpectralPreview(SpectralEditKind::Blur);
+                  });
         y += 30;
     } else if (m_tab == vwave::EditorTab::Wavetable) {
         syncWavetableDesignControls();

@@ -72,4 +72,28 @@ Audio spectralGate(const Audio& audio, double thresholdDb, Range range = {},
 Audio spectralBlur(const Audio& audio, int timeRadius, int frequencyRadius,
                    Range range = {}, int fftSize = 2048, int hopSize = 512);
 
+enum class SpectralEditType {
+    Gain,
+    Gate,
+    Filter,
+    Blur
+};
+
+struct SpectralEditSettings {
+    SpectralEditType type = SpectralEditType::Gain;
+    double lowHz = 20.0;
+    double highHz = 20000.0;
+    double gainDb = 0.0;
+    double thresholdDb = -40.0;
+    double cutoffHz = 1000.0;
+    bool lowpass = true;
+    int blurTime = 0;
+    int blurFrequency = 0;
+};
+
+Audio applySpectralEdit(const Audio& audio,
+                        const SpectralEditSettings& edit,
+                        Range range = {}, int fftSize = 2048,
+                        int hopSize = 512);
+
 } // namespace vwave

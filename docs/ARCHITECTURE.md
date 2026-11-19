@@ -239,6 +239,13 @@ gating compares each bin to a per-frame threshold; blur smooths magnitudes over
 time and frequency. Time-frequency regions are converted to document ranges
 before applying edits.
 
+Live preview renders the selected region (or a six-second window around the
+playhead) through the same spectral edit path on a background worker. Slider
+changes are debounced so only the newest request is kept; completed previews
+loop through the audio device and can be compared against the unprocessed dry
+signal. Applying an edit stops preview and commits through the normal
+non-destructive document operation.
+
 `computePhaseSpectrogram()` adds principal phase, phase-difference
 instantaneous frequency, and a magnitude/stability confidence to a bounded
 STFT cache. It analyzes at a phase-safe hop and strides stored display frames
@@ -482,8 +489,9 @@ The suite covers:
   integer PCM output can clip if the warning is ignored.
 - Timeline structural undo keeps up to 64 snapshot entries; older structural
   states are discarded.
-- Spectral operations process the selected region in memory.
-- Real-time spectral monitoring is not implemented.
+- Spectral operations process the selected region in memory. Live preview
+  renders at most six seconds of the region in the background; true streaming
+  spectral monitoring is not implemented.
 - The 3D spectrum is a CPU overview with capped frames/bins and no surface
   selection.
 - Image-to-spectrogram stereo output duplicates mono; hue-to-pan, image

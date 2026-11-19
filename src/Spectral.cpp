@@ -568,4 +568,24 @@ Audio spectralBlur(const Audio& audio, int timeRadius, int frequencyRadius,
     return processSpectralRange(audio, range, fft, hop, processor);
 }
 
+Audio applySpectralEdit(const Audio& audio,
+                        const SpectralEditSettings& edit, Range range,
+                        int fftSize, int hopSize) {
+    switch (edit.type) {
+    case SpectralEditType::Gain:
+        return spectralGain(audio, edit.lowHz, edit.highHz, edit.gainDb,
+                            range, fftSize, hopSize);
+    case SpectralEditType::Gate:
+        return spectralGate(audio, edit.thresholdDb, range, fftSize,
+                            hopSize);
+    case SpectralEditType::Filter:
+        return spectralFilter(audio, edit.lowpass ? "lowpass" : "highpass",
+                              edit.cutoffHz, range, 4, fftSize, hopSize);
+    case SpectralEditType::Blur:
+        return spectralBlur(audio, edit.blurTime, edit.blurFrequency,
+                            range, fftSize, hopSize);
+    }
+    return {};
+}
+
 } // namespace vwave

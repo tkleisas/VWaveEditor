@@ -260,7 +260,8 @@ Included:
 Deferred:
 
 - neural amp/instrument capture training and inference;
-- real-time spectral editing while monitoring;
+- streaming real-time spectral editing while monitoring (bounded-region
+  preview rendering is implemented);
 - VST/AU hosting;
 - collaborative editing;
 - multichannel beyond stereo in the first UI iteration (core is
@@ -293,8 +294,9 @@ As of the v0.1.0 development line:
 - Multi-track Timeline, track controls, multi-track playback/export, recording,
   audio-device/theme settings, menu bar, target-to-new-track processing, and
   time/frequency zoom are implemented.
-- Neural capture, real-time spectral monitoring, plugin hosting, and
-  multichannel UI remain deferred.
+- Neural capture, true streaming spectral monitoring (bounded-region preview
+  rendering is implemented), plugin hosting, and multichannel UI remain
+  deferred.
 - Documents are region-based over immutable audio blocks, with generation-based
   project work areas, live block spill, autosave recovery, background prefetch,
   and bounded history.
